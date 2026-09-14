@@ -36,25 +36,79 @@ getgenv().Options = Options;
 local Library = {
     Registry = {};
     RegistryMap = {};
-
     HudRegistry = {};
-
     FontColor = Color3.fromRGB(255, 255, 255);
     MainColor = Color3.fromRGB(24, 24, 24);
     BackgroundColor = Color3.fromRGB(16, 16, 16);
     AccentColor = Color3.fromRGB(255, 255, 255);
     OutlineColor = Color3.fromRGB(50, 50, 50);
     RiskColor = Color3.fromRGB(255, 50, 50),
-
     Black = Color3.new(0, 0, 0);
-    Font = Enum.Font.Code,
-
+    Font = Enum.Font.GothamMedium,
     OpenedFrames = {};
     DependencyBoxes = {};
-
     Signals = {};
     ScreenGui = ScreenGui;
 };
+Library.ChromaPickers = {};
+Library.ChromaSet = {};
+Library.ChromaConn = nil;
+Library.Groupboxes = {};
+Library.PlayerTabCreated = false;
+Library.PlayerRows = {};
+function Library:EnsureChromaConnection()
+    if Library.ChromaConn then return end
+    Library.ChromaConn = RenderStepped:Connect(function()
+        if Library.ReducedMotion then return end
+        local t = tick()
+        for picker,_ in next, Library.ChromaSet do
+            if picker.RgbEnabled then
+                local s = picker.ChromaSpeed or 1
+                picker.Hue = (t * (0.1166667 * s)) % 1
+                picker.Sat = 1
+                picker.Vib = 1
+                picker:Display()
+            end
+        end
+    end)
+    table.insert(Library.Signals, Library.ChromaConn)
+end
+function Library:SetChromaEnabled(picker, enabled)
+    picker.RgbEnabled = enabled
+    if enabled then
+        Library.ChromaSet[picker] = true
+        Library:EnsureChromaConnection()
+    else
+        Library.ChromaSet[picker] = nil
+    end
+    if picker.UpdateChromaBtn then picker.UpdateChromaBtn() end
+end
+function Library:SetGroupChroma(groupbox, enabled)
+    if not groupbox or not groupbox.ColorPickers then return end
+    for _,p in ipairs(groupbox.ColorPickers) do
+        Library:SetChromaEnabled(p, enabled)
+    end
+    if groupbox.ChromaBtn then
+        groupbox.ChromaOn = enabled
+        local inner = groupbox.ChromaBtnInner
+        local label = groupbox.ChromaBtnLabel
+        if enabled then
+            inner.BackgroundColor3 = Library.AccentColor
+            inner.BorderColor3 = Library.AccentColorDark
+            Library.RegistryMap[inner].Properties.BackgroundColor3 = 'AccentColor'
+            Library.RegistryMap[inner].Properties.BorderColor3 = 'AccentColorDark'
+            label.TextColor3 = Color3.new(1,1,1)
+            if Library.RegistryMap[label] then Library.RegistryMap[label].Properties.TextColor3 = Color3.new(1,1,1) end
+        else
+            inner.BackgroundColor3 = Library.MainColor
+            inner.BorderColor3 = Library.OutlineColor
+            Library.RegistryMap[inner].Properties.BackgroundColor3 = 'MainColor'
+            Library.RegistryMap[inner].Properties.BorderColor3 = 'OutlineColor'
+            label.TextColor3 = Library.FontColor
+            if Library.RegistryMap[label] then Library.RegistryMap[label].Properties.TextColor3 = 'FontColor' end
+        end
+    end
+end
 
 local RainbowStep = 0
 local Hue = 0
@@ -911,53 +965,24 @@ do
         local UpdateRgbBtn = UpdateChromaBtn;
         local function UpdateGradBtn() end;
         local function StopGrad() end;
-
         local function StopRgb()
-            if ColorPicker.RgbConn then
-                ColorPicker.RgbConn:Disconnect();
-                ColorPicker.RgbConn = nil;
-            end;
-        end;
-
+            Library:SetChromaEnabled(ColorPicker, false)
+        end
         local function StartRgb()
-            StopRgb();
-
-            if Library.ReducedMotion then
-                return;
-            end;
-
-            ColorPicker.RgbConn = RenderStepped:Connect(function()
-                if not ScreenGui.Parent then
-                    StopRgb();
-                    return;
-                end;
-
-                if not ColorPicker.RgbEnabled or Library.ReducedMotion then
-                    return;
-                end;
-
-                local s = ColorPicker.ChromaSpeed or 1;
-                ColorPicker.Hue = (tick() * (0.1166667 * s)) % 1;
-                ColorPicker.Sat = 1;
-                ColorPicker.Vib = 1;
-                ColorPicker:Display();
-            end);
-        end;
-
+            if Library.ReducedMotion then return end
+            Library:SetChromaEnabled(ColorPicker, true)
+        end
+        ColorPicker.UpdateChromaBtn = UpdateChromaBtn
+        ColorPicker.StopRgb = StopRgb
+        ColorPicker.StartRgb = StartRgb
+        table.insert(Library.ChromaPickers, ColorPicker)
+        if Library.CurrentGroupbox and Library.CurrentGroupbox.ColorPickers then
+            table.insert(Library.CurrentGroupbox.ColorPickers, ColorPicker)
+            ColorPicker.Groupbox = Library.CurrentGroupbox
+        end
         ChromaOuter.InputBegan:Connect(function(Input)
-            if not Library:IsClickInput(Input) then
-                return;
-            end;
-
-            ColorPicker.RgbEnabled = not ColorPicker.RgbEnabled;
-
-            if ColorPicker.RgbEnabled then
-                StartRgb();
-            else
-                StopRgb();
-            end;
-
-            UpdateChromaBtn();
+            if not Library:IsClickInput(Input) then return end
+            Library:SetChromaEnabled(ColorPicker, not ColorPicker.RgbEnabled)
         end);
 
         TransInner.InputBegan:Connect(function(Input)
@@ -2503,10 +2528,36 @@ do
             end;
         end);
 
-        if Toggle.Risky then
+        local IsDangerous = Info.Dangerous or Info.Risky
+        Toggle.Dangerous = IsDangerous and true or false
+        if IsDangerous then
             Library:RemoveFromRegistry(ToggleLabel)
             ToggleLabel.TextColor3 = Library.RiskColor
             Library:AddToRegistry(ToggleLabel, { TextColor3 = 'RiskColor' })
+            local Warn = Library:CreateLabel({
+                Size = UDim2.new(0, 14, 1, 0);
+                Text = utf8.char(9888);
+                TextSize = 13;
+                TextColor3 = Library.RiskColor;
+                ZIndex = 6;
+                Parent = ToggleLabel;
+            });
+            Library:RemoveFromRegistry(Warn)
+            Warn.TextColor3 = Library.RiskColor
+            Library:AddToRegistry(Warn, { TextColor3 = 'RiskColor' })
+            Toggle.WarnLabel = Warn
+            function Toggle:SetDangerous(v)
+                Toggle.Dangerous = v and true or false
+                if v then
+                    ToggleLabel.TextColor3 = Library.RiskColor
+                    Library.RegistryMap[ToggleLabel].Properties.TextColor3 = 'RiskColor'
+                    Warn.Visible = true
+                else
+                    ToggleLabel.TextColor3 = Library.FontColor
+                    Library.RegistryMap[ToggleLabel].Properties.TextColor3 = 'FontColor'
+                    Warn.Visible = false
+                end
+            end
         end
 
         Toggle:Display();
@@ -3158,20 +3209,21 @@ do
         function Dropdown:Display()
             local Values = Dropdown.Values;
             local Str = '';
-
             if Info.Multi then
                 for Idx, Value in next, Values do
                     if Dropdown.Value[Value] then
                         Str = Str .. Value .. ', ';
                     end;
                 end;
-
                 Str = Str:sub(1, #Str - 2);
             else
                 Str = Dropdown.Value or '';
             end;
-
             ItemList.Text = (Str == '' and '--' or Str);
+            if Info.Dangerous then
+                ItemList.TextColor3 = Library.RiskColor
+                Library.RegistryMap[ItemList].Properties.TextColor3 = 'RiskColor'
+            end
             RefreshCustomBox();
         end;
 
@@ -3338,15 +3390,23 @@ do
                     Selected = Dropdown.Value == Value;
                 end;
 
+                local DangerousMap = Info.DangerousOptions or Info.DangerousMap or {}
+                local IsDangerousOption = Info.Dangerous and true or DangerousMap[Value] == true
+                if Info.DangerousValues and Info.DangerousValues[Value] then IsDangerousOption = true end
                 function Table:UpdateButton()
                     if Info.Multi then
                         Selected = Dropdown.Value[Value];
                     else
                         Selected = Dropdown.Value == Value;
                     end;
-
-                    ButtonLabel.TextColor3 = Selected and Library.AccentColor or Library.FontColor;
-                    Library.RegistryMap[ButtonLabel].Properties.TextColor3 = Selected and 'AccentColor' or 'FontColor';
+                    if IsDangerousOption then
+                        ButtonLabel.Text = utf8.char(9888) .. " " .. Value
+                        ButtonLabel.TextColor3 = Library.RiskColor
+                        Library.RegistryMap[ButtonLabel].Properties.TextColor3 = 'RiskColor'
+                    else
+                        ButtonLabel.TextColor3 = Selected and Library.AccentColor or Library.FontColor;
+                        Library.RegistryMap[ButtonLabel].Properties.TextColor3 = Selected and 'AccentColor' or 'FontColor';
+                    end
                 end;
 
                 ButtonLabel.InputBegan:Connect(function(Input)
@@ -6300,6 +6360,220 @@ function Library:Notify(Text, Time)
     end);
 end;
 
+
+Library.ThumbnailCache = Library.ThumbnailCache or {}
+Library.PlayerContextMenu = nil
+function Library:GetCrewName(player)
+    local ok, crew = pcall(function()
+        local df = player:FindFirstChild("DataFolder")
+        if not df then return nil end
+        local info = df:FindFirstChild("Information")
+        local c = (info and info:FindFirstChild("Crew")) or df:FindFirstChild("Crew")
+        return c and c.Value or nil
+    end)
+    if not ok or not crew or tostring(crew) == "" or tostring(crew) == "0" then return "No Crew" end
+    return tostring(crew)
+end
+function Library:TeleportToPlayer(target)
+    local char = LocalPlayer.Character
+    local tchar = target.Character
+    if char and tchar and tchar:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("HumanoidRootPart") then
+        local hrp = char.HumanoidRootPart
+        local thrp = tchar.HumanoidRootPart
+        hrp.CFrame = thrp.CFrame + Vector3.new(0, 3, 3)
+        Library:Notify("Teleported to "..target.Name, 2)
+    else
+        Library:Notify("Cannot teleport", 2)
+    end
+end
+function Library:WhitelistRagebot(player)
+    if Options and Options.whitelist_select then
+        local cur = Options.whitelist_select.Value or {}
+        local newSet = {}
+        for k,v in pairs(cur) do newSet[k]=v end
+        newSet[player.Name] = true
+        local tbl = {}
+        for k,_ in pairs(newSet) do table.insert(tbl, k) end
+        local dict = {}
+        for _,n in ipairs(tbl) do dict[n]=true end
+        Options.whitelist_select:SetValue(dict)
+        Library:Notify("Whitelisted "..player.Name.." to ragebot", 2)
+        if getgenv().Data and getgenv().Data.RageWhitelist ~= nil then getgenv().Data.RageWhitelist[player]=true end
+        local d = rawget(getgenv(), "Data")
+        if d and d.RageWhitelist ~= nil then d.RageWhitelist[player]=true end
+        pcall(function()
+            if _G.Data and _G.Data.RageWhitelist ~= nil then _G.Data.RageWhitelist[player]=true end
+        end)
+        if Library.PhongData and Library.PhongData.RageWhitelist ~= nil then Library.PhongData.RageWhitelist[player]=true end
+    else
+        if Library.PhongData and Library.PhongData.RageWhitelist ~= nil then Library.PhongData.RageWhitelist[player]=true Library:Notify("Whitelisted "..player.Name.." to ragebot",2) end
+    end
+end
+function Library:WhitelistSilent(player)
+    Library.SilentWhitelist = Library.SilentWhitelist or {}
+    Library.SilentWhitelist[player]=true
+    Library.StickyWhitelist = Library.StickyWhitelist or {}
+    Library:Notify("Whitelisted "..player.Name.." to silent aim",2)
+    if Library.OnSilentWhitelist then Library.OnSilentWhitelist(player) end
+end
+function Library:WhitelistSticky(player)
+    Library.StickyWhitelist = Library.StickyWhitelist or {}
+    Library.StickyWhitelist[player]=true
+    Library:Notify("Whitelisted "..player.Name.." to sticky aim",2)
+    if Library.OnStickyWhitelist then Library.OnStickyWhitelist(player) end
+end
+function Library:WhitelistIsrael(player)
+    if Options and Options.israel_whitelist_select then
+        local cur = Options.israel_whitelist_select.Value or {}
+        local newSet = {}
+        for k,v in pairs(cur) do newSet[k]=v end
+        newSet[player.Name]=true
+        local dict={}
+        for k,_ in pairs(newSet) do dict[k]=true end
+        Options.israel_whitelist_select:SetValue(dict)
+        Library:Notify("Whitelisted "..player.Name.." to israel support",2)
+    else
+        Library.IsraelWhitelist = Library.IsraelWhitelist or {}
+        Library.IsraelWhitelist[player]=true
+        Library:Notify("Whitelisted "..player.Name.." to israel support",2)
+    end
+    if Library.PhongData and Library.PhongData.IsraelWhitelist ~= nil then Library.PhongData.IsraelWhitelist[player]=true end
+end
+function Library:ProtectByIsrael(player)
+    Library.IsraelProtected = Library.IsraelProtected or {}
+    Library.IsraelProtected[player]=true
+    Library.IsraelWhitelist = Library.IsraelWhitelist or {}
+    Library.IsraelWhitelist[player]=true
+    if Library.PhongData and Library.PhongData.IsraelWhitelist ~= nil then Library.PhongData.IsraelWhitelist[player]=true end
+    if Options and Options.israel_whitelist_select then
+        local cur = Options.israel_whitelist_select.Value or {}
+        local dict={}
+        for k,v in pairs(cur) do dict[k]=v end
+        dict[player.Name]=true
+        Options.israel_whitelist_select:SetValue(dict)
+    end
+    if Toggles and Toggles.israel_whitelist_protect then Toggles.israel_whitelist_protect:SetValue(true) end
+    if Toggles and Toggles.punishment_enabled then Toggles.punishment_enabled:SetValue(true) end
+    Library:Notify("Protected "..player.Name.." by israel",2)
+end
+function Library:ShowPlayerContextMenu(target, pos)
+    if Library.PlayerContextMenu then Library.PlayerContextMenu:Destroy() Library.PlayerContextMenu=nil end
+    local menu = Instance.new("Frame")
+    menu.Name = "PlayerContext"
+    menu.BackgroundColor3 = Library.BackgroundColor
+    menu.BorderColor3 = Library.OutlineColor
+    menu.BorderMode = Enum.BorderMode.Inset
+    menu.Size = UDim2.fromOffset(190, 206)
+    menu.Position = UDim2.fromOffset(pos.X, pos.Y)
+    menu.ZIndex = 50
+    menu.Parent = ScreenGui
+    Library:AddToRegistry(menu, {BackgroundColor3="BackgroundColor", BorderColor3="OutlineColor"})
+    local function addBtn(txt, cb)
+        local b = Instance.new("TextButton")
+        b.BackgroundColor3 = Library.MainColor
+        b.BorderColor3 = Library.OutlineColor
+        b.BorderMode = Enum.BorderMode.Inset
+        b.Size = UDim2.new(1,-4,0,22)
+        b.Text = txt
+        b.TextSize = 13
+        b.Font = Library.Font
+        b.TextColor3 = Library.FontColor
+        b.ZIndex = 51
+        b.Parent = menu
+        Library:AddToRegistry(b, {BackgroundColor3="MainColor", BorderColor3="OutlineColor"})
+        Library:AddToRegistry(b, {TextColor3="FontColor"})
+        b.MouseEnter:Connect(function() b.BackgroundColor3 = Library.AccentColor b.TextColor3 = Color3.new(1,1,1) end)
+        b.MouseLeave:Connect(function() b.BackgroundColor3 = Library.MainColor b.TextColor3 = Library.FontColor end)
+        b.MouseButton1Click:Connect(function() Library.PlayerContextMenu:Destroy() Library.PlayerContextMenu=nil cb() end)
+        return b
+    end
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0,2)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = menu
+    local pad = Instance.new("UIPadding")
+    pad.PaddingTop = UDim.new(0,2)
+    pad.PaddingLeft = UDim.new(0,2)
+    pad.PaddingRight = UDim.new(0,2)
+    pad.PaddingBottom = UDim.new(0,2)
+    pad.Parent = menu
+    addBtn("Teleport", function() Library:TeleportToPlayer(target) end)
+    addBtn("Copy Name", function() pcall(setclipboard, target.Name) Library:Notify("Copied @"..target.Name,2) end)
+    addBtn("Copy Username", function() pcall(setclipboard, target.DisplayName) Library:Notify("Copied "..target.DisplayName,2) end)
+    addBtn("Whitelist to Ragebot", function() Library:WhitelistRagebot(target) end)
+    addBtn("Whitelist to Silent Aim", function() Library:WhitelistSilent(target) end)
+    addBtn("Whitelist to Sticky Aim", function() Library:WhitelistSticky(target) end)
+    addBtn("Whitelist to Israel Support", function() Library:WhitelistIsrael(target) end)
+    addBtn("Protect by Israel", function() Library:ProtectByIsrael(target) end)
+    Library.PlayerContextMenu = menu
+    Library.OpenedFrames[menu]=true
+    task.delay(5, function() if Library.PlayerContextMenu==menu then menu:Destroy() Library.PlayerContextMenu=nil Library.OpenedFrames[menu]=nil end end)
+    local conn
+    conn = InputService.InputBegan:Connect(function(inp)
+        if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.MouseButton2 then
+            if Library.PlayerContextMenu==menu and not Library:IsMouseOverFrame(menu) then
+                menu:Destroy() Library.PlayerContextMenu=nil Library.OpenedFrames[menu]=nil conn:Disconnect()
+            end
+        end
+    end)
+end
+function Library:CreatePlayerTab(window)
+    if Library.PlayerTabCreated then return end
+    Library.PlayerTabCreated = true
+    local tab = window:AddTab("Players")
+    tab:SetLayoutOrder(0)
+    local left = tab:AddLeftGroupbox("Players")
+    left.Container.Parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() end)
+    Library.PlayerGroupbox = left
+    left:AddInput("PlayerSearch", {Text="Search", Default="", Placeholder="Search players...", Callback=function(v) Library:RefreshPlayerTab() end})
+    local scrollOuter = Library:Create("Frame", {BackgroundTransparency=1, Size=UDim2.new(1,0,1,-40), ZIndex=2, Parent=left.Container})
+    local scroll = Library:Create("ScrollingFrame", {
+        BackgroundTransparency=1, BorderSizePixel=0, Size=UDim2.new(1,0,1,0), CanvasSize=UDim2.new(0,0,0,0), ScrollBarThickness=3, ScrollBarImageColor3=Library.AccentColor, ZIndex=2, Parent=scrollOuter
+    })
+    Library:AddToRegistry(scroll, {ScrollBarImageColor3="AccentColor"})
+    local layout = Library:Create("UIListLayout", {FillDirection=Enum.FillDirection.Vertical, SortOrder=Enum.SortOrder.LayoutOrder, Padding=UDim.new(0,4), HorizontalAlignment=Enum.HorizontalAlignment.Center, Parent=scroll})
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() scroll.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y) left:Resize() end)
+    Library.PlayerScroll = scroll
+    Library.PlayerLayout = layout
+    Library.PlayerLeftGroupbox = left
+    Library:RefreshPlayerTab()
+    Library:GiveSignal(Players.PlayerAdded:Connect(function() Library:RefreshPlayerTab() end))
+    Library:GiveSignal(Players.PlayerRemoving:Connect(function() Library:RefreshPlayerTab() end))
+    return tab
+end
+function Library:RefreshPlayerTab()
+    if not Library.PlayerScroll then return end
+    for _,c in ipairs(Library.PlayerScroll:GetChildren()) do if not c:IsA("UIListLayout") then c:Destroy() end end
+    local query = ""
+    if Options and Options.PlayerSearch then query = Options.PlayerSearch.Value:lower() end
+    local list = Players:GetPlayers()
+    table.sort(list, function(a,b) return a.Name:lower() < b.Name:lower() end)
+    for _,plr in ipairs(list) do
+        if query ~= "" and not plr.Name:lower():find(query,1,true) and not plr.DisplayName:lower():find(query,1,true) then continue end
+        local row = Library:Create("Frame", {BackgroundColor3=Library.MainColor, BorderColor3=Library.OutlineColor, BorderMode=Enum.BorderMode.Inset, Size=UDim2.new(1,-4,0,34), ZIndex=3, Parent=Library.PlayerScroll})
+        Library:AddToRegistry(row, {BackgroundColor3="MainColor", BorderColor3="OutlineColor"})
+        local avatar = Library:Create("ImageLabel", {BackgroundTransparency=1, Position=UDim2.new(0,3,0,3), Size=UDim2.new(0,28,0,28), ZIndex=4, Parent=row})
+        local corner = Library:Create("UICorner", {CornerRadius=UDim.new(0,6), Parent=avatar})
+        local thumb = Library.ThumbnailCache[plr.UserId]
+        if thumb then avatar.Image = thumb else task.spawn(function() local ok, th = pcall(function() return Players:GetUserThumbnailAsync(plr.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48) end) if ok and th and th~="" then Library.ThumbnailCache[plr.UserId]=th if avatar.Parent then avatar.Image=th end end end) end
+        local nameLabel = Library:CreateLabel({Position=UDim2.new(0,36,0,2), Size=UDim2.new(1,-40,0,14), TextSize=13, Text=plr.DisplayName.." @"..plr.Name, TextXAlignment=Enum.TextXAlignment.Left, TextTruncate=Enum.TextTruncate.AtEnd, ZIndex=4, Parent=row})
+        local crew = Library:GetCrewName(plr)
+        local crewLabel = Library:CreateLabel({Position=UDim2.new(0,36,0,18), Size=UDim2.new(1,-40,0,12), TextSize=11, Text=crew, TextXAlignment=Enum.TextXAlignment.Left, TextTruncate=Enum.TextTruncate.AtEnd, ZIndex=4, Parent=row})
+        crewLabel.TextColor3 = Color3.fromRGB(180,180,180)
+        Library:RemoveFromRegistry(crewLabel)
+        crewLabel.TextColor3 = Color3.fromRGB(180,180,180)
+        local btn = Library:Create("TextButton", {BackgroundTransparency=1, Size=UDim2.new(1,0,1,0), Text="", ZIndex=5, Parent=row})
+        btn.InputBegan:Connect(function(inp)
+            if inp.UserInputType==Enum.UserInputType.MouseButton2 then
+                Library:ShowPlayerContextMenu(plr, Vector2.new(Mouse.X, Mouse.Y))
+            elseif inp.UserInputType==Enum.UserInputType.MouseButton1 then
+                Library:TeleportToPlayer(plr)
+            end
+        end)
+    end
+    Library.PlayerLeftGroupbox:Resize()
+end
+
 function Library:CreateWindow(...)
     local Arguments = { ... }
     local Config = { AnchorPoint = Vector2.zero }
@@ -6667,9 +6941,32 @@ function Library:CreateWindow(...)
                 ZIndex = 5;
                 Parent = BoxInner;
             });
-
             GroupboxLabel.Font = Enum.Font.GothamBold;
-
+            local ChromaOuter = Library:Create('Frame', {
+                BackgroundColor3 = Color3.new(0,0,0);
+                BorderColor3 = Color3.new(0,0,0);
+                Position = UDim2.new(1, -38, 0, 3);
+                Size = UDim2.new(0, 34, 0, 14);
+                ZIndex = 6;
+                Parent = BoxInner;
+            });
+            local ChromaInner = Library:Create('Frame', {
+                BackgroundColor3 = Library.MainColor;
+                BorderColor3 = Library.OutlineColor;
+                BorderMode = Enum.BorderMode.Inset;
+                Size = UDim2.new(1,0,1,0);
+                ZIndex = 7;
+                Parent = ChromaOuter;
+            });
+            Library:AddToRegistry(ChromaInner, { BackgroundColor3 = 'MainColor'; BorderColor3 = 'OutlineColor'; });
+            local ChromaLabel = Library:CreateLabel({
+                Size = UDim2.new(1,0,1,0);
+                TextSize = 10;
+                Text = 'chroma';
+                ZIndex = 8;
+                Parent = ChromaInner;
+            });
+            Library:OnHighlight(ChromaOuter, ChromaOuter, { BorderColor3 = 'AccentColor' }, { BorderColor3 = 'Black' });
             local Container = Library:Create('Frame', {
                 BackgroundTransparency = 1;
                 Position = UDim2.new(0, 4, 0, 20);
@@ -6683,7 +6980,19 @@ function Library:CreateWindow(...)
                 SortOrder = Enum.SortOrder.LayoutOrder;
                 Parent = Container;
             });
-
+            Groupbox.ColorPickers = {};
+            Groupbox.ChromaBtn = ChromaOuter;
+            Groupbox.ChromaBtnInner = ChromaInner;
+            Groupbox.ChromaBtnLabel = ChromaLabel;
+            Groupbox.ChromaOn = false;
+            table.insert(Library.Groupboxes, Groupbox);
+            Library.CurrentGroupbox = Groupbox;
+            ChromaOuter.InputBegan:Connect(function(Input)
+                if not Library:IsClickInput(Input) then return end
+                Groupbox.ChromaOn = not Groupbox.ChromaOn
+                Library:SetGroupChroma(Groupbox, Groupbox.ChromaOn)
+            end);
+            function Groupbox:SetChroma(v) Library:SetGroupChroma(Groupbox, v) end
             function Groupbox:Resize()
                 local Size = 0;
 
@@ -6882,7 +7191,8 @@ function Library:CreateWindow(...)
                     SortOrder = Enum.SortOrder.LayoutOrder;
                     Parent = Container;
                 });
-
+                Tab.ColorPickers = Tab.ColorPickers or {}
+                Library.CurrentGroupbox = Tab
                 function Tab:Show()
                     for _, Tab in next, Tabbox.Tabs do
                         Tab:Hide();
@@ -7084,6 +7394,7 @@ function Library:CreateWindow(...)
     if Config.AutoShow then task.spawn(Library.Toggle) end
 
     Window.Holder = Outer;
+    pcall(function() Library:CreatePlayerTab(Window) end)
     Library:ApplyScaleTo(Outer);
 
     return Window;
