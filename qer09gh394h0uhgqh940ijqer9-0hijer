@@ -5027,23 +5027,20 @@ do
     local function AddPlayerRow(Target)
         local Row = Library:Create('Frame', {
             BackgroundTransparency = 1;
-            Size = UDim2.new(1, 0, 0, 22);
+            Size = UDim2.new(1, 0, 0, 40);
             ZIndex = 93;
             Parent = PlayerList;
         });
-
         local Avatar = Library:Create('ImageLabel', {
             BackgroundColor3 = Library.MainColor;
             BorderColor3 = Library.OutlineColor;
             BorderMode = Enum.BorderMode.Inset;
-            Position = UDim2.new(0, 0, 0, 1);
-            Size = UDim2.new(0, 20, 0, 20);
+            Position = UDim2.new(0, 0, 0, 0);
+            Size = UDim2.new(0, 40, 0, 40);
             ZIndex = 94;
             Parent = Row;
         });
-
         local CachedThumb = Library.ThumbnailCache[Target.UserId];
-
         if CachedThumb then
             Avatar.Image = CachedThumb;
         else
@@ -5051,10 +5048,8 @@ do
                 local Ok, Thumb = pcall(function()
                     return Players:GetUserThumbnailAsync(Target.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48);
                 end);
-
                 if Ok and Thumb and Thumb ~= '' then
                     Library.ThumbnailCache[Target.UserId] = Thumb;
-
                     if Avatar.Parent then
                         pcall(function()
                             Avatar.Image = Thumb;
@@ -5063,121 +5058,56 @@ do
                 end;
             end);
         end;
-
-        Library:CreateLabel({
-            Position = UDim2.new(0, 24, 0, 0);
-            Size = UDim2.new(1, -168, 0, 22);
-            TextSize = 13;
-            Text = Library:PlayerDisplayName(Target);
-            TextXAlignment = Enum.TextXAlignment.Left;
-            TextTruncate = Enum.TextTruncate.AtEnd;
+        local Info = Library:Create('Frame', {
+            BackgroundColor3 = Library.MainColor;
+            BorderColor3 = Library.OutlineColor;
+            BorderMode = Enum.BorderMode.Inset;
+            Position = UDim2.new(0, 46, 0, 0);
+            Size = UDim2.new(1, -46, 1, 0);
             ZIndex = 94;
             Parent = Row;
         });
-
-        local function Mini(Text, OffsetX, Callback)
-            local BOuter = Library:Create('Frame', {
-                BackgroundColor3 = Color3.new(0, 0, 0);
-                BorderColor3 = Color3.new(0, 0, 0);
-                Position = UDim2.new(1, OffsetX, 0, 3);
-                Size = UDim2.new(0, 32, 0, 16);
-                ZIndex = 94;
-                Parent = Row;
-            });
-
-            local BInner = Library:Create('Frame', {
-                BackgroundColor3 = Library.MainColor;
-                BorderColor3 = Library.OutlineColor;
-                BorderMode = Enum.BorderMode.Inset;
-                Size = UDim2.new(1, 0, 1, 0);
-                ZIndex = 95;
-                Parent = BOuter;
-            });
-
-            Library:AddToRegistry(BInner, {
-                BackgroundColor3 = 'MainColor';
-                BorderColor3 = 'OutlineColor';
-            });
-
-            Library:CreateLabel({
-                Size = UDim2.new(1, 0, 1, 0);
-                TextSize = 12;
-                Text = Text;
-                ZIndex = 96;
-                Parent = BInner;
-            });
-
-            Library:OnHighlight(BOuter, BOuter,
-                { BorderColor3 = 'AccentColor' },
-                { BorderColor3 = 'Black' }
-            );
-
-            BOuter.InputBegan:Connect(function(Input)
-                if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
-                    Library:SafeCallback(Callback);
-                end;
-            end);
-        end;
-
-        Mini('Go', -136, function()
-            local Char = LocalPlayer.Character;
-            local TChar = Target.Character;
-
-            if Char and TChar then
-                pcall(function()
-                    Char:PivotTo(TChar:GetPivot() * CFrame.new(0, 0, 4));
-                end);
-                Library:Notify('Teleported to ' .. Library:PlayerDisplayName(Target), 2);
-            else
-                Library:Notify('Character not available', 2);
-            end;
-        end);
-
-        Mini('Spec', -102, function()
-            local Cam = workspace.CurrentCamera;
-
-            if Library.Spectating == Target then
-                Library.Spectating = nil;
-
-                local Char = LocalPlayer.Character;
-                local Hum = Char and Char:FindFirstChildOfClass('Humanoid');
-
-                if Cam and Hum then
-                    Cam.CameraSubject = Hum;
-                end;
-
-                Library:Notify('Stopped spectating', 2);
-            else
-                local TChar = Target.Character;
-                local THum = TChar and TChar:FindFirstChildOfClass('Humanoid');
-
-                if Cam and THum then
-                    Library.Spectating = Target;
-                    Cam.CameraSubject = THum;
-                    Library:Notify('Spectating ' .. Library:PlayerDisplayName(Target), 2);
-                else
-                    Library:Notify('Cannot spectate ' .. Library:PlayerDisplayName(Target), 2);
-                end;
-            end;
-        end);
-
-        Mini('User', -68, function()
-            pcall(setclipboard, Target.Name);
-
-            if Library.StreamerMode == 'Off' then
-                Library:Notify('Copied @' .. Target.Name, 2);
-            else
-                Library:Notify('Copied username', 2);
-            end;
-        end);
-
-        Mini('Disp', -34, function()
-            pcall(setclipboard, Target.DisplayName);
-
-            if Library.StreamerMode == 'Off' then
-                Library:Notify('Copied ' .. Target.DisplayName, 2);
-            else
-                Library:Notify('Copied display name', 2);
+        Library:AddToRegistry(Info, {
+            BackgroundColor3 = 'MainColor';
+            BorderColor3 = 'OutlineColor';
+        });
+        Library:AddToRegistry(Avatar, {
+            BorderColor3 = 'OutlineColor';
+        });
+        Library:CreateLabel({
+            Position = UDim2.new(0, 6, 0, 4);
+            Size = UDim2.new(1, -12, 0, 16);
+            TextSize = 13;
+            Text = Target.DisplayName .. ' @' .. Target.Name;
+            TextXAlignment = Enum.TextXAlignment.Left;
+            TextTruncate = Enum.TextTruncate.AtEnd;
+            ZIndex = 95;
+            Parent = Info;
+        });
+        local CrewLabel = Library:CreateLabel({
+            Position = UDim2.new(0, 6, 0, 20);
+            Size = UDim2.new(1, -12, 0, 12);
+            TextSize = 11;
+            Text = Library:GetCrewDisplayWithCount(Target) .. ' | ' .. Library:FormatJoinedTime(Target);
+            TextXAlignment = Enum.TextXAlignment.Left;
+            TextTruncate = Enum.TextTruncate.AtEnd;
+            ZIndex = 95;
+            Parent = Info;
+        });
+        Library:RemoveFromRegistry(CrewLabel);
+        CrewLabel.TextColor3 = Color3.fromRGB(170, 170, 170);
+        local Btn = Library:Create('TextButton', {
+            BackgroundTransparency = 1;
+            Size = UDim2.new(1, 0, 1, 0);
+            Text = '';
+            ZIndex = 96;
+            Parent = Row;
+        });
+        Btn.InputBegan:Connect(function(Input)
+            if Input.UserInputType == Enum.UserInputType.MouseButton2 then
+                Library:ShowPlayerContextMenu(Target, Vector2.new(Mouse.X, Mouse.Y));
+            elseif Library:IsClickInput(Input) then
+                Library:TeleportToPlayer(Target);
             end;
         end);
     end;
@@ -5845,6 +5775,9 @@ do
 
     Library.ToolbarHolder = Holder;
     Library:ApplyScaleTo(Holder);
+    Library._CreatePanelButton = CreatePanelButton
+    Library._DrawIcon = DrawIcon
+    Library._ToolbarButtons = ToolbarButtons
 
     Library:GiveSignal(Players.PlayerAdded:Connect(function()
         if Library.ToolbarPanels['Players'] and Library.ToolbarPanels['Players'].Visible then
@@ -6639,192 +6572,6 @@ function Library:ShowPlayerContextMenu(target, pos)
         end
     end)
 end
-function Library:CreatePlayerTab(window)
-    if Library.PlayerTabCreated then return end
-    Library.PlayerTabCreated = true
-    local tab = window:AddTab("players")
-    if window.FooterBar and tab.TabButton then
-        tab.TabButton.AnchorPoint = Vector2.new(0.5, 0.5)
-        tab.TabButton.Position = UDim2.new(0.5, 0, 0.5, 0)
-        tab.TabButton.Size = UDim2.new(0, tab.TabButtonWidth + 8 + 4, 1, 0)
-        tab.TabButton.Parent = window.FooterBar
-    else
-        tab:SetLayoutOrder(0)
-    end
-    for _,plr in ipairs(Players:GetPlayers()) do Library.PlayerJoinTimes[plr]=tick() Library.PlayerJoinTimes[plr.UserId]=tick() end
-    Players.PlayerAdded:Connect(function(plr) Library.PlayerJoinTimes[plr]=tick() Library.PlayerJoinTimes[plr.UserId]=tick() end)
-    local playerFrame = tab.TabFrame
-    if playerFrame then
-        for _,child in ipairs(playerFrame:GetChildren()) do if child:IsA("ScrollingFrame") then child.Visible=false end end
-        for _,child in ipairs(playerFrame:GetChildren()) do if child.Name=="PlayerCustom" then child:Destroy() end end
-        local custom = Instance.new("Frame")
-        custom.Name="PlayerCustom"
-        custom.BackgroundTransparency=1
-        custom.Size=UDim2.new(1,0,1,0)
-        custom.ZIndex=2
-        custom.Parent=playerFrame
-        local searchOuter = Instance.new("Frame")
-        searchOuter.BackgroundColor3=Color3.new(0,0,0)
-        searchOuter.BorderColor3=Color3.new(0,0,0)
-        searchOuter.Size=UDim2.new(1,-8,0,22)
-        searchOuter.Position=UDim2.new(0,4,0,4)
-        searchOuter.ZIndex=3
-        searchOuter.Parent=custom
-        local searchInner = Instance.new("Frame")
-        searchInner.BackgroundColor3=Library.MainColor
-        searchInner.BorderColor3=Library.OutlineColor
-        searchInner.BorderMode=Enum.BorderMode.Inset
-        searchInner.Size=UDim2.new(1,0,1,0)
-        searchInner.ZIndex=4
-        searchInner.Parent=searchOuter
-        Library:AddToRegistry(searchInner,{BackgroundColor3="MainColor", BorderColor3="OutlineColor"})
-        local searchBox = Instance.new("TextBox")
-        searchBox.BackgroundTransparency=1
-        searchBox.Position=UDim2.new(0,6,0,0)
-        searchBox.Size=UDim2.new(1,-12,1,0)
-        searchBox.Font=Library.Font
-        searchBox.TextSize=13
-        searchBox.TextColor3=Library.FontColor
-        searchBox.PlaceholderText="Search players..."
-        searchBox.PlaceholderColor3=Color3.fromRGB(150,150,150)
-        searchBox.Text=""
-        searchBox.TextXAlignment=Enum.TextXAlignment.Left
-        searchBox.ClearTextOnFocus=false
-        searchBox.ZIndex=5
-        searchBox.Parent=searchInner
-        Library:AddToRegistry(searchBox,{TextColor3="FontColor"})
-        Library:ApplyTextStroke(searchBox)
-        local scroll = Instance.new("ScrollingFrame")
-        scroll.Name="PlayerScroll"
-        scroll.BackgroundTransparency=1
-        scroll.BorderSizePixel=0
-        scroll.Position=UDim2.new(0,4,0,30)
-        scroll.Size=UDim2.new(1,-8,1,-52)
-        scroll.CanvasSize=UDim2.new(0,0,0,0)
-        scroll.ScrollBarThickness=3
-        scroll.ScrollBarImageColor3=Library.AccentColor
-        scroll.ZIndex=3
-        scroll.Parent=custom
-        Library:AddToRegistry(scroll,{ScrollBarImageColor3="AccentColor"})
-        local layout = Instance.new("UIListLayout")
-        layout.FillDirection=Enum.FillDirection.Vertical
-        layout.SortOrder=Enum.SortOrder.LayoutOrder
-        layout.Padding=UDim.new(0,6)
-        layout.HorizontalAlignment=Enum.HorizontalAlignment.Center
-        layout.Parent=scroll
-        layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() scroll.CanvasSize=UDim2.fromOffset(0,layout.AbsoluteContentSize.Y) end)
-        local bottomBar = Instance.new("Frame")
-        bottomBar.Name="PlayerBottomBar"
-        bottomBar.BackgroundColor3=Library.BackgroundColor
-        bottomBar.BorderColor3=Library.OutlineColor
-        bottomBar.BorderMode=Enum.BorderMode.Inset
-        bottomBar.Size=UDim2.new(1,-8,0,18)
-        bottomBar.Position=UDim2.new(0,4,1,-18)
-        bottomBar.ZIndex=4
-        bottomBar.Parent=custom
-        Library:AddToRegistry(bottomBar,{BackgroundColor3="BackgroundColor", BorderColor3="OutlineColor"})
-        local bottomLabel = Instance.new("TextLabel")
-        bottomLabel.BackgroundTransparency=1
-        bottomLabel.Size=UDim2.new(1,0,1,0)
-        bottomLabel.Font=Library.Font
-        bottomLabel.TextSize=12
-        bottomLabel.TextColor3=Library.FontColor
-        bottomLabel.Text="players - "..tostring(#Players:GetPlayers())
-        bottomLabel.ZIndex=5
-        bottomLabel.Parent=bottomBar
-        Library:AddToRegistry(bottomLabel,{TextColor3="FontColor"})
-        Library:ApplyTextStroke(bottomLabel)
-        Library.PlayerBottomLabel=bottomLabel
-        Library.PlayerScroll=scroll
-        Library.PlayerLayout=layout
-        Library.PlayerSearchBox=searchBox
-        Library.PlayerCustomFrame=custom
-        searchBox:GetPropertyChangedSignal("Text"):Connect(function() Library:RefreshPlayerTab() end)
-        Library:RefreshPlayerTab()
-        Library:GiveSignal(Players.PlayerAdded:Connect(function() if Library.PlayerBottomLabel then Library.PlayerBottomLabel.Text="players - "..tostring(#Players:GetPlayers()) end Library:RefreshPlayerTab() end))
-        Library:GiveSignal(Players.PlayerRemoving:Connect(function() if Library.PlayerBottomLabel then Library.PlayerBottomLabel.Text="players - "..tostring(#Players:GetPlayers()) end Library:RefreshPlayerTab() end))
-        task.spawn(function() while custom.Parent do wait(1) if Library.PlayerBottomLabel then Library.PlayerBottomLabel.Text="players - "..tostring(#Players:GetPlayers()) end end end)
-    end
-    return tab
-end
-function Library:RefreshPlayerTab()
-    if not Library.PlayerScroll then return end
-    for _,c in ipairs(Library.PlayerScroll:GetChildren()) do if not c:IsA("UIListLayout") then c:Destroy() end end
-    local query = ""
-    if Library.PlayerSearchBox and Library.PlayerSearchBox.Text then query = Library.PlayerSearchBox.Text:lower() end
-    local list = Players:GetPlayers()
-    table.sort(list, function(a,b) return a.Name:lower() < b.Name:lower() end)
-    for _,plr in ipairs(list) do
-        if query ~= "" and not plr.Name:lower():find(query,1,true) and not plr.DisplayName:lower():find(query,1,true) then continue end
-        local row = Instance.new("Frame")
-        row.BackgroundTransparency=1
-        row.Size=UDim2.new(1,-2,0,40)
-        row.ZIndex=3
-        row.Parent=Library.PlayerScroll
-        local avatar = Instance.new("ImageLabel")
-        avatar.BackgroundColor3=Library.MainColor
-        avatar.BorderColor3=Library.OutlineColor
-        avatar.BorderMode=Enum.BorderMode.Inset
-        avatar.Position=UDim2.new(0,0,0,0)
-        avatar.Size=UDim2.new(0,40,0,40)
-        avatar.ZIndex=4
-        avatar.Parent=row
-        local thumb = Library.ThumbnailCache[plr.UserId]
-        if thumb then avatar.Image=thumb else task.spawn(function() local ok,th = pcall(function() return Players:GetUserThumbnailAsync(plr.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48) end) if ok and th and th~="" then Library.ThumbnailCache[plr.UserId]=th if avatar.Parent then avatar.Image=th end end end) end
-        local info = Instance.new("Frame")
-        info.BackgroundColor3=Library.MainColor
-        info.BorderColor3=Library.OutlineColor
-        info.BorderMode=Enum.BorderMode.Inset
-        info.Position=UDim2.new(0,46,0,0)
-        info.Size=UDim2.new(1,-46,1,0)
-        info.ZIndex=4
-        info.Parent=row
-        Library:AddToRegistry(info,{BackgroundColor3="MainColor", BorderColor3="OutlineColor"})
-        Library:AddToRegistry(avatar,{BorderColor3="OutlineColor"})
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.BackgroundTransparency=1
-        nameLabel.Position=UDim2.new(0,6,0,4)
-        nameLabel.Size=UDim2.new(1,-12,0,16)
-        nameLabel.Font=Library.Font
-        nameLabel.TextSize=13
-        nameLabel.TextColor3=Library.FontColor
-        nameLabel.Text=plr.DisplayName.." @"..plr.Name
-        nameLabel.TextXAlignment=Enum.TextXAlignment.Left
-        nameLabel.TextTruncate=Enum.TextTruncate.AtEnd
-        nameLabel.ZIndex=5
-        nameLabel.Parent=info
-        Library:AddToRegistry(nameLabel,{TextColor3="FontColor"})
-        Library:ApplyTextStroke(nameLabel)
-        local crew = Library:GetCrewDisplayWithCount(plr)
-        local joined = Library:FormatJoinedTime(plr)
-        local crewLabel = Instance.new("TextLabel")
-        crewLabel.BackgroundTransparency=1
-        crewLabel.Position=UDim2.new(0,6,0,20)
-        crewLabel.Size=UDim2.new(1,-12,0,12)
-        crewLabel.Font=Library.Font
-        crewLabel.TextSize=11
-        crewLabel.TextColor3=Color3.fromRGB(170,170,170)
-        crewLabel.Text=crew.." | "..joined
-        crewLabel.TextXAlignment=Enum.TextXAlignment.Left
-        crewLabel.TextTruncate=Enum.TextTruncate.AtEnd
-        crewLabel.ZIndex=5
-        crewLabel.Parent=info
-        local btn = Instance.new("TextButton")
-        btn.BackgroundTransparency=1
-        btn.Size=UDim2.new(1,0,1,0)
-        btn.Text=""
-        btn.ZIndex=6
-        btn.Parent=row
-        btn.InputBegan:Connect(function(inp)
-            if inp.UserInputType==Enum.UserInputType.MouseButton2 then
-                Library:ShowPlayerContextMenu(plr, Vector2.new(Mouse.X, Mouse.Y))
-            elseif inp.UserInputType==Enum.UserInputType.MouseButton1 then
-                Library:TeleportToPlayer(plr)
-            end
-        end)
-    end
-end
-
 function Library:CreateWindow(...)
     local Arguments = { ... }
     local Config = { AnchorPoint = Vector2.zero }
@@ -6953,7 +6700,7 @@ function Library:CreateWindow(...)
         BackgroundColor3 = Library.BackgroundColor;
         BorderColor3 = Library.OutlineColor;
         Position = UDim2.new(0, 8, 0, 25);
-        Size = UDim2.new(1, -16, 1, -53);
+        Size = UDim2.new(1, -16, 1, -65);
         ZIndex = 1;
         Parent = Inner;
     });
@@ -6966,14 +6713,62 @@ function Library:CreateWindow(...)
         BackgroundColor3 = Library.BackgroundColor;
         BorderColor3 = Library.OutlineColor;
         BorderMode = Enum.BorderMode.Inset;
-        Position = UDim2.new(0, 8, 1, -20);
-        Size = UDim2.new(1, -16, 0, 18);
+        Position = UDim2.new(0, 8, 1, -32);
+        Size = UDim2.new(1, -16, 0, 28);
         ZIndex = 1;
         Parent = Inner;
     });
     Library:AddToRegistry(FooterBar, {BackgroundColor3='BackgroundColor', BorderColor3='OutlineColor'});
     Window.FooterBar = FooterBar
     Library.WindowFooterBar = FooterBar
+    Window.FooterButtons = {}
+    local FooterRow = Library:Create('Frame', {
+        BackgroundTransparency = 1;
+        Size = UDim2.new(1, 0, 1, 0);
+        ZIndex = 2;
+        Parent = FooterBar;
+    });
+    Library:Create('UIListLayout', {
+        FillDirection = Enum.FillDirection.Horizontal;
+        HorizontalAlignment = Enum.HorizontalAlignment.Center;
+        VerticalAlignment = Enum.VerticalAlignment.Center;
+        Padding = UDim.new(0, 6);
+        SortOrder = Enum.SortOrder.LayoutOrder;
+        Parent = FooterRow;
+    });
+    local function FooterSetActive(Kind)
+        for K, B in next, Window.FooterButtons do
+            local D = Library.RegistryMap[B.Inner];
+            if K == Kind then
+                B.Inner.BorderColor3 = Library.AccentColor;
+                if D then D.Properties.BorderColor3 = 'AccentColor'; end;
+            else
+                B.Inner.BorderColor3 = Library.OutlineColor;
+                if D then D.Properties.BorderColor3 = 'OutlineColor'; end;
+            end;
+        end;
+    end;
+    Window.FooterSetActive = FooterSetActive
+    local FooterTools = {'Servers', 'Players', 'Executor', 'UI'};
+    for _, Tool in next, FooterTools do
+        local Kind = Tool
+        local IconKind = Tool
+        if Tool == 'UI' then IconKind = 'Settings'; end;
+        local BOuter, BInner = Library._CreatePanelButton('', UDim2.new(0, 34, 0, 22), FooterRow, function()
+            if Kind == 'UI' then
+                Library:HideToolbarPanels();
+                local T = Window.UITab or Window.Tabs['ui settings'] or Window.Tabs['UI Settings'];
+                if T then T:ShowTab(); end;
+                FooterSetActive('UI');
+            else
+                Library:ShowToolbarPanel(Kind);
+                if Library.OpenToolbarPanel == Kind then FooterSetActive(Kind); else FooterSetActive(nil); end;
+            end;
+        end);
+        Library._DrawIcon(IconKind, BInner);
+        Library:AddToolTip(Kind:lower(), BOuter);
+        Window.FooterButtons[Kind] = {Outer = BOuter; Inner = BInner;};
+    end;
 
 
     local MainSectionInner = Library:Create('Frame', {
@@ -7142,6 +6937,10 @@ Library:AddToRegistry(Blocker, {
             TabButton.BackgroundColor3 = Library.MainColor;
             Library.RegistryMap[TabButton].Properties.BackgroundColor3 = 'MainColor';
             TabFrame.Visible = true;
+            if Window.FooterSetActive then
+                local _ln = tostring(Tab.Name):lower();
+                if _ln == 'ui settings' or _ln == 'ui' then Window.FooterSetActive('UI'); else Window.FooterSetActive(nil); end;
+            end;
         end;
 
         function Tab:HideTab()
@@ -7551,11 +7350,21 @@ Library:AddToRegistry(Blocker, {
         end);
 
         -- This was the first tab added, so we show it by default.
-        if #TabContainer:GetChildren() == 1 then
+        if #TabContainer:GetChildren() == 1 and TabButton.Visible then
             Tab:ShowTab();
         end;
 
         Window.Tabs[Name] = Tab;
+        local _lname = tostring(Name):lower();
+        if _lname == 'ui settings' or _lname == 'ui' then
+            TabButton.Visible = false;
+            TabButton.Size = UDim2.new(0, 0, 0, 0);
+            Window.UITab = Tab;
+        end;
+        if _lname == 'players' then
+            TabButton.Visible = false;
+            TabButton.Size = UDim2.new(0, 0, 0, 0);
+        end;
         return Tab;
     end;
 
@@ -7628,7 +7437,7 @@ Library:AddToRegistry(Blocker, {
         Outer.Visible = Toggled;
 
         if Library.ToolbarHolder then
-            Library.ToolbarHolder.Visible = Toggled;
+            Library.ToolbarHolder.Visible = false;
 
             if not Toggled then
                 Library:HideToolbarPanels();
@@ -7659,7 +7468,7 @@ Library:AddToRegistry(Blocker, {
     if Config.AutoShow then task.spawn(Library.Toggle) end
 
     Window.Holder = Outer;
-    pcall(function() Library:CreatePlayerTab(Window) end)
+
     Library:ApplyScaleTo(Outer);
 
     return Window;
