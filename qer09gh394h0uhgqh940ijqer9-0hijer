@@ -6643,21 +6643,17 @@ function Library:CreatePlayerTab(window)
     if Library.PlayerTabCreated then return end
     Library.PlayerTabCreated = true
     local tab = window:AddTab("players")
-    if Window.FooterBar and tab.TabButton then
+    if window.FooterBar and tab.TabButton then
         tab.TabButton.AnchorPoint = Vector2.new(0.5, 0.5)
         tab.TabButton.Position = UDim2.new(0.5, 0, 0.5, 0)
         tab.TabButton.Size = UDim2.new(0, tab.TabButtonWidth + 8 + 4, 1, 0)
-        tab.TabButton.Parent = Window.FooterBar
+        tab.TabButton.Parent = window.FooterBar
     else
         tab:SetLayoutOrder(0)
     end
     for _,plr in ipairs(Players:GetPlayers()) do Library.PlayerJoinTimes[plr]=tick() Library.PlayerJoinTimes[plr.UserId]=tick() end
     Players.PlayerAdded:Connect(function(plr) Library.PlayerJoinTimes[plr]=tick() Library.PlayerJoinTimes[plr.UserId]=tick() end)
-    local foundTab = window.Tabs["players"] or window.Tabs["Players"] or tab
-    local playerFrame = foundTab and foundTab.TabFrame or nil
-    if not playerFrame then
-        for _,t in pairs(window.Tabs) do if t.Name and t.Name:lower()=="players" and t.TabFrame then playerFrame=t.TabFrame break end end
-    end
+    local playerFrame = tab.TabFrame
     if playerFrame then
         for _,child in ipairs(playerFrame:GetChildren()) do if child:IsA("ScrollingFrame") then child.Visible=false end end
         for _,child in ipairs(playerFrame:GetChildren()) do if child.Name=="PlayerCustom" then child:Destroy() end end
@@ -6749,7 +6745,7 @@ function Library:CreatePlayerTab(window)
         Library:GiveSignal(Players.PlayerRemoving:Connect(function() if Library.PlayerBottomLabel then Library.PlayerBottomLabel.Text="players - "..tostring(#Players:GetPlayers()) end Library:RefreshPlayerTab() end))
         task.spawn(function() while custom.Parent do wait(1) if Library.PlayerBottomLabel then Library.PlayerBottomLabel.Text="players - "..tostring(#Players:GetPlayers()) end end end)
     end
-    return foundTab
+    return tab
 end
 function Library:RefreshPlayerTab()
     if not Library.PlayerScroll then return end
@@ -7128,6 +7124,9 @@ Library:AddToRegistry(Blocker, {
             Parent = RightSide;
         });
 
+        Tab.TabFrame = TabFrame
+        Tab.LeftSide = LeftSide
+        Tab.RightSide = RightSide
         for _, Side in next, { LeftSide, RightSide } do
             Side:WaitForChild('UIListLayout'):GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
                 Side.CanvasSize = UDim2.fromOffset(0, Side.UIListLayout.AbsoluteContentSize.Y);
