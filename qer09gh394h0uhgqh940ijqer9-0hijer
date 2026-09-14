@@ -3418,7 +3418,6 @@ do
                         Selected = Dropdown.Value == Value;
                     end;
                     if IsDangerousOption then
-                        ButtonLabel.Text = utf8.char(9888) .. " " .. Value
                         ButtonLabel.TextColor3 = Library.RiskColor
                         Library.RegistryMap[ButtonLabel].Properties.TextColor3 = 'RiskColor'
                     else
@@ -6397,6 +6396,11 @@ end;
 
 Library.ThumbnailCache = Library.ThumbnailCache or {}
 Library.PlayerContextMenu = nil
+Library.PlayerJoinTimes = Library.PlayerJoinTimes or {}
+Library.SilentWhitelist = Library.SilentWhitelist or {}
+Library.StickyWhitelist = Library.StickyWhitelist or {}
+Library.IsraelWhitelist = Library.IsraelWhitelist or {}
+Library.IsraelProtected = Library.IsraelProtected or {}
 function Library:GetCrewName(player)
     local ok, crew = pcall(function()
         local df = player:FindFirstChild("DataFolder")
@@ -6405,9 +6409,59 @@ function Library:GetCrewName(player)
         local c = (info and info:FindFirstChild("Crew")) or df:FindFirstChild("Crew")
         return c and c.Value or nil
     end)
-    if not ok or not crew or tostring(crew) == "" or tostring(crew) == "0" then return "No Crew" end
+    if not ok or not crew or tostring(crew) == "" or tostring(crew) == "0" then return nil end
     return tostring(crew)
 end
+function Library:GetCrewDisplayWithCount(player)
+    local crewId = Library:GetCrewName(player)
+    if not crewId then return "No Crew" end
+    local count = 0
+    for _,p in ipairs(Players:GetPlayers()) do
+        local cid = Library:GetCrewName(p)
+        if cid == crewId then count = count + 1 end
+    end
+    local name = crewId
+    pcall(function()
+        local cache = Library.CrewNameCache or (getgenv().Data and getgenv().Data.CrewNameCache)
+        if cache and tonumber(crewId) and cache[tonumber(crewId)] then name = cache[tonumber(crewId)] end
+        if getgenv().Data and getgenv().Data.CrewNameCache and getgenv().Data.CrewNameCache[tonumber(crewId)] then name = getgenv().Data.CrewNameCache[tonumber(crewId)] end
+    end)
+    return name .. " (" .. tostring(count) .. ")"
+end
+function Library:FormatJoinedTime(plr)
+    local joinAt = Library.PlayerJoinTimes[plr] or Library.PlayerJoinTimes[plr.UserId]
+    if not joinAt then
+        if getgenv().Data and getgenv().Data.PlayerJoinAt and getgenv().Data.PlayerJoinAt[plr] then joinAt = getgenv().Data.PlayerJoinAt[plr] end
+    end
+    if not joinAt then return "Joined just now" end
+    local elapsed = math.max(0, math.floor(tick() - joinAt))
+    local h = math.floor(elapsed / 3600)
+    local m = math.floor((elapsed % 3600) / 60)
+    local s = elapsed % 60
+    return string.format("Joined %02d:%02d:%02d ago", h, m, s)
+end
+function Library:IsRageWhitelisted(player)
+    if Options and Options.whitelist_select and Options.whitelist_select.Value then
+        local v = Options.whitelist_select.Value
+        if type(v)=="table" and v[player.Name] then return true end
+    end
+    if Library.PhongData and Library.PhongData.RageWhitelist and Library.PhongData.RageWhitelist[player] then return true end
+    if getgenv().Data and getgenv().Data.RageWhitelist and getgenv().Data.RageWhitelist[player] then return true end
+    return false
+end
+function Library:IsSilentWhitelisted(player) return Library.SilentWhitelist[player]==true end
+function Library:IsStickyWhitelisted(player) return Library.StickyWhitelist[player]==true end
+function Library:IsIsraelWhitelisted(player)
+    if Options and Options.israel_whitelist_select and Options.israel_whitelist_select.Value then
+        local v = Options.israel_whitelist_select.Value
+        if type(v)=="table" and v[player.Name] then return true end
+    end
+    if Library.IsraelWhitelist[player] then return true end
+    if Library.PhongData and Library.PhongData.IsraelWhitelist and Library.PhongData.IsraelWhitelist[player] then return true end
+    if getgenv().Data and getgenv().Data.IsraelWhitelist and getgenv().Data.IsraelWhitelist[player] then return true end
+    return false
+end
+function Library:IsProtectedByIsrael(player) return Library.IsraelProtected[player]==true or Library:IsIsraelWhitelisted(player) and (Toggles and Toggles.israel_whitelist_protect and Toggles.israel_whitelist_protect.Value) end
 function Library:TeleportToPlayer(target)
     local char = LocalPlayer.Character
     local tchar = target.Character
@@ -6418,14 +6472,27 @@ function Library:TeleportToPlayer(target)
         Library:Notify("Cannot teleport", 2)
     end
 end
+function Library:ToggleRageWhitelist(player)
+    if Library:IsRageWhitelisted(player) then
+        if Options and Options.whitelist_select then
+            local cur = Options.whitelist_select.Value or {}
+            local dict = {}
+            for k,v in pairs(cur) do if k~=player.Name then dict[k]=v end end
+            Options.whitelist_select:SetValue(dict)
+        end
+        if Library.PhongData and Library.PhongData.RageWhitelist then Library.PhongData.RageWhitelist[player]=nil end
+        if getgenv().Data and getgenv().Data.RageWhitelist then getgenv().Data.RageWhitelist[player]=nil end
+        Library:Notify("Unwhitelisted "..player.Name.." from ragebot",2)
+    else
+        Library:WhitelistRagebot(player)
+    end
+end
 function Library:WhitelistRagebot(player)
     if Options and Options.whitelist_select then
         local cur = Options.whitelist_select.Value or {}
-        local newSet = {}
-        for k,v in pairs(cur) do newSet[k]=v end
-        newSet[player.Name] = true
         local dict = {}
-        for k,_ in pairs(newSet) do dict[k]=true end
+        for k,v in pairs(cur) do dict[k]=v end
+        dict[player.Name]=true
         Options.whitelist_select:SetValue(dict)
         Library:Notify("Whitelisted "..player.Name.." to ragebot", 2)
         if Library.PhongData and Library.PhongData.RageWhitelist ~= nil then Library.PhongData.RageWhitelist[player]=true end
@@ -6434,17 +6501,37 @@ function Library:WhitelistRagebot(player)
         if Library.PhongData and Library.PhongData.RageWhitelist ~= nil then Library.PhongData.RageWhitelist[player]=true Library:Notify("Whitelisted "..player.Name.." to ragebot",2) end
     end
 end
+function Library:ToggleSilentWhitelist(player)
+    if Library:IsSilentWhitelisted(player) then Library.SilentWhitelist[player]=nil Library:Notify("Unwhitelisted "..player.Name.." from silent aim",2) else Library:WhitelistSilent(player) end
+end
 function Library:WhitelistSilent(player)
-    Library.SilentWhitelist = Library.SilentWhitelist or {}
     Library.SilentWhitelist[player]=true
     Library:Notify("Whitelisted "..player.Name.." to silent aim",2)
     if Library.OnSilentWhitelist then Library.OnSilentWhitelist(player) end
 end
+function Library:ToggleStickyWhitelist(player)
+    if Library:IsStickyWhitelisted(player) then Library.StickyWhitelist[player]=nil Library:Notify("Unwhitelisted "..player.Name.." from sticky aim",2) else Library:WhitelistSticky(player) end
+end
 function Library:WhitelistSticky(player)
-    Library.StickyWhitelist = Library.StickyWhitelist or {}
     Library.StickyWhitelist[player]=true
     Library:Notify("Whitelisted "..player.Name.." to sticky aim",2)
     if Library.OnStickyWhitelist then Library.OnStickyWhitelist(player) end
+end
+function Library:ToggleIsraelWhitelist(player)
+    if Library:IsIsraelWhitelisted(player) then
+        if Options and Options.israel_whitelist_select then
+            local cur = Options.israel_whitelist_select.Value or {}
+            local dict={}
+            for k,v in pairs(cur) do if k~=player.Name then dict[k]=v end end
+            Options.israel_whitelist_select:SetValue(dict)
+        end
+        Library.IsraelWhitelist[player]=nil
+        if Library.PhongData and Library.PhongData.IsraelWhitelist then Library.PhongData.IsraelWhitelist[player]=nil end
+        if getgenv().Data and getgenv().Data.IsraelWhitelist then getgenv().Data.IsraelWhitelist[player]=nil end
+        Library:Notify("Unwhitelisted "..player.Name.." from israel support",2)
+    else
+        Library:WhitelistIsrael(player)
+    end
 end
 function Library:WhitelistIsrael(player)
     if Options and Options.israel_whitelist_select then
@@ -6455,16 +6542,29 @@ function Library:WhitelistIsrael(player)
         Options.israel_whitelist_select:SetValue(dict)
         Library:Notify("Whitelisted "..player.Name.." to israel support",2)
     else
-        Library.IsraelWhitelist = Library.IsraelWhitelist or {}
         Library.IsraelWhitelist[player]=true
         Library:Notify("Whitelisted "..player.Name.." to israel support",2)
     end
     if Library.PhongData and Library.PhongData.IsraelWhitelist ~= nil then Library.PhongData.IsraelWhitelist[player]=true end
 end
+function Library:ToggleProtectByIsrael(player)
+    if Library.IsraelProtected[player] then
+        Library.IsraelProtected[player]=nil
+        Library.IsraelWhitelist[player]=nil
+        if Library.PhongData and Library.PhongData.IsraelWhitelist then Library.PhongData.IsraelWhitelist[player]=nil end
+        if Options and Options.israel_whitelist_select then
+            local cur = Options.israel_whitelist_select.Value or {}
+            local dict={}
+            for k,v in pairs(cur) do if k~=player.Name then dict[k]=v end end
+            Options.israel_whitelist_select:SetValue(dict)
+        end
+        Library:Notify("Unprotected "..player.Name.." from israel",2)
+    else
+        Library:ProtectByIsrael(player)
+    end
+end
 function Library:ProtectByIsrael(player)
-    Library.IsraelProtected = Library.IsraelProtected or {}
     Library.IsraelProtected[player]=true
-    Library.IsraelWhitelist = Library.IsraelWhitelist or {}
     Library.IsraelWhitelist[player]=true
     if Library.PhongData and Library.PhongData.IsraelWhitelist ~= nil then Library.PhongData.IsraelWhitelist[player]=true end
     if Options and Options.israel_whitelist_select then
@@ -6522,11 +6622,11 @@ function Library:ShowPlayerContextMenu(target, pos)
     addBtn("Teleport", function() Library:TeleportToPlayer(target) end)
     addBtn("Copy Name", function() pcall(setclipboard, target.Name) Library:Notify("Copied @"..target.Name,2) end)
     addBtn("Copy Username", function() pcall(setclipboard, target.DisplayName) Library:Notify("Copied "..target.DisplayName,2) end)
-    addBtn("Whitelist to Ragebot", function() Library:WhitelistRagebot(target) end)
-    addBtn("Whitelist to Silent Aim", function() Library:WhitelistSilent(target) end)
-    addBtn("Whitelist to Sticky Aim", function() Library:WhitelistSticky(target) end)
-    addBtn("Whitelist to Israel Support", function() Library:WhitelistIsrael(target) end)
-    addBtn("Protect by Israel", function() Library:ProtectByIsrael(target) end)
+    addBtn(Library:IsRageWhitelisted(target) and "Unwhitelist from Ragebot" or "Whitelist to Ragebot", function() Library:ToggleRageWhitelist(target) end)
+    addBtn(Library:IsSilentWhitelisted(target) and "Unwhitelist from Silent Aim" or "Whitelist to Silent Aim", function() Library:ToggleSilentWhitelist(target) end)
+    addBtn(Library:IsStickyWhitelisted(target) and "Unwhitelist from Sticky Aim" or "Whitelist to Sticky Aim", function() Library:ToggleStickyWhitelist(target) end)
+    addBtn(Library:IsIsraelWhitelisted(target) and "Unwhitelist from Israel Support" or "Whitelist to Israel Support", function() Library:ToggleIsraelWhitelist(target) end)
+    addBtn(Library.IsraelProtected[target] and "Unprotect by Israel" or "Protect by Israel", function() Library:ToggleProtectByIsrael(target) end)
     Library.PlayerContextMenu = menu
     Library.OpenedFrames[menu]=true
     task.delay(5, function() if Library.PlayerContextMenu==menu then menu:Destroy() Library.PlayerContextMenu=nil Library.OpenedFrames[menu]=nil end end)
@@ -6544,35 +6644,15 @@ function Library:CreatePlayerTab(window)
     Library.PlayerTabCreated = true
     local tab = window:AddTab("players")
     tab:SetLayoutOrder(0)
-    local tabFrame = nil
-    for _,c in ipairs(window.Holder:GetDescendants()) do if c.Name=="TabFrame" and c.Parent.Parent==tab.Groupboxes["Players"] then tabFrame=c end end
-    for _,v in pairs(window.Tabs) do if v.Name=="players" then tab=v break end end
-    local container = nil
-    for _,v in pairs(window.Tabs) do if v.Name and v.Name:lower()=="players" then container=v break end end
-    local frames = {}
-    for _,obj in ipairs(ScreenGui:GetDescendants()) do if obj.Name=="TabFrame" then table.insert(frames,obj) end end
-    local targetFrame = nil
-    for _,f in ipairs(frames) do if f.Visible then end end
+    for _,plr in ipairs(Players:GetPlayers()) do Library.PlayerJoinTimes[plr]=tick() Library.PlayerJoinTimes[plr.UserId]=tick() end
+    Players.PlayerAdded:Connect(function(plr) Library.PlayerJoinTimes[plr]=tick() Library.PlayerJoinTimes[plr.UserId]=tick() end)
     local foundTab = window.Tabs["players"] or window.Tabs["Players"] or tab
-    local tf = foundTab and foundTab.TabFrame or nil
-    if not tf then
-        for _,child in ipairs(ScreenGui:GetDescendants()) do
-            if child:IsA("Frame") and child.Name=="TabFrame" and child.Parent and child.Parent.Name~="" then
-                if child:FindFirstChild("ScrollingFrame") then tf = child break end
-            end
-        end
+    local playerFrame = foundTab and foundTab.TabFrame or nil
+    if not playerFrame then
+        for _,t in pairs(window.Tabs) do if t.Name and t.Name:lower()=="players" and t.TabFrame then playerFrame=t.TabFrame break end end
     end
-    local holder = nil
-    if tf then holder = tf end
-    if not holder then
-        for _,t in pairs(window.Tabs) do if t.TabFrame then holder=t.TabFrame break end end
-    end
-    if holder then
-        for _,child in ipairs(holder:GetChildren()) do if child:IsA("ScrollingFrame") then child.Visible=false end end
-    end
-    local playerFrame = foundTab and foundTab.TabFrame or holder
-    if not playerFrame then playerFrame = tf end
     if playerFrame then
+        for _,child in ipairs(playerFrame:GetChildren()) do if child:IsA("ScrollingFrame") then child.Visible=false end end
         for _,child in ipairs(playerFrame:GetChildren()) do if child.Name=="PlayerCustom" then child:Destroy() end end
         local custom = Instance.new("Frame")
         custom.Name="PlayerCustom"
@@ -6616,7 +6696,7 @@ function Library:CreatePlayerTab(window)
         scroll.BackgroundTransparency=1
         scroll.BorderSizePixel=0
         scroll.Position=UDim2.new(0,4,0,30)
-        scroll.Size=UDim2.new(1,-8,1,-34)
+        scroll.Size=UDim2.new(1,-8,1,-52)
         scroll.CanvasSize=UDim2.new(0,0,0,0)
         scroll.ScrollBarThickness=3
         scroll.ScrollBarImageColor3=Library.AccentColor
@@ -6630,14 +6710,37 @@ function Library:CreatePlayerTab(window)
         layout.HorizontalAlignment=Enum.HorizontalAlignment.Center
         layout.Parent=scroll
         layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() scroll.CanvasSize=UDim2.fromOffset(0,layout.AbsoluteContentSize.Y) end)
+        local bottomBar = Instance.new("Frame")
+        bottomBar.Name="PlayerBottomBar"
+        bottomBar.BackgroundColor3=Library.BackgroundColor
+        bottomBar.BorderColor3=Library.OutlineColor
+        bottomBar.BorderMode=Enum.BorderMode.Inset
+        bottomBar.Size=UDim2.new(1,-8,0,18)
+        bottomBar.Position=UDim2.new(0,4,1,-18)
+        bottomBar.ZIndex=4
+        bottomBar.Parent=custom
+        Library:AddToRegistry(bottomBar,{BackgroundColor3="BackgroundColor", BorderColor3="OutlineColor"})
+        local bottomLabel = Instance.new("TextLabel")
+        bottomLabel.BackgroundTransparency=1
+        bottomLabel.Size=UDim2.new(1,0,1,0)
+        bottomLabel.Font=Library.Font
+        bottomLabel.TextSize=12
+        bottomLabel.TextColor3=Library.FontColor
+        bottomLabel.Text="players - "..tostring(#Players:GetPlayers())
+        bottomLabel.ZIndex=5
+        bottomLabel.Parent=bottomBar
+        Library:AddToRegistry(bottomLabel,{TextColor3="FontColor"})
+        Library:ApplyTextStroke(bottomLabel)
+        Library.PlayerBottomLabel=bottomLabel
         Library.PlayerScroll=scroll
         Library.PlayerLayout=layout
         Library.PlayerSearchBox=searchBox
         Library.PlayerCustomFrame=custom
         searchBox:GetPropertyChangedSignal("Text"):Connect(function() Library:RefreshPlayerTab() end)
         Library:RefreshPlayerTab()
-        Library:GiveSignal(Players.PlayerAdded:Connect(function() Library:RefreshPlayerTab() end))
-        Library:GiveSignal(Players.PlayerRemoving:Connect(function() Library:RefreshPlayerTab() end))
+        Library:GiveSignal(Players.PlayerAdded:Connect(function() if Library.PlayerBottomLabel then Library.PlayerBottomLabel.Text="players - "..tostring(#Players:GetPlayers()) end Library:RefreshPlayerTab() end))
+        Library:GiveSignal(Players.PlayerRemoving:Connect(function() if Library.PlayerBottomLabel then Library.PlayerBottomLabel.Text="players - "..tostring(#Players:GetPlayers()) end Library:RefreshPlayerTab() end))
+        task.spawn(function() while custom.Parent do wait(1) if Library.PlayerBottomLabel then Library.PlayerBottomLabel.Text="players - "..tostring(#Players:GetPlayers()) end end end)
     end
     return foundTab
 end
@@ -6689,7 +6792,8 @@ function Library:RefreshPlayerTab()
         nameLabel.Parent=info
         Library:AddToRegistry(nameLabel,{TextColor3="FontColor"})
         Library:ApplyTextStroke(nameLabel)
-        local crew = Library:GetCrewName(plr)
+        local crew = Library:GetCrewDisplayWithCount(plr)
+        local joined = Library:FormatJoinedTime(plr)
         local crewLabel = Instance.new("TextLabel")
         crewLabel.BackgroundTransparency=1
         crewLabel.Position=UDim2.new(0,6,0,20)
@@ -6697,7 +6801,7 @@ function Library:RefreshPlayerTab()
         crewLabel.Font=Library.Font
         crewLabel.TextSize=11
         crewLabel.TextColor3=Color3.fromRGB(170,170,170)
-        crewLabel.Text=crew
+        crewLabel.Text=crew.." | "..joined
         crewLabel.TextXAlignment=Enum.TextXAlignment.Left
         crewLabel.TextTruncate=Enum.TextTruncate.AtEnd
         crewLabel.ZIndex=5
@@ -7335,8 +7439,6 @@ function Library:CreateWindow(...)
                     SortOrder = Enum.SortOrder.LayoutOrder;
                     Parent = Container;
                 });
-                Tab.ColorPickers = Tab.ColorPickers or {}
-                Library.CurrentGroupbox = Tab
                 function Tab:Show()
                     for _, Tab in next, Tabbox.Tabs do
                         Tab:Hide();
