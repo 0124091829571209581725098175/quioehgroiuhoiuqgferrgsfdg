@@ -6643,7 +6643,13 @@ function Library:CreatePlayerTab(window)
     if Library.PlayerTabCreated then return end
     Library.PlayerTabCreated = true
     local tab = window:AddTab("players")
-    tab:SetLayoutOrder(0)
+    if Window.FooterBar and tab.TabButton then
+        tab.TabButton.Parent = Window.FooterBar
+        tab.TabButton.Size = UDim2.new(0, tab.TabButtonWidth + 8 + 4, 1, 0)
+        tab.TabButton.LayoutOrder = 0
+    else
+        tab:SetLayoutOrder(0)
+    end
     for _,plr in ipairs(Players:GetPlayers()) do Library.PlayerJoinTimes[plr]=tick() Library.PlayerJoinTimes[plr.UserId]=tick() end
     Players.PlayerAdded:Connect(function(plr) Library.PlayerJoinTimes[plr]=tick() Library.PlayerJoinTimes[plr.UserId]=tick() end)
     local foundTab = window.Tabs["players"] or window.Tabs["Players"] or tab
@@ -6993,13 +6999,27 @@ function Library:CreateWindow(...)
         BackgroundColor3 = Library.MainColor;
         BorderColor3 = Library.OutlineColor;
         Position = UDim2.new(0, 8, 0, 30);
-        Size = UDim2.new(1, -16, 1, -38);
+        Size = UDim2.new(1, -16, 1, -60);
         ZIndex = 2;
         Parent = MainSectionInner;
     });
     
 
-    Library:AddToRegistry(TabContainer, {
+    
+    local FooterBar = Library:Create('Frame', {
+        BackgroundColor3 = Library.BackgroundColor;
+        BorderColor3 = Library.OutlineColor;
+        BorderMode = Enum.BorderMode.Inset;
+        Position = UDim2.new(0, 8, 1, -22);
+        Size = UDim2.new(1, -16, 0, 18);
+        ZIndex = 2;
+        Parent = MainSectionInner;
+    });
+    Library:AddToRegistry(FooterBar, {BackgroundColor3='BackgroundColor', BorderColor3='OutlineColor'});
+    Library:Create('UIListLayout', {FillDirection=Enum.FillDirection.Horizontal, HorizontalAlignment=Enum.HorizontalAlignment.Center, VerticalAlignment=Enum.VerticalAlignment.Center, Padding=UDim.new(0,4), SortOrder=Enum.SortOrder.LayoutOrder, Parent=FooterBar});
+    Window.FooterBar = FooterBar
+    Library.WindowFooterBar = FooterBar
+Library:AddToRegistry(TabContainer, {
         BackgroundColor3 = 'MainColor';
         BorderColor3 = 'OutlineColor';
     });
@@ -7029,7 +7049,8 @@ function Library:CreateWindow(...)
             Parent = TabArea;
         });
 
-        Library:AddToRegistry(TabButton, {
+        Tab.TabButton = TabButton
+Library:AddToRegistry(TabButton, {
             BackgroundColor3 = 'BackgroundColor';
             BorderColor3 = 'OutlineColor';
         });
@@ -7052,7 +7073,9 @@ function Library:CreateWindow(...)
             Parent = TabButton;
         });
 
-        Library:AddToRegistry(Blocker, {
+        Tab.Blocker = Blocker
+        Tab.TabButtonWidth = TabButtonWidth
+Library:AddToRegistry(Blocker, {
             BackgroundColor3 = 'MainColor';
         });
 
