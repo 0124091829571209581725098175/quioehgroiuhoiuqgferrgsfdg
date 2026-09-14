@@ -5615,16 +5615,53 @@ do
     end;
 
     function Library:HideToolbarPanels()
-        for Key, Frame in next, Library.ToolbarPanels do
-            FadePanel(Frame, false, Key);
+        if Library._DockedPanelKind then
+            local _dp = Library.ToolbarPanels[Library._DockedPanelKind];
+            if _dp then
+                local _do = Library._PanelOrig[Library._DockedPanelKind];
+                if _do then _dp.AnchorPoint = _do.AnchorPoint; _dp.Position = _do.Position; _dp.Size = _do.Size; _dp.Parent = _do.Parent; end;
+                for _, _dg in next, _dp:GetDescendants() do
+                    if _dg:IsA('Frame') and _dg.Size == UDim2.new(0, 10, 0, 10) then _dg.Visible = true; end;
+                end;
+                _dp.Visible = false;
+            end;
+            Library._DockedPanelKind = nil;
         end;
-
+        for Key, Frame in next, Library.ToolbarPanels do
+            Frame.Visible = false;
+        end;
         Library.OpenToolbarPanel = nil;
         SetToolbarActive(nil);
     end;
 
     local function DrawIcon(Kind, Parent)
-        if Kind == 'Servers' then
+        if Kind == 'Protection' then
+            local Body = Library:Create('Frame', {
+                AnchorPoint = Vector2.new(0.5, 0);
+                BackgroundColor3 = Library.FontColor;
+                BorderSizePixel = 0;
+                Position = UDim2.new(0.5, 0, 0.5, -7);
+                Size = UDim2.new(0, 14, 0, 9);
+                ZIndex = 95;
+                Parent = Parent;
+            });
+            Library:AddToRegistry(Body, {
+                BackgroundColor3 = 'FontColor';
+            });
+            local Tip = Library:Create('Frame', {
+                AnchorPoint = Vector2.new(0.5, 0.5);
+                BackgroundColor3 = Library.FontColor;
+                BorderSizePixel = 0;
+                Position = UDim2.new(0.5, 0, 0.5, 4);
+                Rotation = 45;
+                Size = UDim2.new(0, 9, 0, 9);
+                ZIndex = 95;
+                Parent = Parent;
+            });
+            Library:AddToRegistry(Tip, {
+                BackgroundColor3 = 'FontColor';
+            });
+        elseif Kind == 'Servers' then
             local Box = Library:Create('Frame', {
                 AnchorPoint = Vector2.new(0.5, 0.5);
                 BackgroundTransparency = 1;
@@ -5778,6 +5815,14 @@ do
     Library._CreatePanelButton = CreatePanelButton
     Library._DrawIcon = DrawIcon
     Library._ToolbarButtons = ToolbarButtons
+    Library._DockedPanelKind = nil
+    Library._PanelOrig = {}
+    function Library.RefreshToolbarPanel(Name)
+        if Name == 'Players' then RefreshPlayerList();
+        elseif Name == 'Servers' then RefreshServerInfo();
+        elseif Name == 'Executor' then RefreshInfo();
+        elseif Name == 'Settings' then RefreshSettings(); end;
+    end;
 
     Library:GiveSignal(Players.PlayerAdded:Connect(function()
         if Library.ToolbarPanels['Players'] and Library.ToolbarPanels['Players'].Visible then
@@ -6749,7 +6794,7 @@ function Library:CreateWindow(...)
         end;
     end;
     Window.FooterSetActive = FooterSetActive
-    local FooterTools = {'Servers', 'Players', 'Executor', 'UI'};
+    local FooterTools = {'Servers', 'Players', 'Executor', 'UI', 'Protection'};
     for _, Tool in next, FooterTools do
         local Kind = Tool
         local IconKind = Tool
@@ -6760,9 +6805,49 @@ function Library:CreateWindow(...)
                 local T = Window.UITab or Window.Tabs['ui settings'] or Window.Tabs['UI Settings'];
                 if T then T:ShowTab(); end;
                 FooterSetActive('UI');
+            elseif Kind == 'Protection' then
+                Library:HideToolbarPanels();
+                local T = Window.ProtectionTab or Window.Tabs['protection'];
+                if T then T:ShowTab(); end;
+                FooterSetActive('Protection');
             else
-                Library:ShowToolbarPanel(Kind);
-                if Library.OpenToolbarPanel == Kind then FooterSetActive(Kind); else FooterSetActive(nil); end;
+                if Library._DockedPanelKind == Kind then
+                    Library:HideToolbarPanels();
+                    FooterSetActive(nil);
+                    local _def = Window.Tabs['main'] or Window.Tabs['Main'];
+                    if _def then _def:ShowTab(); else for _, _tb in next, Window.Tabs do if _tb.TabButton and _tb.TabButton.Visible then _tb:ShowTab(); break; end; end; end;
+                else
+                    for _, _tb2 in next, Window.Tabs do _tb2:HideTab(); end;
+                    if Library._DockedPanelKind then
+                        local _prev = Library.ToolbarPanels[Library._DockedPanelKind];
+                        if _prev then
+                            local _po = Library._PanelOrig[Library._DockedPanelKind];
+                            if _po then _prev.AnchorPoint = _po.AnchorPoint; _prev.Position = _po.Position; _prev.Size = _po.Size; _prev.Parent = _po.Parent; end;
+                            for _, _dg0 in next, _prev:GetDescendants() do
+                                if _dg0:IsA('Frame') and _dg0.Size == UDim2.new(0, 10, 0, 10) then _dg0.Visible = true; end;
+                            end;
+                            _prev.Visible = false;
+                        end;
+                        Library._DockedPanelKind = nil;
+                    end;
+                    for _K, _F in next, Library.ToolbarPanels do if _K ~= Kind then _F.Visible = false; end; end;
+                    local _P = Library.ToolbarPanels[Kind];
+                    if _P then
+                        if not Library._PanelOrig[Kind] then Library._PanelOrig[Kind] = {Parent = _P.Parent, Position = _P.Position, Size = _P.Size, AnchorPoint = _P.AnchorPoint}; end;
+                        _P.AnchorPoint = Vector2.new(0, 0);
+                        _P.Position = UDim2.new(0, 0, 0, 0);
+                        _P.Size = UDim2.new(1, 0, 1, 0);
+                        _P.Parent = TabContainer;
+                        for _, _d in next, _P:GetDescendants() do
+                            if _d:IsA('Frame') and _d.Size == UDim2.new(0, 10, 0, 10) then _d.Visible = false; end;
+                        end;
+                        _P.Visible = true;
+                    end;
+                    Library._DockedPanelKind = Kind;
+                    Library.OpenToolbarPanel = Kind;
+                    Library.RefreshToolbarPanel(Kind);
+                    FooterSetActive(Kind);
+                end;
             end;
         end);
         Library._DrawIcon(IconKind, BInner);
@@ -6933,13 +7018,26 @@ Library:AddToRegistry(Blocker, {
                 Tab:HideTab();
             end;
 
+            if Library._DockedPanelKind then
+                local _dp2 = Library.ToolbarPanels[Library._DockedPanelKind];
+                if _dp2 then
+                    local _do2 = Library._PanelOrig[Library._DockedPanelKind];
+                    if _do2 then _dp2.AnchorPoint = _do2.AnchorPoint; _dp2.Position = _do2.Position; _dp2.Size = _do2.Size; _dp2.Parent = _do2.Parent; end;
+                    for _, _dg2 in next, _dp2:GetDescendants() do
+                        if _dg2:IsA('Frame') and _dg2.Size == UDim2.new(0, 10, 0, 10) then _dg2.Visible = true; end;
+                    end;
+                    _dp2.Visible = false;
+                end;
+                Library._DockedPanelKind = nil;
+                Library.OpenToolbarPanel = nil;
+            end;
             Blocker.BackgroundTransparency = 0;
             TabButton.BackgroundColor3 = Library.MainColor;
             Library.RegistryMap[TabButton].Properties.BackgroundColor3 = 'MainColor';
             TabFrame.Visible = true;
             if Window.FooterSetActive then
                 local _ln = tostring(Tab.Name):lower();
-                if _ln == 'ui settings' or _ln == 'ui' then Window.FooterSetActive('UI'); else Window.FooterSetActive(nil); end;
+                if _ln == 'ui settings' or _ln == 'ui' then Window.FooterSetActive('UI'); elseif _ln == 'protection' then Window.FooterSetActive('Protection'); else Window.FooterSetActive(nil); end;
             end;
         end;
 
@@ -7364,6 +7462,11 @@ Library:AddToRegistry(Blocker, {
         if _lname == 'players' then
             TabButton.Visible = false;
             TabButton.Size = UDim2.new(0, 0, 0, 0);
+        end;
+        if _lname == 'protection' then
+            TabButton.Visible = false;
+            TabButton.Size = UDim2.new(0, 0, 0, 0);
+            Window.ProtectionTab = Tab;
         end;
         return Tab;
     end;
