@@ -5640,10 +5640,14 @@ do
                 AnchorPoint = Vector2.new(0.5, 0);
                 BackgroundColor3 = Library.FontColor;
                 BorderSizePixel = 0;
-                Position = UDim2.new(0.5, 0, 0.5, -7);
-                Size = UDim2.new(0, 14, 0, 9);
+                Position = UDim2.new(0.5, 0, 0.5, -8);
+                Size = UDim2.new(0, 15, 0, 10);
                 ZIndex = 95;
                 Parent = Parent;
+            });
+            Library:Create('UICorner', {
+                CornerRadius = UDim.new(0, 4);
+                Parent = Body;
             });
             Library:AddToRegistry(Body, {
                 BackgroundColor3 = 'FontColor';
@@ -5654,12 +5658,41 @@ do
                 BorderSizePixel = 0;
                 Position = UDim2.new(0.5, 0, 0.5, 4);
                 Rotation = 45;
-                Size = UDim2.new(0, 9, 0, 9);
+                Size = UDim2.new(0, 10, 0, 10);
                 ZIndex = 95;
                 Parent = Parent;
             });
             Library:AddToRegistry(Tip, {
                 BackgroundColor3 = 'FontColor';
+            });
+            local InnerBody = Library:Create('Frame', {
+                AnchorPoint = Vector2.new(0.5, 0);
+                BackgroundColor3 = Library.MainColor;
+                BorderSizePixel = 0;
+                Position = UDim2.new(0.5, 0, 0.5, -6);
+                Size = UDim2.new(0, 9, 0, 6);
+                ZIndex = 96;
+                Parent = Parent;
+            });
+            Library:Create('UICorner', {
+                CornerRadius = UDim.new(0, 2);
+                Parent = InnerBody;
+            });
+            Library:AddToRegistry(InnerBody, {
+                BackgroundColor3 = 'MainColor';
+            });
+            local InnerTip = Library:Create('Frame', {
+                AnchorPoint = Vector2.new(0.5, 0.5);
+                BackgroundColor3 = Library.MainColor;
+                BorderSizePixel = 0;
+                Position = UDim2.new(0.5, 0, 0.5, 3);
+                Rotation = 45;
+                Size = UDim2.new(0, 6, 0, 6);
+                ZIndex = 96;
+                Parent = Parent;
+            });
+            Library:AddToRegistry(InnerTip, {
+                BackgroundColor3 = 'MainColor';
             });
         elseif Kind == 'Servers' then
             local Box = Library:Create('Frame', {
@@ -6829,6 +6862,7 @@ function Library:CreateWindow(...)
                             _prev.Visible = false;
                         end;
                         Library._DockedPanelKind = nil;
+                        Library.OpenToolbarPanel = nil;
                     end;
                     for _K, _F in next, Library.ToolbarPanels do if _K ~= Kind then _F.Visible = false; end; end;
                     local _P = Library.ToolbarPanels[Kind];
@@ -6844,8 +6878,11 @@ function Library:CreateWindow(...)
                         _P.Visible = true;
                     end;
                     Library._DockedPanelKind = Kind;
-                    Library.OpenToolbarPanel = Kind;
-                    Library.RefreshToolbarPanel(Kind);
+                    local _rm = Library.ReducedMotion;
+                    Library.ReducedMotion = true;
+                    Library:ShowToolbarPanel(Kind);
+                    Library.ReducedMotion = _rm;
+                    Library._DockedPanelKind = Kind;
                     FooterSetActive(Kind);
                 end;
             end;
@@ -6917,7 +6954,7 @@ function Library:CreateWindow(...)
         local TabButton = Library:Create('Frame', {
             BackgroundColor3 = Library.BackgroundColor;
             BorderColor3 = Library.OutlineColor;
-            Size = UDim2.new(0, TabButtonWidth + 8 + 4, 1, 0);
+            Size = UDim2.new(0, TabButtonWidth + 14 + 6, 1, 0);
             ZIndex = 1;
             Parent = TabArea;
         });
