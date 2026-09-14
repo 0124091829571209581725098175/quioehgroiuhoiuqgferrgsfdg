@@ -74,12 +74,30 @@ function Library:EnsureChromaConnection()
     table.insert(Library.Signals, Library.ChromaConn)
 end
 function Library:SetChromaEnabled(picker, enabled)
+    if enabled and not picker.RgbEnabled then
+        picker.OriginalHue = picker.Hue
+        picker.OriginalSat = picker.Sat
+        picker.OriginalVib = picker.Vib
+        picker.OriginalValue = picker.Value
+        picker.OriginalTransparency = picker.Transparency
+    end
     picker.RgbEnabled = enabled
     if enabled then
         Library.ChromaSet[picker] = true
         Library:EnsureChromaConnection()
     else
         Library.ChromaSet[picker] = nil
+        if picker.OriginalHue ~= nil then
+            picker.Hue = picker.OriginalHue
+            picker.Sat = picker.OriginalSat
+            picker.Vib = picker.OriginalVib
+            picker.Transparency = picker.OriginalTransparency or 0
+            picker:Display()
+            picker.OriginalHue = nil
+            picker.OriginalSat = nil
+            picker.OriginalVib = nil
+            picker.OriginalValue = nil
+        end
     end
     if picker.UpdateChromaBtn then picker.UpdateChromaBtn() end
 end
@@ -3488,24 +3506,32 @@ do
         function Dropdown:SetValue(Val)
             if Dropdown.Multi then
                 local nTable = {};
-
-                for Value, Bool in next, Val do
-                    if table.find(Dropdown.Values, Value) then
-                        nTable[Value] = true
-                    end;
-                end;
-
+                if type(Val) == "string" then
+                    if table.find(Dropdown.Values, Val) then nTable[Val] = true end
+                elseif type(Val) == "table" then
+                    for Value, Bool in next, Val do
+                        local key = Value
+                        local isActive = Bool
+                        if type(Value) == "number" then key = Bool isActive = true end
+                        if type(key) == "string" and table.find(Dropdown.Values, key) and isActive then
+                            nTable[key] = true
+                        end
+                    end
+                end
                 Dropdown.Value = nTable;
             else
-                if (not Val) then
+                if (not Val) or (type(Val) == "table" and next(Val) == nil) then
                     Dropdown.Value = nil;
-                elseif table.find(Dropdown.Values, Val) then
+                elseif type(Val) == "string" and table.find(Dropdown.Values, Val) then
                     Dropdown.Value = Val;
+                elseif type(Val) == "table" then
+                    for k,v in next, Val do
+                        if type(v) == "string" and table.find(Dropdown.Values, v) then Dropdown.Value = v break end
+                        if type(k) == "string" and table.find(Dropdown.Values, k) and v then Dropdown.Value = k break end
+                    end
                 end;
             end;
-
             Dropdown:BuildDropdownList();
-
             Library:SafeCallback(Dropdown.Callback, Dropdown.Value);
             Library:SafeCallback(Dropdown.Changed, Dropdown.Value);
         end;
@@ -4050,24 +4076,32 @@ do
         function Dropdown:SetValue(Val)
             if Dropdown.Multi then
                 local nTable = {};
-
-                for Value, Bool in next, Val do
-                    if table.find(Dropdown.Values, Value) then
-                        nTable[Value] = true
-                    end;
-                end;
-
+                if type(Val) == "string" then
+                    if table.find(Dropdown.Values, Val) then nTable[Val] = true end
+                elseif type(Val) == "table" then
+                    for Value, Bool in next, Val do
+                        local key = Value
+                        local isActive = Bool
+                        if type(Value) == "number" then key = Bool isActive = true end
+                        if type(key) == "string" and table.find(Dropdown.Values, key) and isActive then
+                            nTable[key] = true
+                        end
+                    end
+                end
                 Dropdown.Value = nTable;
             else
-                if (not Val) then
+                if (not Val) or (type(Val) == "table" and next(Val) == nil) then
                     Dropdown.Value = nil;
-                elseif table.find(Dropdown.Values, Val) then
+                elseif type(Val) == "string" and table.find(Dropdown.Values, Val) then
                     Dropdown.Value = Val;
+                elseif type(Val) == "table" then
+                    for k,v in next, Val do
+                        if type(v) == "string" and table.find(Dropdown.Values, v) then Dropdown.Value = v break end
+                        if type(k) == "string" and table.find(Dropdown.Values, k) and v then Dropdown.Value = k break end
+                    end
                 end;
             end;
-
             Dropdown:BuildList();
-
             Library:SafeCallback(Dropdown.Callback, Dropdown.Value);
             Library:SafeCallback(Dropdown.Changed, Dropdown.Value);
         end;
@@ -6378,9 +6412,7 @@ function Library:TeleportToPlayer(target)
     local char = LocalPlayer.Character
     local tchar = target.Character
     if char and tchar and tchar:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("HumanoidRootPart") then
-        local hrp = char.HumanoidRootPart
-        local thrp = tchar.HumanoidRootPart
-        hrp.CFrame = thrp.CFrame + Vector3.new(0, 3, 3)
+        char.HumanoidRootPart.CFrame = tchar.HumanoidRootPart.CFrame + Vector3.new(0, 3, 3)
         Library:Notify("Teleported to "..target.Name, 2)
     else
         Library:Notify("Cannot teleport", 2)
@@ -6392,19 +6424,12 @@ function Library:WhitelistRagebot(player)
         local newSet = {}
         for k,v in pairs(cur) do newSet[k]=v end
         newSet[player.Name] = true
-        local tbl = {}
-        for k,_ in pairs(newSet) do table.insert(tbl, k) end
         local dict = {}
-        for _,n in ipairs(tbl) do dict[n]=true end
+        for k,_ in pairs(newSet) do dict[k]=true end
         Options.whitelist_select:SetValue(dict)
         Library:Notify("Whitelisted "..player.Name.." to ragebot", 2)
-        if getgenv().Data and getgenv().Data.RageWhitelist ~= nil then getgenv().Data.RageWhitelist[player]=true end
-        local d = rawget(getgenv(), "Data")
-        if d and d.RageWhitelist ~= nil then d.RageWhitelist[player]=true end
-        pcall(function()
-            if _G.Data and _G.Data.RageWhitelist ~= nil then _G.Data.RageWhitelist[player]=true end
-        end)
         if Library.PhongData and Library.PhongData.RageWhitelist ~= nil then Library.PhongData.RageWhitelist[player]=true end
+        if getgenv().Data and getgenv().Data.RageWhitelist ~= nil then getgenv().Data.RageWhitelist[player]=true end
     else
         if Library.PhongData and Library.PhongData.RageWhitelist ~= nil then Library.PhongData.RageWhitelist[player]=true Library:Notify("Whitelisted "..player.Name.." to ragebot",2) end
     end
@@ -6412,7 +6437,6 @@ end
 function Library:WhitelistSilent(player)
     Library.SilentWhitelist = Library.SilentWhitelist or {}
     Library.SilentWhitelist[player]=true
-    Library.StickyWhitelist = Library.StickyWhitelist or {}
     Library:Notify("Whitelisted "..player.Name.." to silent aim",2)
     if Library.OnSilentWhitelist then Library.OnSilentWhitelist(player) end
 end
@@ -6425,11 +6449,9 @@ end
 function Library:WhitelistIsrael(player)
     if Options and Options.israel_whitelist_select then
         local cur = Options.israel_whitelist_select.Value or {}
-        local newSet = {}
-        for k,v in pairs(cur) do newSet[k]=v end
-        newSet[player.Name]=true
-        local dict={}
-        for k,_ in pairs(newSet) do dict[k]=true end
+        local dict = {}
+        for k,v in pairs(cur) do dict[k]=v end
+        dict[player.Name]=true
         Options.israel_whitelist_select:SetValue(dict)
         Library:Notify("Whitelisted "..player.Name.." to israel support",2)
     else
@@ -6463,9 +6485,9 @@ function Library:ShowPlayerContextMenu(target, pos)
     menu.BackgroundColor3 = Library.BackgroundColor
     menu.BorderColor3 = Library.OutlineColor
     menu.BorderMode = Enum.BorderMode.Inset
-    menu.Size = UDim2.fromOffset(190, 206)
+    menu.Size = UDim2.fromOffset(192, 210)
     menu.Position = UDim2.fromOffset(pos.X, pos.Y)
-    menu.ZIndex = 50
+    menu.ZIndex = 90
     menu.Parent = ScreenGui
     Library:AddToRegistry(menu, {BackgroundColor3="BackgroundColor", BorderColor3="OutlineColor"})
     local function addBtn(txt, cb)
@@ -6478,13 +6500,13 @@ function Library:ShowPlayerContextMenu(target, pos)
         b.TextSize = 13
         b.Font = Library.Font
         b.TextColor3 = Library.FontColor
-        b.ZIndex = 51
+        b.ZIndex = 91
         b.Parent = menu
         Library:AddToRegistry(b, {BackgroundColor3="MainColor", BorderColor3="OutlineColor"})
         Library:AddToRegistry(b, {TextColor3="FontColor"})
         b.MouseEnter:Connect(function() b.BackgroundColor3 = Library.AccentColor b.TextColor3 = Color3.new(1,1,1) end)
         b.MouseLeave:Connect(function() b.BackgroundColor3 = Library.MainColor b.TextColor3 = Library.FontColor end)
-        b.MouseButton1Click:Connect(function() Library.PlayerContextMenu:Destroy() Library.PlayerContextMenu=nil cb() end)
+        b.MouseButton1Click:Connect(function() if Library.PlayerContextMenu==menu then menu:Destroy() Library.PlayerContextMenu=nil Library.OpenedFrames[menu]=nil end cb() end)
         return b
     end
     local layout = Instance.new("UIListLayout")
@@ -6520,49 +6542,172 @@ end
 function Library:CreatePlayerTab(window)
     if Library.PlayerTabCreated then return end
     Library.PlayerTabCreated = true
-    local tab = window:AddTab("Players")
+    local tab = window:AddTab("players")
     tab:SetLayoutOrder(0)
-    local left = tab:AddLeftGroupbox("Players")
-    left.Container.Parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() end)
-    Library.PlayerGroupbox = left
-    left:AddInput("PlayerSearch", {Text="Search", Default="", Placeholder="Search players...", Callback=function(v) Library:RefreshPlayerTab() end})
-    local scrollOuter = Library:Create("Frame", {BackgroundTransparency=1, Size=UDim2.new(1,0,1,-40), ZIndex=2, Parent=left.Container})
-    local scroll = Library:Create("ScrollingFrame", {
-        BackgroundTransparency=1, BorderSizePixel=0, Size=UDim2.new(1,0,1,0), CanvasSize=UDim2.new(0,0,0,0), ScrollBarThickness=3, ScrollBarImageColor3=Library.AccentColor, ZIndex=2, Parent=scrollOuter
-    })
-    Library:AddToRegistry(scroll, {ScrollBarImageColor3="AccentColor"})
-    local layout = Library:Create("UIListLayout", {FillDirection=Enum.FillDirection.Vertical, SortOrder=Enum.SortOrder.LayoutOrder, Padding=UDim.new(0,4), HorizontalAlignment=Enum.HorizontalAlignment.Center, Parent=scroll})
-    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() scroll.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y) left:Resize() end)
-    Library.PlayerScroll = scroll
-    Library.PlayerLayout = layout
-    Library.PlayerLeftGroupbox = left
-    Library:RefreshPlayerTab()
-    Library:GiveSignal(Players.PlayerAdded:Connect(function() Library:RefreshPlayerTab() end))
-    Library:GiveSignal(Players.PlayerRemoving:Connect(function() Library:RefreshPlayerTab() end))
-    return tab
+    local tabFrame = nil
+    for _,c in ipairs(window.Holder:GetDescendants()) do if c.Name=="TabFrame" and c.Parent.Parent==tab.Groupboxes["Players"] then tabFrame=c end end
+    for _,v in pairs(window.Tabs) do if v.Name=="players" then tab=v break end end
+    local container = nil
+    for _,v in pairs(window.Tabs) do if v.Name and v.Name:lower()=="players" then container=v break end end
+    local frames = {}
+    for _,obj in ipairs(ScreenGui:GetDescendants()) do if obj.Name=="TabFrame" then table.insert(frames,obj) end end
+    local targetFrame = nil
+    for _,f in ipairs(frames) do if f.Visible then end end
+    local foundTab = window.Tabs["players"] or window.Tabs["Players"] or tab
+    local tf = foundTab and foundTab.TabFrame or nil
+    if not tf then
+        for _,child in ipairs(ScreenGui:GetDescendants()) do
+            if child:IsA("Frame") and child.Name=="TabFrame" and child.Parent and child.Parent.Name~="" then
+                if child:FindFirstChild("ScrollingFrame") then tf = child break end
+            end
+        end
+    end
+    local holder = nil
+    if tf then holder = tf end
+    if not holder then
+        for _,t in pairs(window.Tabs) do if t.TabFrame then holder=t.TabFrame break end end
+    end
+    if holder then
+        for _,child in ipairs(holder:GetChildren()) do if child:IsA("ScrollingFrame") then child.Visible=false end end
+    end
+    local playerFrame = foundTab and foundTab.TabFrame or holder
+    if not playerFrame then playerFrame = tf end
+    if playerFrame then
+        for _,child in ipairs(playerFrame:GetChildren()) do if child.Name=="PlayerCustom" then child:Destroy() end end
+        local custom = Instance.new("Frame")
+        custom.Name="PlayerCustom"
+        custom.BackgroundTransparency=1
+        custom.Size=UDim2.new(1,0,1,0)
+        custom.ZIndex=2
+        custom.Parent=playerFrame
+        local searchOuter = Instance.new("Frame")
+        searchOuter.BackgroundColor3=Color3.new(0,0,0)
+        searchOuter.BorderColor3=Color3.new(0,0,0)
+        searchOuter.Size=UDim2.new(1,-8,0,22)
+        searchOuter.Position=UDim2.new(0,4,0,4)
+        searchOuter.ZIndex=3
+        searchOuter.Parent=custom
+        local searchInner = Instance.new("Frame")
+        searchInner.BackgroundColor3=Library.MainColor
+        searchInner.BorderColor3=Library.OutlineColor
+        searchInner.BorderMode=Enum.BorderMode.Inset
+        searchInner.Size=UDim2.new(1,0,1,0)
+        searchInner.ZIndex=4
+        searchInner.Parent=searchOuter
+        Library:AddToRegistry(searchInner,{BackgroundColor3="MainColor", BorderColor3="OutlineColor"})
+        local searchBox = Instance.new("TextBox")
+        searchBox.BackgroundTransparency=1
+        searchBox.Position=UDim2.new(0,6,0,0)
+        searchBox.Size=UDim2.new(1,-12,1,0)
+        searchBox.Font=Library.Font
+        searchBox.TextSize=13
+        searchBox.TextColor3=Library.FontColor
+        searchBox.PlaceholderText="Search players..."
+        searchBox.PlaceholderColor3=Color3.fromRGB(150,150,150)
+        searchBox.Text=""
+        searchBox.TextXAlignment=Enum.TextXAlignment.Left
+        searchBox.ClearTextOnFocus=false
+        searchBox.ZIndex=5
+        searchBox.Parent=searchInner
+        Library:AddToRegistry(searchBox,{TextColor3="FontColor"})
+        Library:ApplyTextStroke(searchBox)
+        local scroll = Instance.new("ScrollingFrame")
+        scroll.Name="PlayerScroll"
+        scroll.BackgroundTransparency=1
+        scroll.BorderSizePixel=0
+        scroll.Position=UDim2.new(0,4,0,30)
+        scroll.Size=UDim2.new(1,-8,1,-34)
+        scroll.CanvasSize=UDim2.new(0,0,0,0)
+        scroll.ScrollBarThickness=3
+        scroll.ScrollBarImageColor3=Library.AccentColor
+        scroll.ZIndex=3
+        scroll.Parent=custom
+        Library:AddToRegistry(scroll,{ScrollBarImageColor3="AccentColor"})
+        local layout = Instance.new("UIListLayout")
+        layout.FillDirection=Enum.FillDirection.Vertical
+        layout.SortOrder=Enum.SortOrder.LayoutOrder
+        layout.Padding=UDim.new(0,6)
+        layout.HorizontalAlignment=Enum.HorizontalAlignment.Center
+        layout.Parent=scroll
+        layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() scroll.CanvasSize=UDim2.fromOffset(0,layout.AbsoluteContentSize.Y) end)
+        Library.PlayerScroll=scroll
+        Library.PlayerLayout=layout
+        Library.PlayerSearchBox=searchBox
+        Library.PlayerCustomFrame=custom
+        searchBox:GetPropertyChangedSignal("Text"):Connect(function() Library:RefreshPlayerTab() end)
+        Library:RefreshPlayerTab()
+        Library:GiveSignal(Players.PlayerAdded:Connect(function() Library:RefreshPlayerTab() end))
+        Library:GiveSignal(Players.PlayerRemoving:Connect(function() Library:RefreshPlayerTab() end))
+    end
+    return foundTab
 end
 function Library:RefreshPlayerTab()
     if not Library.PlayerScroll then return end
     for _,c in ipairs(Library.PlayerScroll:GetChildren()) do if not c:IsA("UIListLayout") then c:Destroy() end end
     local query = ""
-    if Options and Options.PlayerSearch then query = Options.PlayerSearch.Value:lower() end
+    if Library.PlayerSearchBox and Library.PlayerSearchBox.Text then query = Library.PlayerSearchBox.Text:lower() end
     local list = Players:GetPlayers()
     table.sort(list, function(a,b) return a.Name:lower() < b.Name:lower() end)
     for _,plr in ipairs(list) do
         if query ~= "" and not plr.Name:lower():find(query,1,true) and not plr.DisplayName:lower():find(query,1,true) then continue end
-        local row = Library:Create("Frame", {BackgroundColor3=Library.MainColor, BorderColor3=Library.OutlineColor, BorderMode=Enum.BorderMode.Inset, Size=UDim2.new(1,-4,0,34), ZIndex=3, Parent=Library.PlayerScroll})
-        Library:AddToRegistry(row, {BackgroundColor3="MainColor", BorderColor3="OutlineColor"})
-        local avatar = Library:Create("ImageLabel", {BackgroundTransparency=1, Position=UDim2.new(0,3,0,3), Size=UDim2.new(0,28,0,28), ZIndex=4, Parent=row})
-        local corner = Library:Create("UICorner", {CornerRadius=UDim.new(0,6), Parent=avatar})
+        local row = Instance.new("Frame")
+        row.BackgroundTransparency=1
+        row.Size=UDim2.new(1,-2,0,40)
+        row.ZIndex=3
+        row.Parent=Library.PlayerScroll
+        local avatar = Instance.new("ImageLabel")
+        avatar.BackgroundColor3=Library.MainColor
+        avatar.BorderColor3=Library.OutlineColor
+        avatar.BorderMode=Enum.BorderMode.Inset
+        avatar.Position=UDim2.new(0,0,0,0)
+        avatar.Size=UDim2.new(0,40,0,40)
+        avatar.ZIndex=4
+        avatar.Parent=row
         local thumb = Library.ThumbnailCache[plr.UserId]
-        if thumb then avatar.Image = thumb else task.spawn(function() local ok, th = pcall(function() return Players:GetUserThumbnailAsync(plr.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48) end) if ok and th and th~="" then Library.ThumbnailCache[plr.UserId]=th if avatar.Parent then avatar.Image=th end end end) end
-        local nameLabel = Library:CreateLabel({Position=UDim2.new(0,36,0,2), Size=UDim2.new(1,-40,0,14), TextSize=13, Text=plr.DisplayName.." @"..plr.Name, TextXAlignment=Enum.TextXAlignment.Left, TextTruncate=Enum.TextTruncate.AtEnd, ZIndex=4, Parent=row})
+        if thumb then avatar.Image=thumb else task.spawn(function() local ok,th = pcall(function() return Players:GetUserThumbnailAsync(plr.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48) end) if ok and th and th~="" then Library.ThumbnailCache[plr.UserId]=th if avatar.Parent then avatar.Image=th end end end) end
+        local info = Instance.new("Frame")
+        info.BackgroundColor3=Library.MainColor
+        info.BorderColor3=Library.OutlineColor
+        info.BorderMode=Enum.BorderMode.Inset
+        info.Position=UDim2.new(0,46,0,0)
+        info.Size=UDim2.new(1,-46,1,0)
+        info.ZIndex=4
+        info.Parent=row
+        Library:AddToRegistry(info,{BackgroundColor3="MainColor", BorderColor3="OutlineColor"})
+        Library:AddToRegistry(avatar,{BorderColor3="OutlineColor"})
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.BackgroundTransparency=1
+        nameLabel.Position=UDim2.new(0,6,0,4)
+        nameLabel.Size=UDim2.new(1,-12,0,16)
+        nameLabel.Font=Library.Font
+        nameLabel.TextSize=13
+        nameLabel.TextColor3=Library.FontColor
+        nameLabel.Text=plr.DisplayName.." @"..plr.Name
+        nameLabel.TextXAlignment=Enum.TextXAlignment.Left
+        nameLabel.TextTruncate=Enum.TextTruncate.AtEnd
+        nameLabel.ZIndex=5
+        nameLabel.Parent=info
+        Library:AddToRegistry(nameLabel,{TextColor3="FontColor"})
+        Library:ApplyTextStroke(nameLabel)
         local crew = Library:GetCrewName(plr)
-        local crewLabel = Library:CreateLabel({Position=UDim2.new(0,36,0,18), Size=UDim2.new(1,-40,0,12), TextSize=11, Text=crew, TextXAlignment=Enum.TextXAlignment.Left, TextTruncate=Enum.TextTruncate.AtEnd, ZIndex=4, Parent=row})
-        crewLabel.TextColor3 = Color3.fromRGB(180,180,180)
-        Library:RemoveFromRegistry(crewLabel)
-        crewLabel.TextColor3 = Color3.fromRGB(180,180,180)
-        local btn = Library:Create("TextButton", {BackgroundTransparency=1, Size=UDim2.new(1,0,1,0), Text="", ZIndex=5, Parent=row})
+        local crewLabel = Instance.new("TextLabel")
+        crewLabel.BackgroundTransparency=1
+        crewLabel.Position=UDim2.new(0,6,0,20)
+        crewLabel.Size=UDim2.new(1,-12,0,12)
+        crewLabel.Font=Library.Font
+        crewLabel.TextSize=11
+        crewLabel.TextColor3=Color3.fromRGB(170,170,170)
+        crewLabel.Text=crew
+        crewLabel.TextXAlignment=Enum.TextXAlignment.Left
+        crewLabel.TextTruncate=Enum.TextTruncate.AtEnd
+        crewLabel.ZIndex=5
+        crewLabel.Parent=info
+        local btn = Instance.new("TextButton")
+        btn.BackgroundTransparency=1
+        btn.Size=UDim2.new(1,0,1,0)
+        btn.Text=""
+        btn.ZIndex=6
+        btn.Parent=row
         btn.InputBegan:Connect(function(inp)
             if inp.UserInputType==Enum.UserInputType.MouseButton2 then
                 Library:ShowPlayerContextMenu(plr, Vector2.new(Mouse.X, Mouse.Y))
@@ -6571,7 +6716,6 @@ function Library:RefreshPlayerTab()
             end
         end)
     end
-    Library.PlayerLeftGroupbox:Resize()
 end
 
 function Library:CreateWindow(...)
