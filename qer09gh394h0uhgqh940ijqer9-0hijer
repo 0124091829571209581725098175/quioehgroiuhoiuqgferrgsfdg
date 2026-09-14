@@ -40,7 +40,7 @@ local Library = {
     FontColor = Color3.fromRGB(255, 255, 255);
     MainColor = Color3.fromRGB(24, 24, 24);
     BackgroundColor = Color3.fromRGB(16, 16, 16);
-    AccentColor = Color3.fromRGB(255, 255, 255);
+    AccentColor = Color3.fromRGB(0, 85, 255);
     OutlineColor = Color3.fromRGB(50, 50, 50);
     RiskColor = Color3.fromRGB(255, 50, 50),
     Black = Color3.new(0, 0, 0);
@@ -6644,9 +6644,10 @@ function Library:CreatePlayerTab(window)
     Library.PlayerTabCreated = true
     local tab = window:AddTab("players")
     if Window.FooterBar and tab.TabButton then
-        tab.TabButton.Parent = Window.FooterBar
+        tab.TabButton.AnchorPoint = Vector2.new(0.5, 0.5)
+        tab.TabButton.Position = UDim2.new(0.5, 0, 0.5, 0)
         tab.TabButton.Size = UDim2.new(0, tab.TabButtonWidth + 8 + 4, 1, 0)
-        tab.TabButton.LayoutOrder = 0
+        tab.TabButton.Parent = Window.FooterBar
     else
         tab:SetLayoutOrder(0)
     end
@@ -6956,7 +6957,7 @@ function Library:CreateWindow(...)
         BackgroundColor3 = Library.BackgroundColor;
         BorderColor3 = Library.OutlineColor;
         Position = UDim2.new(0, 8, 0, 25);
-        Size = UDim2.new(1, -16, 1, -33);
+        Size = UDim2.new(1, -16, 1, -53);
         ZIndex = 1;
         Parent = Inner;
     });
@@ -6965,6 +6966,19 @@ function Library:CreateWindow(...)
         BackgroundColor3 = 'BackgroundColor';
         BorderColor3 = 'OutlineColor';
     });
+    local FooterBar = Library:Create('Frame', {
+        BackgroundColor3 = Library.BackgroundColor;
+        BorderColor3 = Library.OutlineColor;
+        BorderMode = Enum.BorderMode.Inset;
+        Position = UDim2.new(0, 8, 1, -20);
+        Size = UDim2.new(1, -16, 0, 18);
+        ZIndex = 1;
+        Parent = Inner;
+    });
+    Library:AddToRegistry(FooterBar, {BackgroundColor3='BackgroundColor', BorderColor3='OutlineColor'});
+    Window.FooterBar = FooterBar
+    Library.WindowFooterBar = FooterBar
+
 
     local MainSectionInner = Library:Create('Frame', {
         BackgroundColor3 = Library.BackgroundColor;
@@ -6999,27 +7013,10 @@ function Library:CreateWindow(...)
         BackgroundColor3 = Library.MainColor;
         BorderColor3 = Library.OutlineColor;
         Position = UDim2.new(0, 8, 0, 30);
-        Size = UDim2.new(1, -16, 1, -60);
+        Size = UDim2.new(1, -16, 1, -38);
         ZIndex = 2;
         Parent = MainSectionInner;
-    });
-    
-
-    
-    local FooterBar = Library:Create('Frame', {
-        BackgroundColor3 = Library.BackgroundColor;
-        BorderColor3 = Library.OutlineColor;
-        BorderMode = Enum.BorderMode.Inset;
-        Position = UDim2.new(0, 8, 1, -22);
-        Size = UDim2.new(1, -16, 0, 18);
-        ZIndex = 2;
-        Parent = MainSectionInner;
-    });
-    Library:AddToRegistry(FooterBar, {BackgroundColor3='BackgroundColor', BorderColor3='OutlineColor'});
-    Library:Create('UIListLayout', {FillDirection=Enum.FillDirection.Horizontal, HorizontalAlignment=Enum.HorizontalAlignment.Center, VerticalAlignment=Enum.VerticalAlignment.Center, Padding=UDim.new(0,4), SortOrder=Enum.SortOrder.LayoutOrder, Parent=FooterBar});
-    Window.FooterBar = FooterBar
-    Library.WindowFooterBar = FooterBar
-Library:AddToRegistry(TabContainer, {
+    });Library:AddToRegistry(TabContainer, {
         BackgroundColor3 = 'MainColor';
         BorderColor3 = 'OutlineColor';
     });
@@ -7093,7 +7090,7 @@ Library:AddToRegistry(Blocker, {
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
             Position = UDim2.new(0, 8 - 1, 0, 8 - 1);
-            Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2);
+            Size = UDim2.new(0.5, -12 + 2, 1, -16);
             CanvasSize = UDim2.new(0, 0, 0, 0);
             BottomImage = '';
             TopImage = '';
@@ -7106,7 +7103,7 @@ Library:AddToRegistry(Blocker, {
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
             Position = UDim2.new(0.5, 4 + 1, 0, 8 - 1);
-            Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2);
+            Size = UDim2.new(0.5, -12 + 2, 1, -16);
             CanvasSize = UDim2.new(0, 0, 0, 0);
             BottomImage = '';
             TopImage = '';
