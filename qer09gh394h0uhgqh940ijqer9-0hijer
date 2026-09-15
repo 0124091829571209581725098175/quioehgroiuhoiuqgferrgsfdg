@@ -49,6 +49,8 @@ local Library = {
     DependencyBoxes = {};
     Signals = {};
     ScreenGui = ScreenGui;
+    Toggles = Toggles;
+    Options = Options;
 };
 Library.ChromaPickers = {};
 Library.ChromaSet = {};
