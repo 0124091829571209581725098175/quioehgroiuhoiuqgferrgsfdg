@@ -195,8 +195,19 @@ function Library:SafeCallback(f, ...)
 end;
 
 function Library:AttemptSave()
+    if Library.SuppressSave then return end
     if Library.SaveManager then
-        Library.SaveManager:Save();
+        local sm = Library.SaveManager;
+        local auto = nil;
+        pcall(function()
+            local f = sm.Folder .. '/settings/autoload.txt';
+            if isfile(f) then auto = readfile(f) end
+        end);
+        if type(auto) == 'string' and auto ~= '' then
+            pcall(function() sm:Save(auto) end);
+        else
+            sm:Save();
+        end;
     end;
 end;
 
@@ -1587,14 +1598,33 @@ do
             Parent = ModeSelectInner;
         });
 
-        local ContainerLabel = Library:CreateLabel({
-            TextXAlignment = Enum.TextXAlignment.Left;
+        local KeyRow = Library:Create('Frame', {
+            BackgroundTransparency = 1;
             Size = UDim2.new(1, 0, 0, 18);
-            TextSize = 13;
             Visible = false;
             ZIndex = 110;
             Parent = Library.KeybindContainer;
-        },  true);
+        });
+        local KeyName = Library:CreateLabel({
+            Position = UDim2.new(0, 5, 0, 0);
+            Size = UDim2.new(1, -80, 1, 0);
+            TextSize = 13;
+            TextXAlignment = Enum.TextXAlignment.Left;
+            TextTruncate = Enum.TextTruncate.AtEnd;
+            ZIndex = 111;
+            Parent = KeyRow;
+        }, true);
+        local KeyState = Library:CreateLabel({
+            Position = UDim2.new(1, -70, 0, 0);
+            Size = UDim2.new(0, 65, 1, 0);
+            TextSize = 13;
+            TextXAlignment = Enum.TextXAlignment.Right;
+            ZIndex = 111;
+            Parent = KeyRow;
+        }, true);
+        KeyPicker.Row = KeyRow;
+        KeyPicker.NameLabel = KeyName;
+        KeyPicker.StateLabel = KeyState;
 
         local Modes = Info.Modes or { 'Always', 'Toggle', 'Hold' };
         local ModeButtons = {};
@@ -1652,26 +1682,33 @@ do
 
             local State = KeyPicker:GetState();
 
-            ContainerLabel.Text = string.format('[%s] %s (%s)', KeyPicker.Value, Info.Text, KeyPicker.Mode);
+            local ModeText = 'Toggled';
+            if KeyPicker.Mode == 'Always' then ModeText = 'On' elseif KeyPicker.Mode == 'Hold' then ModeText = 'Holding' end;
+            local RawName = tostring(Info.Text or 'bind');
+            local DispName = string.upper(RawName:sub(1, 1)) .. RawName:sub(2);
 
-            ContainerLabel.Visible = true;
-            ContainerLabel.TextColor3 = State and Library.AccentColor or Library.FontColor;
+            KeyName.Text = DispName;
+            KeyState.Text = '[' .. ModeText .. ']';
 
-            Library.RegistryMap[ContainerLabel].Properties.TextColor3 = State and 'AccentColor' or 'FontColor';
+            KeyRow.Visible = State and true or false;
 
             local YSize = 0
             local XSize = 0
 
-            for _, Label in next, Library.KeybindContainer:GetChildren() do
-                if Label:IsA('TextLabel') and Label.Visible then
+            for _, R in next, Library.KeybindContainer:GetChildren() do
+                if R:IsA('Frame') and R.Visible then
                     YSize = YSize + 18;
-                    if (Label.TextBounds.X > XSize) then
-                        XSize = Label.TextBounds.X
+                    local W = 0;
+                    for _, L in next, R:GetChildren() do
+                        if L:IsA('TextLabel') then W = W + L.TextBounds.X end
+                    end
+                    if (W > XSize) then
+                        XSize = W
                     end
                 end;
             end;
 
-            Library.KeybindFrame.Size = UDim2.new(0, math.max(XSize + 10, 210), 0, YSize + 23)
+            Library.KeybindFrame.Size = UDim2.new(0, math.max(XSize + 20, 210), 0, YSize + 23)
             Library:RefreshKeybindVisibility();
         end;
 
@@ -1703,10 +1740,12 @@ do
         end;
 
         function KeyPicker:SetValue(Data)
+            if type(Data) ~= 'table' then return end
             local Key, Mode = Data[1], Data[2];
+            if type(Key) ~= 'string' or Key == '' then Key = 'None' end
             DisplayLabel.Text = Key;
             KeyPicker.Value = Key;
-            ModeButtons[Mode]:Select();
+            if Mode ~= nil and ModeButtons[Mode] ~= nil then ModeButtons[Mode]:Select() end
             KeyPicker:Update();
         end;
 
@@ -4422,8 +4461,8 @@ do
 
     local KeybindLabel = Library:CreateLabel({
         Size = UDim2.new(1, 0, 0, 20);
-        Position = UDim2.fromOffset(5, 2),
-        TextXAlignment = Enum.TextXAlignment.Left,
+        Position = UDim2.new(0, 0, 0, 2),
+        TextXAlignment = Enum.TextXAlignment.Center,
         TextSize = 13,
 
         Text = 'keybinds';
@@ -5914,8 +5953,8 @@ function Library:RefreshKeybindVisibility()
 
     local Any = false;
 
-    for _, Label in next, Library.KeybindContainer:GetChildren() do
-        if Label:IsA('TextLabel') and Label.Visible then
+    for _, Row in next, Library.KeybindContainer:GetChildren() do
+        if Row:IsA('Frame') and Row.Visible then
             Any = true;
             break;
         end;
