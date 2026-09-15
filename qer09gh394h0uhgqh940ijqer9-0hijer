@@ -6647,6 +6647,517 @@ function Library:ShowPlayerContextMenu(target, pos)
         end
     end)
 end
+function Library:BuildCustomPanels(Window, TabContainer)
+    Window.CustomPanels = {}
+    Window.RefreshCustom = {}
+    Window.CustomPanel = nil
+    local TeleportService = game:GetService('TeleportService')
+    local HttpServ = game:GetService('HttpService')
+    local function HideCustom()
+        for _, P in next, Window.CustomPanels do P.Visible = false end
+        Window.CustomPanel = nil
+    end
+    Window.HideCustomPanels = HideCustom
+    local function SmallButton(Text, Parent, Pos, Size, Callback)
+        local Outer = Library:Create('Frame', {
+            BackgroundColor3 = Color3.new(0, 0, 0);
+            BorderColor3 = Color3.new(0, 0, 0);
+            Position = Pos;
+            Size = Size;
+            ZIndex = 4;
+            Parent = Parent;
+        })
+        local Inner = Library:Create('Frame', {
+            BackgroundColor3 = Library.MainColor;
+            BorderColor3 = Library.OutlineColor;
+            BorderMode = Enum.BorderMode.Inset;
+            Size = UDim2.new(1, 0, 1, 0);
+            ZIndex = 5;
+            Parent = Outer;
+        })
+        Library:AddToRegistry(Inner, {
+            BackgroundColor3 = 'MainColor';
+            BorderColor3 = 'OutlineColor';
+        })
+        local BtnLabel = Library:CreateLabel({
+            Size = UDim2.new(1, 0, 1, 0);
+            TextSize = 13;
+            Text = Text;
+            ZIndex = 6;
+            Parent = Inner;
+        })
+        Library:OnHighlight(Outer, Outer,
+            { BorderColor3 = 'AccentColor' },
+            { BorderColor3 = 'Black' }
+        )
+        Outer.InputBegan:Connect(function(Input)
+            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
+                Library:SafeCallback(Callback)
+            end
+        end)
+        return Outer, BtnLabel
+    end
+    local function InfoRow(Text, Parent, Y)
+        return Library:CreateLabel({
+            Position = UDim2.new(0, 6, 0, Y);
+            Size = UDim2.new(1, -12, 0, 16);
+            TextSize = 13;
+            Text = Text;
+            TextXAlignment = Enum.TextXAlignment.Left;
+            TextTruncate = Enum.TextTruncate.AtEnd;
+            ZIndex = 4;
+            Parent = Parent;
+        })
+    end
+    local PlayersPanel = Library:Create('Frame', {
+        BackgroundTransparency = 1;
+        Size = UDim2.new(1, 0, 1, 0);
+        Visible = false;
+        ZIndex = 3;
+        Parent = TabContainer;
+    })
+    Window.CustomPanels['Players'] = PlayersPanel
+    local PSearchOuter = Library:Create('Frame', {
+        BackgroundColor3 = Color3.new(0, 0, 0);
+        BorderColor3 = Color3.new(0, 0, 0);
+        Position = UDim2.new(0, 4, 0, 4);
+        Size = UDim2.new(1, -8, 0, 22);
+        ZIndex = 4;
+        Parent = PlayersPanel;
+    })
+    local PSearchInner = Library:Create('Frame', {
+        BackgroundColor3 = Library.MainColor;
+        BorderColor3 = Library.OutlineColor;
+        BorderMode = Enum.BorderMode.Inset;
+        Size = UDim2.new(1, 0, 1, 0);
+        ZIndex = 5;
+        Parent = PSearchOuter;
+    })
+    Library:AddToRegistry(PSearchInner, {
+        BackgroundColor3 = 'MainColor';
+        BorderColor3 = 'OutlineColor';
+    })
+    local PSearchBox = Library:Create('TextBox', {
+        BackgroundTransparency = 1;
+        Position = UDim2.new(0, 6, 0, 0);
+        Size = UDim2.new(1, -12, 1, 0);
+        Font = Library.Font;
+        TextSize = 13;
+        TextColor3 = Library.FontColor;
+        PlaceholderText = 'Search players...';
+        PlaceholderColor3 = Color3.fromRGB(150, 150, 150);
+        Text = '';
+        TextXAlignment = Enum.TextXAlignment.Left;
+        ClearTextOnFocus = false;
+        ZIndex = 6;
+        Parent = PSearchInner;
+    })
+    Library:AddToRegistry(PSearchBox, {
+        TextColor3 = 'FontColor';
+    })
+    Library:ApplyTextStroke(PSearchBox)
+    local PScroll = Library:Create('ScrollingFrame', {
+        BackgroundTransparency = 1;
+        BorderSizePixel = 0;
+        Position = UDim2.new(0, 4, 0, 30);
+        Size = UDim2.new(1, -8, 1, -52);
+        CanvasSize = UDim2.new(0, 0, 0, 0);
+        ScrollBarThickness = 3;
+        ScrollBarImageColor3 = Library.AccentColor;
+        ZIndex = 4;
+        Parent = PlayersPanel;
+    })
+    Library:AddToRegistry(PScroll, {
+        ScrollBarImageColor3 = 'AccentColor';
+    })
+    local PLayout = Library:Create('UIListLayout', {
+        FillDirection = Enum.FillDirection.Vertical;
+        SortOrder = Enum.SortOrder.LayoutOrder;
+        Padding = UDim.new(0, 6);
+        HorizontalAlignment = Enum.HorizontalAlignment.Center;
+        Parent = PScroll;
+    })
+    PLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
+        PScroll.CanvasSize = UDim2.fromOffset(0, PLayout.AbsoluteContentSize.Y)
+    end)
+    local PBottom = Library:Create('Frame', {
+        BackgroundColor3 = Library.BackgroundColor;
+        BorderColor3 = Library.OutlineColor;
+        BorderMode = Enum.BorderMode.Inset;
+        Position = UDim2.new(0, 4, 1, -20);
+        Size = UDim2.new(1, -8, 0, 16);
+        ZIndex = 4;
+        Parent = PlayersPanel;
+    })
+    Library:AddToRegistry(PBottom, {
+        BackgroundColor3 = 'BackgroundColor';
+        BorderColor3 = 'OutlineColor';
+    })
+    local PCount = Library:CreateLabel({
+        Size = UDim2.new(1, 0, 1, 0);
+        TextSize = 12;
+        Text = 'players';
+        ZIndex = 5;
+        Parent = PBottom;
+    })
+    local function RefreshPlayers()
+        for _, c in next, PScroll:GetChildren() do
+            if not c:IsA('UIListLayout') then c:Destroy() end
+        end
+        local query = ''
+        if PSearchBox and PSearchBox.Text then query = PSearchBox.Text:lower() end
+        local list = Players:GetPlayers()
+        table.sort(list, function(a, b) return a.Name:lower() < b.Name:lower() end)
+        local shown = 0
+        for _, plr in next, list do
+            if query == '' or plr.Name:lower():find(query, 1, true) or plr.DisplayName:lower():find(query, 1, true) then
+                shown = shown + 1
+                local row = Library:Create('Frame', {
+                    BackgroundTransparency = 1;
+                    Size = UDim2.new(1, -2, 0, 40);
+                    ZIndex = 4;
+                    Parent = PScroll;
+                })
+                local avatar = Library:Create('ImageLabel', {
+                    BackgroundColor3 = Library.MainColor;
+                    BorderColor3 = Library.OutlineColor;
+                    BorderMode = Enum.BorderMode.Inset;
+                    Position = UDim2.new(0, 0, 0, 0);
+                    Size = UDim2.new(0, 40, 0, 40);
+                    ZIndex = 5;
+                    Parent = row;
+                })
+                local thumb = Library.ThumbnailCache[plr.UserId]
+                if thumb then
+                    avatar.Image = thumb
+                else
+                    task.spawn(function()
+                        local ok, th = pcall(function()
+                            return Players:GetUserThumbnailAsync(plr.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+                        end)
+                        if ok and th and th ~= '' then
+                            Library.ThumbnailCache[plr.UserId] = th
+                            if avatar.Parent then avatar.Image = th end
+                        end
+                    end)
+                end
+                local info = Library:Create('Frame', {
+                    BackgroundColor3 = Library.MainColor;
+                    BorderColor3 = Library.OutlineColor;
+                    BorderMode = Enum.BorderMode.Inset;
+                    Position = UDim2.new(0, 46, 0, 0);
+                    Size = UDim2.new(1, -46, 1, 0);
+                    ZIndex = 5;
+                    Parent = row;
+                })
+                Library:AddToRegistry(info, {
+                    BackgroundColor3 = 'MainColor';
+                    BorderColor3 = 'OutlineColor';
+                })
+                Library:AddToRegistry(avatar, {
+                    BorderColor3 = 'OutlineColor';
+                })
+                Library:CreateLabel({
+                    Position = UDim2.new(0, 6, 0, 4);
+                    Size = UDim2.new(1, -12, 0, 16);
+                    TextSize = 13;
+                    Text = plr.DisplayName .. ' @' .. plr.Name;
+                    TextXAlignment = Enum.TextXAlignment.Left;
+                    TextTruncate = Enum.TextTruncate.AtEnd;
+                    ZIndex = 6;
+                    Parent = info;
+                })
+                local crew = Library:CreateLabel({
+                    Position = UDim2.new(0, 6, 0, 20);
+                    Size = UDim2.new(1, -12, 0, 12);
+                    TextSize = 11;
+                    Text = Library:GetCrewDisplayWithCount(plr) .. ' | ' .. Library:FormatJoinedTime(plr);
+                    TextXAlignment = Enum.TextXAlignment.Left;
+                    TextTruncate = Enum.TextTruncate.AtEnd;
+                    ZIndex = 6;
+                    Parent = info;
+                })
+                Library:RemoveFromRegistry(crew)
+                crew.TextColor3 = Color3.fromRGB(170, 170, 170)
+                local btn = Library:Create('TextButton', {
+                    BackgroundTransparency = 1;
+                    Size = UDim2.new(1, 0, 1, 0);
+                    Text = '';
+                    ZIndex = 7;
+                    Parent = row;
+                })
+                btn.InputBegan:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.MouseButton2 then
+                        Library:ShowPlayerContextMenu(plr, Vector2.new(Mouse.X, Mouse.Y))
+                    elseif Library:IsClickInput(inp) then
+                        Library:TeleportToPlayer(plr)
+                    end
+                end)
+            end
+        end
+        PCount.Text = 'players - ' .. tostring(shown) .. '/' .. tostring(#list)
+    end
+    Window.RefreshCustom['Players'] = RefreshPlayers
+    PSearchBox:GetPropertyChangedSignal('Text'):Connect(RefreshPlayers)
+    Library:GiveSignal(Players.PlayerAdded:Connect(function()
+        if PlayersPanel.Visible then RefreshPlayers() end
+    end))
+    Library:GiveSignal(Players.PlayerRemoving:Connect(function()
+        if PlayersPanel.Visible then RefreshPlayers() end
+    end))
+    local ServersPanel = Library:Create('Frame', {
+        BackgroundTransparency = 1;
+        Size = UDim2.new(1, 0, 1, 0);
+        Visible = false;
+        ZIndex = 3;
+        Parent = TabContainer;
+    })
+    Window.CustomPanels['Servers'] = ServersPanel
+    local SCount = InfoRow('Players: ...', ServersPanel, 4)
+    SmallButton('Rejoin Current Server', ServersPanel, UDim2.new(0, 4, 0, 22), UDim2.new(1, -8, 0, 20), function()
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+        end)
+    end)
+    SmallButton('Server Hop', ServersPanel, UDim2.new(0, 4, 0, 46), UDim2.new(1, -8, 0, 20), function()
+        pcall(function()
+            TeleportService:Teleport(game.PlaceId, LocalPlayer)
+        end)
+    end)
+    local RenderServers
+    local ScanServers
+    SmallButton('Scan', ServersPanel, UDim2.new(1, -70, 0, 68), UDim2.new(0, 62, 0, 20), function()
+        ScanServers()
+    end)
+    local SSortMode, SSortModeLabel = SmallButton('Sort: Players', ServersPanel, UDim2.new(0, 4, 0, 92), UDim2.new(0.5, -6, 0, 18), function()
+        Library.ServerSortMode = Library.ServerSortMode == 'Players' and 'Ping' or 'Players'
+        SSortModeLabel.Text = 'Sort: ' .. (Library.ServerSortMode or 'Players')
+        RenderServers()
+    end)
+    local SSortDir, SSortDirLabel = SmallButton('Desc', ServersPanel, UDim2.new(0.5, 2, 0, 92), UDim2.new(0.5, -6, 0, 18), function()
+        Library.ServerSortDesc = not Library.ServerSortDesc
+        SSortDirLabel.Text = Library.ServerSortDesc and 'Desc' or 'Asc'
+        RenderServers()
+    end)
+    local SList = Library:Create('ScrollingFrame', {
+        BackgroundTransparency = 1;
+        BorderSizePixel = 0;
+        Position = UDim2.new(0, 4, 0, 114);
+        Size = UDim2.new(1, -8, 1, -118);
+        CanvasSize = UDim2.new(0, 0, 0, 0);
+        ScrollBarThickness = 3;
+        ScrollBarImageColor3 = Library.AccentColor;
+        ZIndex = 4;
+        Parent = ServersPanel;
+    })
+    Library:AddToRegistry(SList, {
+        ScrollBarImageColor3 = 'AccentColor';
+    })
+    local SLayout = Library:Create('UIListLayout', {
+        FillDirection = Enum.FillDirection.Vertical;
+        SortOrder = Enum.SortOrder.LayoutOrder;
+        Padding = UDim.new(0, 2);
+        Parent = SList;
+    })
+    SLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
+        SList.CanvasSize = UDim2.fromOffset(0, SLayout.AbsoluteContentSize.Y)
+    end)
+    local LastServers = {}
+    local SStatus = nil
+    RenderServers = function()
+        for _, c in next, SList:GetChildren() do
+            if not c:IsA('UIListLayout') then c:Destroy() end
+        end
+        table.sort(LastServers, function(A, B)
+            local AV = Library.ServerSortMode == 'Ping' and (A.ping or 0) or (A.playing or 0)
+            local BV = Library.ServerSortMode == 'Ping' and (B.ping or 0) or (B.playing or 0)
+            if Library.ServerSortDesc then return AV > BV end
+            return AV < BV
+        end)
+        local shown = 0
+        for _, S in next, LastServers do
+            if shown >= 50 then break end
+            if S.id and S.playing and S.maxPlayers then
+                shown = shown + 1
+                local current = S.id == game.JobId
+                local txt = S.playing .. '/' .. S.maxPlayers .. '  ' .. math.floor(S.fps or 0) .. 'fps'
+                if S.ping then txt = txt .. '  ' .. tostring(S.ping) .. 'ms' end
+                if current then txt = txt .. ' (you)' end
+                local row = Library:Create('Frame', {
+                    BackgroundTransparency = 1;
+                    Size = UDim2.new(1, 0, 0, 18);
+                    ZIndex = 4;
+                    Parent = SList;
+                })
+                Library:CreateLabel({
+                    Position = UDim2.new(0, 0, 0, 0);
+                    Size = UDim2.new(1, -84, 0, 18);
+                    TextSize = 13;
+                    Text = txt;
+                    TextXAlignment = Enum.TextXAlignment.Left;
+                    TextTruncate = Enum.TextTruncate.AtEnd;
+                    ZIndex = 5;
+                    Parent = row;
+                })
+                SmallButton('ID', row, UDim2.new(1, -78, 0, 1), UDim2.new(0, 36, 0, 16), function()
+                    pcall(setclipboard, tostring(S.id))
+                    Library:Notify('Copied JobId', 2)
+                end)
+                if not current then
+                    SmallButton('Join', row, UDim2.new(1, -38, 0, 1), UDim2.new(0, 36, 0, 16), function()
+                        pcall(function()
+                            TeleportService:TeleportToPlaceInstance(game.PlaceId, S.id, LocalPlayer)
+                        end)
+                    end)
+                end
+            end
+        end
+        if SStatus then SStatus.Text = 'Servers (' .. tostring(shown) .. ')' end
+    end
+    SStatus = InfoRow('Servers', ServersPanel, 70)
+    SStatus.Position = UDim2.new(0, 6, 0, 70)
+    SStatus.Size = UDim2.new(1, -82, 0, 16)
+    ScanServers = function()
+        for _, c in next, SList:GetChildren() do
+            if not c:IsA('UIListLayout') then c:Destroy() end
+        end
+        SStatus.Text = 'Loading...'
+        task.spawn(function()
+            local Url = 'https://games.roblox.com/v1/games/' .. tostring(game.PlaceId) .. '/servers/Public?sortOrder=Desc&limit=100'
+            local Ok, Result = pcall(function()
+                return game:HttpGet(Url)
+            end)
+            local Data = nil
+            if Ok and Result then
+                pcall(function()
+                    Data = HttpServ:JSONDecode(Result)
+                end)
+            end
+            if not Data or not Data.data then
+                SStatus.Text = 'Failed to load'
+                return
+            end
+            LastServers = Data.data
+            RenderServers()
+        end)
+    end
+    Window.RefreshCustom['Servers'] = function()
+        SCount.Text = 'Players: ' .. #Players:GetPlayers() .. '/' .. tostring(Players.MaxPlayers)
+        SSortMode.Text = 'Sort: ' .. (Library.ServerSortMode or 'Players')
+        SSortDir.Text = Library.ServerSortDesc and 'Desc' or 'Asc'
+        ScanServers()
+    end
+    local ExecPanel = Library:Create('Frame', {
+        BackgroundTransparency = 1;
+        Size = UDim2.new(1, 0, 1, 0);
+        Visible = false;
+        ZIndex = 3;
+        Parent = TabContainer;
+    })
+    Window.CustomPanels['Executor'] = ExecPanel
+    local InfoGame = game.Name
+    pcall(function()
+        InfoGame = game:GetService('MarketplaceService'):GetProductInfo(game.PlaceId).Name
+    end)
+    InfoRow('Game: ' .. InfoGame, ExecPanel, 4)
+    InfoRow('PlaceId: ' .. tostring(game.PlaceId), ExecPanel, 22)
+    local EJob = InfoRow('JobId: ...', ExecPanel, 40)
+    local ECount = InfoRow('Players: ...', ExecPanel, 58)
+    local ExecName = 'Unknown'
+    local GetExec = rawget(getgenv(), 'identifyexecutor')
+    if type(GetExec) == 'function' then
+        pcall(function()
+            ExecName = tostring(GetExec())
+        end)
+    end
+    InfoRow('Executor: ' .. ExecName, ExecPanel, 76)
+    local EFps = InfoRow('FPS: ...', ExecPanel, 94)
+    local EPing = InfoRow('Ping: ...', ExecPanel, 112)
+    SmallButton('Copy PlaceId', ExecPanel, UDim2.new(0, 4, 0, 132), UDim2.new(1, -8, 0, 20), function()
+        pcall(setclipboard, tostring(game.PlaceId))
+        Library:Notify('Copied PlaceId', 2)
+    end)
+    SmallButton('Copy JobId', ExecPanel, UDim2.new(0, 4, 0, 156), UDim2.new(1, -8, 0, 20), function()
+        pcall(setclipboard, tostring(game.JobId))
+        Library:Notify('Copied JobId', 2)
+    end)
+    local EJoinOuter = Library:Create('Frame', {
+        BackgroundColor3 = Color3.new(0, 0, 0);
+        BorderColor3 = Color3.new(0, 0, 0);
+        Position = UDim2.new(0, 4, 0, 180);
+        Size = UDim2.new(1, -8, 0, 20);
+        ZIndex = 4;
+        Parent = ExecPanel;
+    })
+    local EJoinInner = Library:Create('Frame', {
+        BackgroundColor3 = Library.MainColor;
+        BorderColor3 = Library.OutlineColor;
+        BorderMode = Enum.BorderMode.Inset;
+        Size = UDim2.new(1, 0, 1, 0);
+        ZIndex = 5;
+        Parent = EJoinOuter;
+    })
+    Library:AddToRegistry(EJoinInner, {
+        BackgroundColor3 = 'MainColor';
+        BorderColor3 = 'OutlineColor';
+    })
+    Library:OnHighlight(EJoinOuter, EJoinOuter,
+        { BorderColor3 = 'AccentColor' },
+        { BorderColor3 = 'Black' }
+    )
+    local EJoinBox = Library:Create('TextBox', {
+        BackgroundTransparency = 1;
+        ClearTextOnFocus = false;
+        Position = UDim2.new(0, 5, 0, 0);
+        Size = UDim2.new(1, -10, 1, 0);
+        Font = Library.Font;
+        PlaceholderColor3 = Color3.fromRGB(190, 190, 190);
+        PlaceholderText = 'Paste JobId...';
+        Text = '';
+        TextColor3 = Library.FontColor;
+        TextSize = 13;
+        TextXAlignment = Enum.TextXAlignment.Left;
+        ZIndex = 6;
+        Parent = EJoinInner;
+    })
+    Library:ApplyTextStroke(EJoinBox)
+    Library:AddToRegistry(EJoinBox, {
+        TextColor3 = 'FontColor';
+    })
+    SmallButton('Join JobId', ExecPanel, UDim2.new(0, 4, 0, 204), UDim2.new(1, -8, 0, 20), function()
+        if EJoinBox.Text ~= '' then
+            pcall(function()
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, EJoinBox.Text, LocalPlayer)
+            end)
+        else
+            Library:Notify('Paste a JobId first', 2)
+        end
+    end)
+    Window.RefreshCustom['Executor'] = function()
+        local Short = tostring(game.JobId)
+        if #Short > 24 then Short = Short:sub(1, 21) .. '...' end
+        EJob.Text = 'JobId: ' .. Short
+        ECount.Text = 'Players: ' .. #Players:GetPlayers() .. '/' .. tostring(Players.MaxPlayers)
+    end
+    task.spawn(function()
+        while ScreenGui.Parent do
+            local Start = os.clock()
+            local Frames = 0
+            while os.clock() - Start < 0.5 do
+                RunService.RenderStepped:Wait()
+                Frames = Frames + 1
+            end
+            if ExecPanel.Visible then
+                EFps.Text = 'FPS: ' .. math.floor(Frames / (os.clock() - Start))
+                local Ping = 'N/A'
+                pcall(function()
+                    Ping = tostring(math.floor(game:GetService('Stats').Network.ServerStatsItem['Data Ping']:GetValue()))
+                end)
+                EPing.Text = 'Ping: ' .. Ping .. ' ms'
+            end
+        end
+    end)
+end
 function Library:CreateWindow(...)
     local Arguments = { ... }
     local Config = { AnchorPoint = Vector2.zero }
@@ -6841,43 +7352,21 @@ function Library:CreateWindow(...)
                 if T then T:ShowTab(); end;
                 FooterSetActive('Protection');
             else
-                if Library._DockedPanelKind == Kind then
+                if Window.CustomPanel == Kind then
                     Library:HideToolbarPanels();
+                    if Window.HideCustomPanels then Window.HideCustomPanels() end
                     FooterSetActive(nil);
                     local _def = Window.Tabs['main'] or Window.Tabs['Main'];
                     if _def then _def:ShowTab(); else for _, _tb in next, Window.Tabs do if _tb.TabButton and _tb.TabButton.Visible then _tb:ShowTab(); break; end; end; end;
                 else
                     for _, _tb2 in next, Window.Tabs do _tb2:HideTab(); end;
-                    if Library._DockedPanelKind then
-                        local _prev = Library.ToolbarPanels[Library._DockedPanelKind];
-                        if _prev then
-                            local _po = Library._PanelOrig[Library._DockedPanelKind];
-                            if _po then _prev.AnchorPoint = _po.AnchorPoint; _prev.Position = _po.Position; _prev.Size = _po.Size; _prev.Parent = _po.Parent; end;
-                            for _, _dg0 in next, _prev:GetDescendants() do
-                                if _dg0:IsA('Frame') and _dg0.Size == UDim2.new(0, 10, 0, 10) then _dg0.Visible = true; end;
-                            end;
-                            _prev.Visible = false;
-                        end;
-                        Library._DockedPanelKind = nil;
-                        Library.OpenToolbarPanel = nil;
-                    end;
-                    for _K, _F in next, Library.ToolbarPanels do if _K ~= Kind then _F.Visible = false; end; end;
-                    local _P = Library.ToolbarPanels[Kind];
-                    if _P then
-                        if not Library._PanelOrig[Kind] then Library._PanelOrig[Kind] = {Parent = _P.Parent, Position = _P.Position, Size = _P.Size, AnchorPoint = _P.AnchorPoint}; end;
-                        _P.AnchorPoint = Vector2.new(0, 0);
-                        _P.Position = UDim2.new(0, 0, 0, 0);
-                        _P.Size = UDim2.new(1, 0, 1, 0);
-                        _P.Parent = TabContainer;
-                        for _, _d in next, _P:GetDescendants() do
-                            if _d:IsA('Frame') and _d.Size == UDim2.new(0, 10, 0, 10) then _d.Visible = false; end;
-                        end;
-                        _P.Visible = true;
-                    end;
-                    Library._DockedPanelKind = Kind;
-                    Library.OpenToolbarPanel = Kind;
-                    Library.RefreshToolbarPanel(Kind);
-                    _P.Visible = true;
+                    Library:HideToolbarPanels();
+                    if Window.HideCustomPanels then Window.HideCustomPanels() end
+                    local _CP = Window.CustomPanels and Window.CustomPanels[Kind]
+                    if _CP then _CP.Visible = true end
+                    Window.CustomPanel = Kind
+                    local _RF = Window.RefreshCustom and Window.RefreshCustom[Kind]
+                    if _RF then _RF() end
                     FooterSetActive(Kind);
                 end;
             end;
@@ -6929,6 +7418,7 @@ function Library:CreateWindow(...)
         BorderColor3 = 'OutlineColor';
     });
 
+    Library:BuildCustomPanels(Window, TabContainer)
     function Window:SetWindowTitle(Title)
         WindowLabel.Text = Title;
         WindowLabel.Position = UDim2.new(0, 0, 0, 0);
@@ -7066,6 +7556,7 @@ Library:AddToRegistry(Blocker, {
             Blocker.BackgroundTransparency = 0;
             TabButton.BackgroundColor3 = Library.MainColor;
             Library.RegistryMap[TabButton].Properties.BackgroundColor3 = 'MainColor';
+            if Window.HideCustomPanels then Window.HideCustomPanels() end
             TabFrame.Visible = true;
             if Window.FooterSetActive then
                 local _ln = tostring(Tab.Name):lower();
