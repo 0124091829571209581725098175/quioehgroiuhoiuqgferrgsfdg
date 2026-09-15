@@ -1600,14 +1600,18 @@ do
 
         local KeyRow = Library:Create('Frame', {
             BackgroundTransparency = 1;
+            BorderSizePixel = 0;
             Size = UDim2.new(1, 0, 0, 18);
             Visible = false;
             ZIndex = 110;
             Parent = Library.KeybindContainer;
         });
         local KeyName = Library:CreateLabel({
+            BackgroundTransparency = 1;
+            BorderSizePixel = 0;
             Position = UDim2.new(0, 5, 0, 0);
             Size = UDim2.new(1, -80, 1, 0);
+            TextColor3 = Color3.fromRGB(255, 255, 255);
             TextSize = 13;
             TextXAlignment = Enum.TextXAlignment.Left;
             TextTruncate = Enum.TextTruncate.AtEnd;
@@ -1615,13 +1619,20 @@ do
             Parent = KeyRow;
         }, true);
         local KeyState = Library:CreateLabel({
+            BackgroundTransparency = 1;
+            BorderSizePixel = 0;
             Position = UDim2.new(1, -70, 0, 0);
             Size = UDim2.new(0, 65, 1, 0);
+            TextColor3 = Color3.fromRGB(255, 255, 255);
             TextSize = 13;
             TextXAlignment = Enum.TextXAlignment.Right;
             ZIndex = 111;
             Parent = KeyRow;
         }, true);
+        Library:RemoveFromRegistry(KeyName);
+        KeyName.TextColor3 = Color3.fromRGB(255, 255, 255);
+        Library:RemoveFromRegistry(KeyState);
+        KeyState.TextColor3 = Color3.fromRGB(255, 255, 255);
         KeyPicker.Row = KeyRow;
         KeyPicker.NameLabel = KeyName;
         KeyPicker.StateLabel = KeyState;
@@ -1708,11 +1719,15 @@ do
                 end;
             end;
 
-            Library.KeybindFrame.Size = UDim2.new(0, math.max(XSize + 20, 210), 0, YSize + 23)
+            Library.KeybindFrame.Size = UDim2.new(0, math.max(XSize + 20, 210), 0, YSize + 22)
             Library:RefreshKeybindVisibility();
         end;
 
         function KeyPicker:GetState()
+            if ParentObj and ParentObj.Type == 'Toggle' and not ParentObj.Value then
+                return false;
+            end;
+
             if KeyPicker.Mode == 'Always' then
                 return true;
             end;
@@ -1833,18 +1848,21 @@ do
 
                 if (not Typing) or KeyPicker.AllowWhileTyping then
                     if KeyPicker.Mode == 'Toggle' then
-                        local Key = KeyPicker.Value;
+                        local ParentOff = ParentObj and ParentObj.Type == 'Toggle' and not ParentObj.Value and not KeyPicker.SyncToggleState
+                        if not ParentOff then
+                            local Key = KeyPicker.Value;
 
-                        if Key == 'MB1' or Key == 'MB2' then
-                            if Key == 'MB1' and Input.UserInputType == Enum.UserInputType.MouseButton1
-                            or Key == 'MB2' and Input.UserInputType == Enum.UserInputType.MouseButton2 then
-                                KeyPicker.Toggled = not KeyPicker.Toggled
-                                KeyPicker:DoClick()
-                            end;
-                        elseif Input.UserInputType == Enum.UserInputType.Keyboard then
-                            if Input.KeyCode.Name == Key then
-                                KeyPicker.Toggled = not KeyPicker.Toggled;
-                                KeyPicker:DoClick()
+                            if Key == 'MB1' or Key == 'MB2' then
+                                if Key == 'MB1' and Input.UserInputType == Enum.UserInputType.MouseButton1
+                                or Key == 'MB2' and Input.UserInputType == Enum.UserInputType.MouseButton2 then
+                                    KeyPicker.Toggled = not KeyPicker.Toggled
+                                    KeyPicker:DoClick()
+                                end;
+                            elseif Input.UserInputType == Enum.UserInputType.Keyboard then
+                                if Input.KeyCode.Name == Key then
+                                    KeyPicker.Toggled = not KeyPicker.Toggled;
+                                    KeyPicker:DoClick()
+                                end;
                             end;
                         end;
                     end;
@@ -2567,8 +2585,10 @@ do
             Toggle:Display();
 
             for _, Addon in next, Toggle.Addons do
-                if Addon.Type == 'KeyPicker' and Addon.SyncToggleState then
-                    Addon.Toggled = Bool
+                if Addon.Type == 'KeyPicker' then
+                    if Addon.SyncToggleState then
+                        Addon.Toggled = Bool
+                    end
                     Addon:Update()
                 end
             end
@@ -4423,9 +4443,10 @@ do
 
     local KeybindOuter = Library:Create('Frame', {
         AnchorPoint = Vector2.new(0, 0.5);
-        BorderColor3 = Color3.new(0, 0, 0);
+        BackgroundTransparency = 1;
+        BorderSizePixel = 0;
         Position = UDim2.new(0, 10, 0.5, 0);
-        Size = UDim2.new(0, 210, 0, 20);
+        Size = UDim2.new(0, 210, 0, 22);
         Visible = false;
         ZIndex = 100;
         Parent = ScreenGui;
@@ -4435,7 +4456,8 @@ do
         BackgroundColor3 = Color3.fromRGB(18, 18, 18);
         BorderColor3 = Library.OutlineColor;
         BorderMode = Enum.BorderMode.Inset;
-        Size = UDim2.new(1, 0, 1, 0);
+        Position = UDim2.new(0, 0, 0, 0);
+        Size = UDim2.new(1, 0, 0, 22);
         ZIndex = 101;
         Parent = KeybindOuter;
     });
@@ -4472,10 +4494,11 @@ do
 
     local KeybindContainer = Library:Create('Frame', {
         BackgroundTransparency = 1;
-        Size = UDim2.new(1, 0, 1, -20);
-        Position = UDim2.new(0, 0, 0, 20);
-        ZIndex = 1;
-        Parent = KeybindInner;
+        BorderSizePixel = 0;
+        Size = UDim2.new(1, 0, 1, -22);
+        Position = UDim2.new(0, 0, 0, 22);
+        ZIndex = 103;
+        Parent = KeybindOuter;
     });
 
     Library:Create('UIListLayout', {
