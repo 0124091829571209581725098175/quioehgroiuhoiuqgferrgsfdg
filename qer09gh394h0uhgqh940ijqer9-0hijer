@@ -5665,33 +5665,30 @@ do
             Library:AddToRegistry(Tip, {
                 BackgroundColor3 = 'FontColor';
             });
-            local InnerBody = Library:Create('Frame', {
-                AnchorPoint = Vector2.new(0.5, 0);
-                BackgroundColor3 = Library.MainColor;
-                BorderSizePixel = 0;
-                Position = UDim2.new(0.5, 0, 0.5, -6);
-                Size = UDim2.new(0, 9, 0, 6);
-                ZIndex = 96;
-                Parent = Parent;
-            });
-            Library:Create('UICorner', {
-                CornerRadius = UDim.new(0, 2);
-                Parent = InnerBody;
-            });
-            Library:AddToRegistry(InnerBody, {
-                BackgroundColor3 = 'MainColor';
-            });
-            local InnerTip = Library:Create('Frame', {
+            local CheckShort = Library:Create('Frame', {
                 AnchorPoint = Vector2.new(0.5, 0.5);
                 BackgroundColor3 = Library.MainColor;
                 BorderSizePixel = 0;
-                Position = UDim2.new(0.5, 0, 0.5, 3);
-                Rotation = 45;
-                Size = UDim2.new(0, 6, 0, 6);
+                Position = UDim2.new(0.5, -2, 0.5, 2);
+                Rotation = -45;
+                Size = UDim2.new(0, 2, 0, 5);
                 ZIndex = 96;
                 Parent = Parent;
             });
-            Library:AddToRegistry(InnerTip, {
+            Library:AddToRegistry(CheckShort, {
+                BackgroundColor3 = 'MainColor';
+            });
+            local CheckLong = Library:Create('Frame', {
+                AnchorPoint = Vector2.new(0.5, 0.5);
+                BackgroundColor3 = Library.MainColor;
+                BorderSizePixel = 0;
+                Position = UDim2.new(0.5, 2, 0.5, -1);
+                Rotation = 45;
+                Size = UDim2.new(0, 2, 0, 9);
+                ZIndex = 96;
+                Parent = Parent;
+            });
+            Library:AddToRegistry(CheckLong, {
                 BackgroundColor3 = 'MainColor';
             });
         elseif Kind == 'Servers' then
@@ -6878,11 +6875,9 @@ function Library:CreateWindow(...)
                         _P.Visible = true;
                     end;
                     Library._DockedPanelKind = Kind;
-                    local _rm = Library.ReducedMotion;
-                    Library.ReducedMotion = true;
-                    Library:ShowToolbarPanel(Kind);
-                    Library.ReducedMotion = _rm;
-                    Library._DockedPanelKind = Kind;
+                    Library.OpenToolbarPanel = Kind;
+                    Library.RefreshToolbarPanel(Kind);
+                    _P.Visible = true;
                     FooterSetActive(Kind);
                 end;
             end;
