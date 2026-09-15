@@ -196,22 +196,24 @@ end;
 
 function Library:AttemptSave()
     if Library.SuppressSave then return end
-    if Library.SaveManager then
-        local sm = Library.SaveManager;
-        local auto = nil;
-        pcall(function()
-            local f = sm.Folder .. '/settings/autoload.txt';
-            if isfile(f) then auto = readfile(f) end
-        end);
-        if type(auto) == 'string' then
-            auto = auto:gsub('%s+', '');
-            if auto:sub(-5):lower() == '.json' then
-                auto = auto:sub(1, -6);
-            end;
+    local sm = Library.SaveManager or (getgenv and getgenv().SaveManager) or SaveManager
+    if not sm then return end
+    local auto = nil;
+    pcall(function()
+        local f = sm.Folder .. '/settings/autoload.txt';
+        if isfile(f) then auto = readfile(f) end
+    end);
+    if type(auto) == 'string' then
+        auto = auto:gsub('%s+', '');
+        if auto:sub(-5):lower() == '.json' then
+            auto = auto:sub(1, -6);
         end;
-        if type(auto) == 'string' and auto ~= '' then
-            pcall(function() sm:Save(auto) end);
-        end;
+    end;
+    if type(auto) == 'string' and auto ~= '' then
+        local ok, err = pcall(function() return sm:Save(auto) end);
+        if not ok then
+            pcall(function() Library:Notify('Auto save failed: '..tostring(err), 2) end)
+        end
     end;
 end;
 
