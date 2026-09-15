@@ -196,7 +196,7 @@ end;
 
 function Library:AttemptSave()
     if Library.SuppressSave then return end
-    local sm = Library.SaveManager or (getgenv and getgenv().SaveManager) or SaveManager
+    local sm = Library.SaveManager or (getgenv and getgenv().SaveManager) or (_G and _G.SaveManager) or SaveManager
     if not sm then return end
     local auto = nil;
     pcall(function()
@@ -210,8 +210,10 @@ function Library:AttemptSave()
         end;
     end;
     if type(auto) == 'string' and auto ~= '' then
-        local ok, err = pcall(function() return sm:Save(auto) end);
+        local ok, result, err = pcall(function() return sm:Save(auto) end);
         if not ok then
+            pcall(function() Library:Notify('Auto save failed: '..tostring(result), 2) end)
+        elseif result == false then
             pcall(function() Library:Notify('Auto save failed: '..tostring(err), 2) end)
         end
     end;
