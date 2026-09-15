@@ -6403,6 +6403,44 @@ end;
 
 
 Library.ThumbnailCache = Library.ThumbnailCache or {}
+Library.ThumbActive = 0
+Library.ThumbQueue = {}
+function Library:PumpThumbs()
+    while Library.ThumbActive < 6 and #Library.ThumbQueue > 0 do
+        local job = table.remove(Library.ThumbQueue, 1)
+        Library.ThumbActive = Library.ThumbActive + 1
+        task.spawn(function()
+            local ok, th = pcall(function()
+                return Players:GetUserThumbnailAsync(job[1], Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+            end)
+            if ok and th and th ~= '' then
+                Library.ThumbnailCache[job[1]] = th
+                if job[2].Parent then job[2].Image = th end
+            end
+            Library.ThumbActive = Library.ThumbActive - 1
+            Library:PumpThumbs()
+        end)
+    end
+end
+function Library:FetchThumbnail(userId, avatar)
+    if Library.ThumbnailCache[userId] then
+        if avatar.Parent then avatar.Image = Library.ThumbnailCache[userId] end
+        return
+    end
+    for _, q in next, Library.ThumbQueue do if q[1] == userId then return end end
+    table.insert(Library.ThumbQueue, {userId, avatar})
+    Library:PumpThumbs()
+end
+function Library:SchedulePlayerRefresh()
+    if Library.PlayerRefreshDue then return end
+    Library.PlayerRefreshDue = true
+    task.delay(0.25, function()
+        Library.PlayerRefreshDue = nil
+        if Library.PlayerRefreshFns then
+            for _, fn in next, Library.PlayerRefreshFns do pcall(fn) end
+        end
+    end)
+end
 Library.PlayerContextMenu = nil
 Library.PlayerJoinTimes = Library.PlayerJoinTimes or {}
 Library.SilentWhitelist = Library.SilentWhitelist or {}
@@ -6420,6 +6458,35 @@ function Library:GetCrewName(player)
     if not ok or not crew or tostring(crew) == "" or tostring(crew) == "0" then return nil end
     return tostring(crew)
 end
+function Library:GetCrewGroupName(crewId)
+    local num = tonumber(crewId)
+    if not num then return tostring(crewId) end
+    Library.CrewNameCache = Library.CrewNameCache or {}
+    if Library.CrewNameCache[num] then return Library.CrewNameCache[num] end
+    local pd = Library.PhongData or (getgenv and getgenv().PhowgData) or nil
+    if pd and pd.CrewNameCache and pd.CrewNameCache[num] then
+        Library.CrewNameCache[num] = pd.CrewNameCache[num]
+        return pd.CrewNameCache[num]
+    end
+    Library.CrewResolving = Library.CrewResolving or {}
+    if not Library.CrewResolving[num] then
+        Library.CrewResolving[num] = true
+        task.spawn(function()
+            local ok, info = pcall(function()
+                return game:GetService('GroupService'):GetGroupInfoAsync(num)
+            end)
+            if ok and info and info.Name then
+                Library.CrewNameCache[num] = info.Name
+                if pd and pd.CrewNameCache then pd.CrewNameCache[num] = info.Name end
+            else
+                Library.CrewNameCache[num] = tostring(num)
+            end
+            Library.CrewResolving[num] = nil
+            Library:SchedulePlayerRefresh()
+        end)
+    end
+    return tostring(crewId)
+end
 function Library:GetCrewDisplayWithCount(player)
     local crewId = Library:GetCrewName(player)
     if not crewId then return "No Crew" end
@@ -6428,18 +6495,13 @@ function Library:GetCrewDisplayWithCount(player)
         local cid = Library:GetCrewName(p)
         if cid == crewId then count = count + 1 end
     end
-    local name = crewId
-    pcall(function()
-        local cache = Library.CrewNameCache or (getgenv().Data and getgenv().Data.CrewNameCache)
-        if cache and tonumber(crewId) and cache[tonumber(crewId)] then name = cache[tonumber(crewId)] end
-        if getgenv().Data and getgenv().Data.CrewNameCache and getgenv().Data.CrewNameCache[tonumber(crewId)] then name = getgenv().Data.CrewNameCache[tonumber(crewId)] end
-    end)
-    return name .. " (" .. tostring(count) .. ")"
+    return Library:GetCrewGroupName(crewId) .. " (" .. tostring(count) .. ")"
 end
 function Library:FormatJoinedTime(plr)
     local joinAt = Library.PlayerJoinTimes[plr] or Library.PlayerJoinTimes[plr.UserId]
     if not joinAt then
-        if getgenv().Data and getgenv().Data.PlayerJoinAt and getgenv().Data.PlayerJoinAt[plr] then joinAt = getgenv().Data.PlayerJoinAt[plr] end
+        local pd = Library.PhongData or (getgenv and getgenv().PhowgData) or (getgenv and getgenv().Data) or nil
+        if pd and pd.PlayerJoinAt and pd.PlayerJoinAt[plr] then joinAt = pd.PlayerJoinAt[plr] end
     end
     if not joinAt then return "Joined just now" end
     local elapsed = math.max(0, math.floor(tick() - joinAt))
@@ -6800,14 +6862,29 @@ function Library:BuildCustomPanels(Window, TabContainer)
         ZIndex = 5;
         Parent = PBottom;
     })
+    local LastPlayerKey = nil
+    local TimeRows = {}
     local function RefreshPlayers()
-        for _, c in next, PScroll:GetChildren() do
-            if not c:IsA('UIListLayout') then c:Destroy() end
-        end
         local query = ''
         if PSearchBox and PSearchBox.Text then query = PSearchBox.Text:lower() end
         local list = Players:GetPlayers()
         table.sort(list, function(a, b) return a.Name:lower() < b.Name:lower() end)
+        local keyparts = {query, #list}
+        for _, plr in next, list do table.insert(keyparts, plr.UserId) end
+        local key = table.concat(keyparts, ",")
+        if key == LastPlayerKey then return end
+        LastPlayerKey = key
+        for _, c in next, PScroll:GetChildren() do
+            if not c:IsA('UIListLayout') then c:Destroy() end
+        end
+        table.clear(TimeRows)
+        local crewOf = {}
+        local crewCount = {}
+        for _, plr in next, list do
+            local cid = Library:GetCrewName(plr)
+            crewOf[plr] = cid
+            if cid then crewCount[cid] = (crewCount[cid] or 0) + 1 end
+        end
         local shown = 0
         for _, plr in next, list do
             if query == '' or plr.Name:lower():find(query, 1, true) or plr.DisplayName:lower():find(query, 1, true) then
@@ -6827,20 +6904,7 @@ function Library:BuildCustomPanels(Window, TabContainer)
                     ZIndex = 5;
                     Parent = row;
                 })
-                local thumb = Library.ThumbnailCache[plr.UserId]
-                if thumb then
-                    avatar.Image = thumb
-                else
-                    task.spawn(function()
-                        local ok, th = pcall(function()
-                            return Players:GetUserThumbnailAsync(plr.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
-                        end)
-                        if ok and th and th ~= '' then
-                            Library.ThumbnailCache[plr.UserId] = th
-                            if avatar.Parent then avatar.Image = th end
-                        end
-                    end)
-                end
+                Library:FetchThumbnail(plr.UserId, avatar)
                 local info = Library:Create('Frame', {
                     BackgroundColor3 = Library.MainColor;
                     BorderColor3 = Library.OutlineColor;
@@ -6867,11 +6931,14 @@ function Library:BuildCustomPanels(Window, TabContainer)
                     ZIndex = 6;
                     Parent = info;
                 })
+                local crewId = crewOf[plr]
+                local crewText = "No Crew"
+                if crewId then crewText = Library:GetCrewGroupName(crewId) .. " (" .. tostring(crewCount[crewId] or 0) .. ")" end
                 local crew = Library:CreateLabel({
                     Position = UDim2.new(0, 6, 0, 20);
                     Size = UDim2.new(1, -12, 0, 12);
                     TextSize = 11;
-                    Text = Library:GetCrewDisplayWithCount(plr) .. ' | ' .. Library:FormatJoinedTime(plr);
+                    Text = crewText .. ' | ' .. Library:FormatJoinedTime(plr);
                     TextXAlignment = Enum.TextXAlignment.Left;
                     TextTruncate = Enum.TextTruncate.AtEnd;
                     ZIndex = 6;
@@ -6879,6 +6946,7 @@ function Library:BuildCustomPanels(Window, TabContainer)
                 })
                 Library:RemoveFromRegistry(crew)
                 crew.TextColor3 = Color3.fromRGB(170, 170, 170)
+                table.insert(TimeRows, {crew, plr})
                 local btn = Library:Create('TextButton', {
                     BackgroundTransparency = 1;
                     Size = UDim2.new(1, 0, 1, 0);
@@ -6897,9 +6965,46 @@ function Library:BuildCustomPanels(Window, TabContainer)
         end
         PCount.Text = 'players - ' .. tostring(shown) .. '/' .. tostring(#list)
     end
+    for _, plr in next, Players:GetPlayers() do
+        if not Library.PlayerJoinTimes[plr] then Library.PlayerJoinTimes[plr] = tick() end
+        if not Library.PlayerJoinTimes[plr.UserId] then Library.PlayerJoinTimes[plr.UserId] = tick() end
+    end
     Window.RefreshCustom['Players'] = RefreshPlayers
-    PSearchBox:GetPropertyChangedSignal('Text'):Connect(RefreshPlayers)
-    Library:GiveSignal(Players.PlayerAdded:Connect(function()
+    Library.PlayerRefreshFns = Library.PlayerRefreshFns or {}
+    table.insert(Library.PlayerRefreshFns, function()
+        if PlayersPanel.Visible then RefreshPlayers() end
+    end)
+    local SearchDue = false
+    PSearchBox:GetPropertyChangedSignal('Text'):Connect(function()
+        if SearchDue then return end
+        SearchDue = true
+        task.delay(0.15, function()
+            SearchDue = false
+            RefreshPlayers()
+        end)
+    end)
+    task.spawn(function()
+        while ScreenGui.Parent do
+            task.wait(1)
+            if PlayersPanel.Visible and #TimeRows > 0 then
+                local cmap = {}
+                local ccnt = {}
+                for _, plr in next, Players:GetPlayers() do
+                    local cid = Library:GetCrewName(plr)
+                    if cid then cmap[plr] = cid ccnt[cid] = (ccnt[cid] or 0) + 1 end
+                end
+                for _, e in next, TimeRows do
+                    local cid = cmap[e[2]]
+                    local ct = "No Crew"
+                    if cid then ct = Library:GetCrewGroupName(cid) .. " (" .. tostring(ccnt[cid] or 0) .. ")" end
+                    e[1].Text = ct .. ' | ' .. Library:FormatJoinedTime(e[2])
+                end
+            end
+        end
+    end)
+    Library:GiveSignal(Players.PlayerAdded:Connect(function(plr)
+        Library.PlayerJoinTimes[plr] = tick()
+        Library.PlayerJoinTimes[plr.UserId] = tick()
         if PlayersPanel.Visible then RefreshPlayers() end
     end))
     Library:GiveSignal(Players.PlayerRemoving:Connect(function()
