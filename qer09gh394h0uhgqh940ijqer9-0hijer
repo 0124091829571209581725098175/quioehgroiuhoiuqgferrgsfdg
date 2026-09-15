@@ -203,10 +203,14 @@ function Library:AttemptSave()
             local f = sm.Folder .. '/settings/autoload.txt';
             if isfile(f) then auto = readfile(f) end
         end);
+        if type(auto) == 'string' then
+            auto = auto:gsub('%s+', '');
+            if auto:sub(-5):lower() == '.json' then
+                auto = auto:sub(1, -6);
+            end;
+        end;
         if type(auto) == 'string' and auto ~= '' then
             pcall(function() sm:Save(auto) end);
-        else
-            sm:Save();
         end;
     end;
 end;
