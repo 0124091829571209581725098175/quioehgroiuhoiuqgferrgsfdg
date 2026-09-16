@@ -6720,6 +6720,52 @@ function Library:ProtectByIsrael(player)
     if Toggles and Toggles.punishment_enabled then Toggles.punishment_enabled:SetValue(true) end
     Library:Notify("Protected "..player.Name.." by israel",2)
 end
+function Library:IsFullyWhitelisted(player)
+    if Library.FullWhitelist and Library.FullWhitelist[player] then return true end
+    if Library.SilentWhitelist and Library.SilentWhitelist[player] then return true end
+    if Library.StickyWhitelist and Library.StickyWhitelist[player] then return true end
+    if Library:IsIsraelWhitelisted(player) then return true end
+    if Library:IsRageWhitelisted(player) then return true end
+    return false
+end
+function Library:WhitelistFully(player)
+    Library.FullWhitelist = Library.FullWhitelist or {}
+    Library.FullWhitelist[player] = true
+    Library:WhitelistRagebot(player)
+    Library:WhitelistSilent(player)
+    Library:WhitelistSticky(player)
+    Library:WhitelistIsrael(player)
+    local pd = Library.PhongData or (getgenv and (getgenv().PhowgData or getgenv().Data)) or nil
+    if pd then
+        pd.FullWhitelist = pd.FullWhitelist or {}
+        pd.FullWhitelist[player] = true
+        pd.RageWhitelist = pd.RageWhitelist or {}
+        pd.RageWhitelist[player] = true
+        pd.IsraelWhitelist = pd.IsraelWhitelist or {}
+        pd.IsraelWhitelist[player] = true
+        if pd.SilentAimStickyTargets then pd.SilentAimStickyTargets[player] = nil end
+        if pd.LockedTargets then pd.LockedTargets[player] = nil end
+        if pd.DropdownTargets then pd.DropdownTargets[player] = nil end
+    end
+    if Library.OnSilentWhitelist then Library.OnSilentWhitelist(player) end
+    if Library.OnStickyWhitelist then Library.OnStickyWhitelist(player) end
+    Library:Notify("whitelisted fully "..player.Name, 2)
+end
+function Library:WhitelistCrew(player)
+    local cid = Library:GetCrewName(player)
+    if not cid then Library:WhitelistFully(player) return end
+    local pd = Library.PhongData or (getgenv and (getgenv().PhowgData or getgenv().Data)) or nil
+    if pd then
+        pd.WhitelistedCrews = pd.WhitelistedCrews or {}
+        pd.WhitelistedCrews[tostring(cid)] = true
+    end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if Library:GetCrewName(p) == cid then
+            Library:WhitelistFully(p)
+        end
+    end
+    Library:Notify("whitelisted crew "..tostring(cid), 2)
+end
 function Library:ShowPlayerContextMenu(target, pos)
     if Library.PlayerContextMenu then Library.PlayerContextMenu:Destroy() Library.PlayerContextMenu=nil end
     local menu = Instance.new("Frame")
@@ -6727,7 +6773,7 @@ function Library:ShowPlayerContextMenu(target, pos)
     menu.BackgroundColor3 = Library.BackgroundColor
     menu.BorderColor3 = Library.OutlineColor
     menu.BorderMode = Enum.BorderMode.Inset
-    menu.Size = UDim2.fromOffset(192, 210)
+    menu.Size = UDim2.fromOffset(192, 132)
     menu.Position = UDim2.fromOffset(pos.X, pos.Y)
     menu.ZIndex = 90
     menu.Parent = ScreenGui
@@ -6764,11 +6810,8 @@ function Library:ShowPlayerContextMenu(target, pos)
     addBtn("Teleport", function() Library:TeleportToPlayer(target) end)
     addBtn("Copy Name", function() pcall(setclipboard, target.Name) Library:Notify("Copied @"..target.Name,2) end)
     addBtn("Copy Username", function() pcall(setclipboard, target.DisplayName) Library:Notify("Copied "..target.DisplayName,2) end)
-    addBtn(Library:IsRageWhitelisted(target) and "Unwhitelist from Ragebot" or "Whitelist to Ragebot", function() Library:ToggleRageWhitelist(target) end)
-    addBtn(Library:IsSilentWhitelisted(target) and "Unwhitelist from Silent Aim" or "Whitelist to Silent Aim", function() Library:ToggleSilentWhitelist(target) end)
-    addBtn(Library:IsStickyWhitelisted(target) and "Unwhitelist from Sticky Aim" or "Whitelist to Sticky Aim", function() Library:ToggleStickyWhitelist(target) end)
-    addBtn(Library:IsIsraelWhitelisted(target) and "Unwhitelist from Israel Support" or "Whitelist to Israel Support", function() Library:ToggleIsraelWhitelist(target) end)
-    addBtn(Library.IsraelProtected[target] and "Unprotect by Israel" or "Protect by Israel", function() Library:ToggleProtectByIsrael(target) end)
+    addBtn("whitelist fully", function() Library:WhitelistFully(target) end)
+    addBtn("whitelist crew", function() Library:WhitelistCrew(target) end)
     Library.PlayerContextMenu = menu
     Library.OpenedFrames[menu]=true
     task.delay(5, function() if Library.PlayerContextMenu==menu then menu:Destroy() Library.PlayerContextMenu=nil Library.OpenedFrames[menu]=nil end end)
