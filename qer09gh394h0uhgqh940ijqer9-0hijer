@@ -6913,7 +6913,8 @@ function Library:ShowPlayerContextMenu(target, pos)
         wlNow = Library.PhongData.WhitelistedCrews[tostring(Library:GetCrewName(target))] == true
     end
     if wlNow then
-        addBtn("unwhitelist", function() Library:UnwhitelistCrew(target) end)
+        addBtn("unwhitelist", function() Library:UnwhitelistFully(target) end)
+        addBtn("unwhitelist crew", function() Library:UnwhitelistCrew(target) end)
     else
         addBtn("whitelist fully", function() Library:WhitelistFully(target) end)
         addBtn("whitelist crew", function() Library:WhitelistCrew(target) end)
