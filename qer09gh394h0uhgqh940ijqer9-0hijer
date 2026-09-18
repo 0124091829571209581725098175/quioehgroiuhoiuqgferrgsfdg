@@ -6583,6 +6583,8 @@ function Library:FormatJoinedTime(plr)
     return string.format("Joined %02d:%02d:%02d ago", h, m, s)
 end
 function Library:IsRageWhitelisted(player)
+    Options = Options or (getgenv and getgenv().Options) or nil
+    Toggles = Toggles or (getgenv and getgenv().Toggles) or nil
     if Options and Options.whitelist_select and Options.whitelist_select.Value then
         local v = Options.whitelist_select.Value
         if type(v)=="table" and v[player.Name] then return true end
@@ -6594,6 +6596,8 @@ end
 function Library:IsSilentWhitelisted(player) return Library.SilentWhitelist[player]==true end
 function Library:IsStickyWhitelisted(player) return Library.StickyWhitelist[player]==true end
 function Library:IsIsraelWhitelisted(player)
+    Options = Options or (getgenv and getgenv().Options) or nil
+    Toggles = Toggles or (getgenv and getgenv().Toggles) or nil
     if Options and Options.israel_whitelist_select and Options.israel_whitelist_select.Value then
         local v = Options.israel_whitelist_select.Value
         if type(v)=="table" and v[player.Name] then return true end
@@ -6615,6 +6619,8 @@ function Library:TeleportToPlayer(target)
     end
 end
 function Library:ToggleRageWhitelist(player)
+    Options = Options or (getgenv and getgenv().Options) or nil
+    Toggles = Toggles or (getgenv and getgenv().Toggles) or nil
     if Library:IsRageWhitelisted(player) then
         if Options and Options.whitelist_select then
             local cur = Options.whitelist_select.Value or {}
@@ -6630,25 +6636,23 @@ function Library:ToggleRageWhitelist(player)
     end
 end
 function Library:WhitelistRagebot(player)
+    Options = Options or (getgenv and getgenv().Options) or nil
+    Toggles = Toggles or (getgenv and getgenv().Toggles) or nil
     if Options and Options.whitelist_select then
         local cur = Options.whitelist_select.Value or {}
         local dict = {}
         for k,v in pairs(cur) do dict[k]=v end
         dict[player.Name]=true
         Options.whitelist_select:SetValue(dict)
-        Library:Notify("Whitelisted "..player.Name.." to ragebot", 2)
-        if Library.PhongData and Library.PhongData.RageWhitelist ~= nil then Library.PhongData.RageWhitelist[player]=true end
-        if getgenv().Data and getgenv().Data.RageWhitelist ~= nil then getgenv().Data.RageWhitelist[player]=true end
-    else
-        if Library.PhongData and Library.PhongData.RageWhitelist ~= nil then Library.PhongData.RageWhitelist[player]=true Library:Notify("Whitelisted "..player.Name.." to ragebot",2) end
     end
+    if Library.PhongData and Library.PhongData.RageWhitelist ~= nil then Library.PhongData.RageWhitelist[player]=true end
+    if getgenv().Data and getgenv().Data.RageWhitelist ~= nil then getgenv().Data.RageWhitelist[player]=true end
 end
 function Library:ToggleSilentWhitelist(player)
     if Library:IsSilentWhitelisted(player) then Library.SilentWhitelist[player]=nil Library:Notify("Unwhitelisted "..player.Name.." from silent aim",2) else Library:WhitelistSilent(player) end
 end
 function Library:WhitelistSilent(player)
     Library.SilentWhitelist[player]=true
-    Library:Notify("Whitelisted "..player.Name.." to silent aim",2)
     if Library.OnSilentWhitelist then Library.OnSilentWhitelist(player) end
 end
 function Library:ToggleStickyWhitelist(player)
@@ -6656,10 +6660,11 @@ function Library:ToggleStickyWhitelist(player)
 end
 function Library:WhitelistSticky(player)
     Library.StickyWhitelist[player]=true
-    Library:Notify("Whitelisted "..player.Name.." to sticky aim",2)
     if Library.OnStickyWhitelist then Library.OnStickyWhitelist(player) end
 end
 function Library:ToggleIsraelWhitelist(player)
+    Options = Options or (getgenv and getgenv().Options) or nil
+    Toggles = Toggles or (getgenv and getgenv().Toggles) or nil
     if Library:IsIsraelWhitelisted(player) then
         if Options and Options.israel_whitelist_select then
             local cur = Options.israel_whitelist_select.Value or {}
@@ -6676,20 +6681,23 @@ function Library:ToggleIsraelWhitelist(player)
     end
 end
 function Library:WhitelistIsrael(player)
+    Options = Options or (getgenv and getgenv().Options) or nil
+    Toggles = Toggles or (getgenv and getgenv().Toggles) or nil
     if Options and Options.israel_whitelist_select then
         local cur = Options.israel_whitelist_select.Value or {}
         local dict = {}
         for k,v in pairs(cur) do dict[k]=v end
         dict[player.Name]=true
         Options.israel_whitelist_select:SetValue(dict)
-        Library:Notify("Whitelisted "..player.Name.." to israel support",2)
     else
         Library.IsraelWhitelist[player]=true
-        Library:Notify("Whitelisted "..player.Name.." to israel support",2)
     end
     if Library.PhongData and Library.PhongData.IsraelWhitelist ~= nil then Library.PhongData.IsraelWhitelist[player]=true end
+    if Library.ScriptData and Library.ScriptData.IsraelWhitelist ~= nil then Library.ScriptData.IsraelWhitelist[player]=true end
 end
 function Library:ToggleProtectByIsrael(player)
+    Options = Options or (getgenv and getgenv().Options) or nil
+    Toggles = Toggles or (getgenv and getgenv().Toggles) or nil
     if Library.IsraelProtected[player] then
         Library.IsraelProtected[player]=nil
         Library.IsraelWhitelist[player]=nil
@@ -6718,7 +6726,7 @@ function Library:ProtectByIsrael(player)
     end
     if Toggles and Toggles.israel_whitelist_protect then Toggles.israel_whitelist_protect:SetValue(true) end
     if Toggles and Toggles.punishment_enabled then Toggles.punishment_enabled:SetValue(true) end
-    Library:Notify("Protected "..player.Name.." by israel",2)
+    if Library.ScriptData and Library.ScriptData.IsraelWhitelist ~= nil then Library.ScriptData.IsraelWhitelist[player]=true end
 end
 function Library:IsFullyWhitelisted(player)
     if Library.FullWhitelist and Library.FullWhitelist[player] then return true end
@@ -6728,7 +6736,9 @@ function Library:IsFullyWhitelisted(player)
     if Library:IsRageWhitelisted(player) then return true end
     return false
 end
-function Library:WhitelistFully(player)
+function Library:WhitelistFully(player, quiet)
+    Options = Options or (getgenv and getgenv().Options) or nil
+    Toggles = Toggles or (getgenv and getgenv().Toggles) or nil
     Library.FullWhitelist = Library.FullWhitelist or {}
     Library.FullWhitelist[player] = true
     Library:WhitelistRagebot(player)
@@ -6746,12 +6756,23 @@ function Library:WhitelistFully(player)
         if pd.SilentAimStickyTargets then pd.SilentAimStickyTargets[player] = nil end
         if pd.LockedTargets then pd.LockedTargets[player] = nil end
         if pd.DropdownTargets then pd.DropdownTargets[player] = nil end
+        if pd.SingleLockedTarget == player then pd.SingleLockedTarget = nil end
+        if pd.CurrentActionTarget == player then pd.CurrentActionTarget = nil end
+        if pd.CurrentMainTarget == player then pd.CurrentMainTarget = nil end
+        pd.TargetListCache = nil
+    end
+    local pf = getgenv and getgenv().PhowgFunc or nil
+    if pf then
+        if pf.updatetargetlabel then pcall(pf.updatetargetlabel) end
+        if pf.updatetracers then pcall(pf.updatetracers) end
     end
     if Library.OnSilentWhitelist then Library.OnSilentWhitelist(player) end
     if Library.OnStickyWhitelist then Library.OnStickyWhitelist(player) end
-    Library:Notify("whitelisted fully "..player.Name, 2)
+    if not quiet then Library:Notify("whitelisted fully "..player.Name, 2) end
 end
 function Library:WhitelistCrew(player)
+    Options = Options or (getgenv and getgenv().Options) or nil
+    Toggles = Toggles or (getgenv and getgenv().Toggles) or nil
     local cid = Library:GetCrewName(player)
     if not cid then Library:WhitelistFully(player) return end
     local pd = Library.PhongData or (getgenv and (getgenv().PhowgData or getgenv().Data)) or nil
@@ -6759,12 +6780,87 @@ function Library:WhitelistCrew(player)
         pd.WhitelistedCrews = pd.WhitelistedCrews or {}
         pd.WhitelistedCrews[tostring(cid)] = true
     end
+    local members = {}
     for _, p in ipairs(Players:GetPlayers()) do
-        if Library:GetCrewName(p) == cid then
-            Library:WhitelistFully(p)
-        end
+        if Library:GetCrewName(p) == cid then members[#members + 1] = p end
     end
-    Library:Notify("whitelisted crew "..tostring(cid), 2)
+    for _, p in ipairs(members) do
+        Library:WhitelistFully(p, #members > 1)
+    end
+    if #members > 1 then
+        Library:Notify("whitelisted crew " .. tostring(Library:GetCrewGroupName(cid)), 2)
+    end
+end
+function Library:UnwhitelistFully(player, quiet)
+    Options = Options or (getgenv and getgenv().Options) or nil
+    Toggles = Toggles or (getgenv and getgenv().Toggles) or nil
+    Library.FullWhitelist = Library.FullWhitelist or {}
+    Library.FullWhitelist[player] = nil
+    Library.SilentWhitelist = Library.SilentWhitelist or {}
+    Library.SilentWhitelist[player] = nil
+    Library.StickyWhitelist = Library.StickyWhitelist or {}
+    Library.StickyWhitelist[player] = nil
+    Library.IsraelWhitelist = Library.IsraelWhitelist or {}
+    Library.IsraelWhitelist[player] = nil
+    if Options and Options.whitelist_select then
+        local cur = Options.whitelist_select.Value or {}
+        local dict = {}
+        for k,v in pairs(cur) do if k ~= player.Name then dict[k] = v end end
+        Options.whitelist_select:SetValue(dict)
+    end
+    if Options and Options.israel_whitelist_select then
+        local cur = Options.israel_whitelist_select.Value or {}
+        local dict = {}
+        for k,v in pairs(cur) do if k ~= player.Name then dict[k] = v end end
+        Options.israel_whitelist_select:SetValue(dict)
+    end
+    if Library.ScriptData and Library.ScriptData.IsraelWhitelist then Library.ScriptData.IsraelWhitelist[player] = nil end
+    local pd = Library.PhongData or (getgenv and (getgenv().PhowgData or getgenv().Data)) or nil
+    if pd then
+        if pd.FullWhitelist then pd.FullWhitelist[player] = nil end
+        if pd.RageWhitelist then pd.RageWhitelist[player] = nil end
+        if pd.IsraelWhitelist then pd.IsraelWhitelist[player] = nil end
+        if pd.SilentAimStickyTargets then pd.SilentAimStickyTargets[player] = nil end
+        if pd.SilentAimStickyTarget == player then pd.SilentAimStickyTarget = nil end
+        if pd.SilentAimTarget == player then pd.SilentAimTarget = nil pd.SilentAimPos = nil pd.SilentAimHitPart = nil end
+        if pd.LockedTargets then pd.LockedTargets[player] = nil end
+        if pd.DropdownTargets then pd.DropdownTargets[player] = nil end
+        if pd.AssistLockedTarget == player then pd.AssistLockedTarget = nil pd.AssistAimPos = nil pd.AssistAimPart = nil end
+        if pd.SingleLockedTarget == player then pd.SingleLockedTarget = nil end
+        if pd.CurrentActionTarget == player then pd.CurrentActionTarget = nil end
+        if pd.CurrentMainTarget == player then pd.CurrentMainTarget = nil end
+        pd.TargetListCache = nil
+    end
+    if Library.OnSilentWhitelist then pcall(Library.OnSilentWhitelist, player) end
+    if Library.OnStickyWhitelist then pcall(Library.OnStickyWhitelist, player) end
+    local pf = getgenv and getgenv().PhowgFunc or nil
+    if pf then
+        if pf.purgesilentwhitelisted then pcall(pf.purgesilentwhitelisted) end
+        if pf.updatetargetlabel then pcall(pf.updatetargetlabel) end
+        if pf.updatetracers then pcall(pf.updatetracers) end
+    end
+    if not quiet then Library:Notify("unwhitelisted " .. player.Name, 2) end
+end
+function Library:UnwhitelistCrew(player)
+    Options = Options or (getgenv and getgenv().Options) or nil
+    Toggles = Toggles or (getgenv and getgenv().Toggles) or nil
+    local cid = Library:GetCrewName(player)
+    if not cid then Library:UnwhitelistFully(player) return end
+    local pd = Library.PhongData or (getgenv and (getgenv().PhowgData or getgenv().Data)) or nil
+    if pd and pd.WhitelistedCrews then
+        pd.WhitelistedCrews[tostring(cid)] = nil
+        pd.TargetListCache = nil
+    end
+    local members = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if Library:GetCrewName(p) == cid then members[#members + 1] = p end
+    end
+    for _, p in ipairs(members) do
+        Library:UnwhitelistFully(p, #members > 1)
+    end
+    if #members > 1 then
+        Library:Notify("unwhitelisted crew " .. tostring(Library:GetCrewGroupName(cid)), 2)
+    end
 end
 function Library:ShowPlayerContextMenu(target, pos)
     if Library.PlayerContextMenu then Library.PlayerContextMenu:Destroy() Library.PlayerContextMenu=nil end
@@ -6778,7 +6874,9 @@ function Library:ShowPlayerContextMenu(target, pos)
     menu.ZIndex = 90
     menu.Parent = ScreenGui
     Library:AddToRegistry(menu, {BackgroundColor3="BackgroundColor", BorderColor3="OutlineColor"})
+    local btnCount = 0
     local function addBtn(txt, cb)
+        btnCount = btnCount + 1
         local b = Instance.new("TextButton")
         b.BackgroundColor3 = Library.MainColor
         b.BorderColor3 = Library.OutlineColor
@@ -6810,8 +6908,17 @@ function Library:ShowPlayerContextMenu(target, pos)
     addBtn("Teleport", function() Library:TeleportToPlayer(target) end)
     addBtn("Copy Name", function() pcall(setclipboard, target.Name) Library:Notify("Copied @"..target.Name,2) end)
     addBtn("Copy Username", function() pcall(setclipboard, target.DisplayName) Library:Notify("Copied "..target.DisplayName,2) end)
-    addBtn("whitelist fully", function() Library:WhitelistFully(target) end)
-    addBtn("whitelist crew", function() Library:WhitelistCrew(target) end)
+    local wlNow = Library:IsFullyWhitelisted(target)
+    if not wlNow and Library.PhongData and Library.PhongData.WhitelistedCrews and Library:GetCrewName(target) then
+        wlNow = Library.PhongData.WhitelistedCrews[tostring(Library:GetCrewName(target))] == true
+    end
+    if wlNow then
+        addBtn("unwhitelist", function() Library:UnwhitelistCrew(target) end)
+    else
+        addBtn("whitelist fully", function() Library:WhitelistFully(target) end)
+        addBtn("whitelist crew", function() Library:WhitelistCrew(target) end)
+    end
+    menu.Size = UDim2.fromOffset(192, 8 + btnCount * 22 + (btnCount - 1) * 2)
     Library.PlayerContextMenu = menu
     Library.OpenedFrames[menu]=true
     task.delay(5, function() if Library.PlayerContextMenu==menu then menu:Destroy() Library.PlayerContextMenu=nil Library.OpenedFrames[menu]=nil end end)
