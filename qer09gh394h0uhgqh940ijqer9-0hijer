@@ -197,28 +197,8 @@ function Library:SafeCallback(f, ...)
 end;
 
 function Library:AttemptSave()
-    if Library.SuppressSave then return end
-    local sm = Library.SaveManager or (getgenv and getgenv().SaveManager) or (_G and _G.SaveManager) or SaveManager
-    if not sm then return end
-    local auto = nil;
-    pcall(function()
-        local f = sm.Folder .. '/settings/autoload.txt';
-        if isfile(f) then auto = readfile(f) end
-    end);
-    if type(auto) == 'string' then
-        auto = auto:gsub('%s+', '');
-        if auto:sub(-5):lower() == '.json' then
-            auto = auto:sub(1, -6);
-        end;
-    end;
-    if type(auto) == 'string' and auto ~= '' then
-        local ok, result, err = pcall(function() return sm:Save(auto) end);
-        if not ok then
-            pcall(function() Library:Notify('Auto save failed: '..tostring(result), 2) end)
-        elseif result == false then
-            pcall(function() Library:Notify('Auto save failed: '..tostring(err), 2) end)
-        end
-    end;
+    if Library.SuppressSave then return end;
+    Library.ConfigDirty = true;
 end;
 
 function Library:Create(Class, Properties)
@@ -324,7 +304,7 @@ function Library:StyleControl(Outer, Inner, Radius, Region)
         if Library:IsClickInput(Input) then Pressed = true; UpdateInteraction() end;
     end);
     HitRegion.InputEnded:Connect(function(Input)
-        if Library:IsClickInput(Input) then Pressed = false; UpdateInteraction() end;
+        if Library:IsClickInput(Input, true) then Pressed = false; UpdateInteraction() end;
     end);
     local function HookTextBox(Box)
         if not Box:IsA('TextBox') then return end;
@@ -400,8 +380,12 @@ Library.ClickInputs = {
     [Enum.UserInputType.Touch] = true;
 };
 
-function Library:IsClickInput(Input)
-    return Library.ClickInputs[Input.UserInputType] == true;
+Library.ConsumedInputs = setmetatable({}, {__mode = 'k'});
+function Library:ConsumeInput(Input)
+    Library.ConsumedInputs[Input] = true;
+end;
+function Library:IsClickInput(Input, AllowConsumed)
+    return Library.ClickInputs[Input.UserInputType] == true and (AllowConsumed or not Library.ConsumedInputs[Input]);
 end;
 
 function Library:TrackTouch(Input)
@@ -557,7 +541,7 @@ function Library:MakeDraggable(Instance, Cutoff)
     Instance.Active = true;
 
     Instance.InputBegan:Connect(function(Input)
-        if Library:IsClickInput(Input) then
+        if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() and not InputService:GetFocusedTextBox() then
             local StartPos = Input.Position;
             local ObjPos = Vector2.new(
                 StartPos.X - Instance.AbsolutePosition.X,
@@ -567,6 +551,20 @@ function Library:MakeDraggable(Instance, Cutoff)
             if ObjPos.Y > (Cutoff or 40) then
                 return;
             end;
+
+            local GetTouch, StopTouch = Library:TrackTouch(Input);
+            local StartPointerX = GetTouch() and StartPos.X or Mouse.X;
+            local StartPointerY = GetTouch() and StartPos.Y or Mouse.Y;
+            local function Held()
+                return InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or GetTouch() ~= nil;
+            end;
+            while Held() and not Library.Unloaded and Library:IsClickInput(Input) do
+                local Active = GetTouch();
+                local PX, PY = Active and Active.Position.X or Mouse.X, Active and Active.Position.Y or Mouse.Y;
+                if math.abs(PX - StartPointerX) + math.abs(PY - StartPointerY) > 4 then break end;
+                RenderStepped:Wait();
+            end;
+            if not Held() or Library.Unloaded or not Library:IsClickInput(Input) or InputService:GetFocusedTextBox() then StopTouch(); return end;
 
             local Ghost = Library:Create('Frame', {
                 BackgroundTransparency = 1;
@@ -587,7 +585,6 @@ function Library:MakeDraggable(Instance, Cutoff)
 
             Instance.Visible = false;
 
-            local GetTouch, StopTouch = Library:TrackTouch(Input);
             local NewPos = Instance.Position;
 
             while Ghost.Parent and Instance.Parent and not Library.Unloaded and (InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or GetTouch() ~= nil) do
@@ -808,6 +805,7 @@ end
 
 function Library:Unload()
     Library.Unloaded = true;
+    for Handle in pairs(Library.ProgressNotifications or {}) do Handle:Complete() end;
     for Target, Tween in pairs(Library.ControlTweens) do Tween:Cancel(); Library.ControlTweens[Target] = nil end;
     table.clear(Library.ControlTweenGoals);
     if Library.NeonConnection then Library.NeonConnection:Disconnect(); Library.NeonConnection = nil end;
@@ -1939,6 +1937,7 @@ do
 
             Label.InputBegan:Connect(function(Input)
                 if Library:IsClickInput(Input) then
+                    Library:ConsumeInput(Input);
                     ModeButton:Select();
                     Library:AttemptSave();
                 end;
@@ -3839,6 +3838,7 @@ do
 
                 ButtonLabel.InputBegan:Connect(function(Input)
                     if Library:IsClickInput(Input) then
+                        Library:ConsumeInput(Input);
                         local Try = not Selected;
 
                         if Dropdown:GetActiveValues() == 1 and (not Try) and (not Info.AllowNull) then
@@ -4417,6 +4417,7 @@ do
 
                     ButtonLabel.InputBegan:Connect(function(Input)
                         if Library:IsClickInput(Input) then
+                            Library:ConsumeInput(Input);
                             Table:Activate();
                         end;
                     end);
@@ -5912,7 +5913,7 @@ do
     AddSettingRow('Style', function()
         return 'Style: ' .. (Library.NotificationStyle or 'Default');
     end, function()
-        local Styles = { 'Default', 'Gamesense', 'Simple', 'Gamesensical', 'Outline', 'Accent', 'Compact' };
+        local Styles = { 'Default', 'Gamesense', 'Simple', 'Gamesensical', 'Progress' };
         local Idx = table.find(Styles, Library.NotificationStyle) or 1;
         Library:SetNotificationStyle(Styles[Idx % #Styles + 1]);
     end);
@@ -6358,7 +6359,8 @@ function Library:RefreshKeybindVisibility()
 end;
 
 function Library:SetNotificationStyle(Style)
-    Library.NotificationStyle = Style;
+    local Styles = {'Default', 'Gamesense', 'Simple', 'Gamesensical', 'Progress'};
+    Library.NotificationStyle = table.find(Styles, Style) and Style or 'Default';
 end;
 
 function Library:SetNotificationPosition(Position)
@@ -6420,6 +6422,88 @@ local function NotifyAccentHex()
     return string.format('%02X%02X%02X', math.floor(Accent.R * 255), math.floor(Accent.G * 255), math.floor(Accent.B * 255));
 end;
 
+function Library:AddNotificationBorder(Holder)
+    Holder.ClipsDescendants = false;
+    return Library:CreateNeonBorder(Holder, 110);
+end;
+
+Library.ProgressNotifications = {};
+function Library:NotifyProgress(Text, Progress, CanDismiss)
+    local Handle = {Closed = false;};
+    local Outer = Library:Create('Frame', {
+        Name = 'ProgressNotification';
+        BackgroundColor3 = Library.MainColor;
+        BorderSizePixel = 0;
+        Size = UDim2.fromOffset(320, 44);
+        ZIndex = 100;
+        Parent = Library.NotificationArea;
+    });
+    Library:AddToRegistry(Outer, {BackgroundColor3 = 'MainColor';}, true);
+    local Label = Library:CreateLabel({
+        Position = UDim2.fromOffset(10, 5);
+        Size = UDim2.new(1, CanDismiss and -36 or -20, 0, 24);
+        Text = '';
+        TextSize = 13;
+        TextXAlignment = Enum.TextXAlignment.Left;
+        TextTruncate = Enum.TextTruncate.AtEnd;
+        ZIndex = 102;
+        Parent = Outer;
+    });
+    local Track = Library:Create('Frame', {
+        BackgroundColor3 = Library.BackgroundColor;
+        BorderSizePixel = 0;
+        Position = UDim2.new(0, 10, 1, -10);
+        Size = UDim2.new(1, -20, 0, 3);
+        ZIndex = 101;
+        Parent = Outer;
+    });
+    Library:AddToRegistry(Track, {BackgroundColor3 = 'BackgroundColor';}, true);
+    local Fill = Library:Create('Frame', {
+        BackgroundColor3 = Library.AccentColor;
+        BorderSizePixel = 0;
+        Size = UDim2.fromScale(0, 1);
+        ZIndex = 102;
+        Parent = Track;
+    });
+    Library:AddToRegistry(Fill, {BackgroundColor3 = 'AccentColor';}, true);
+    local Border = Library:AddNotificationBorder(Outer);
+    Handle.Frame, Handle.Label, Handle.Fill = Outer, Label, Fill;
+    function Handle:Update(NewText, Fraction)
+        if self.Closed or not Outer.Parent or Library.Unloaded then return end;
+        Label.Text = tostring(NewText or '');
+        local Width = Library:GetTextBounds(Label.Text, Library.Font, 13);
+        Outer.Size = UDim2.fromOffset(math.clamp(Width + (CanDismiss and 46 or 24), 220, 600), type(Fraction) == 'number' and 44 or 34);
+        Track.Visible = type(Fraction) == 'number';
+        if Track.Visible then Fill.Size = UDim2.fromScale(math.clamp(Fraction, 0, 1), 1) end;
+    end;
+    function Handle:Complete()
+        if self.Closed then return end;
+        self.Closed = true;
+        Library.ProgressNotifications[self] = nil;
+        Library:DestroyNeonBorder(Border);
+        Outer:Destroy();
+    end;
+    Handle.Destroy = Handle.Complete;
+    if CanDismiss then
+        local Close = Library:Create('TextButton', {
+            BackgroundTransparency = 1;
+            Position = UDim2.new(1, -26, 0, 6);
+            Size = UDim2.fromOffset(20, 20);
+            Text = '×';
+            Font = Library.Font;
+            TextSize = 18;
+            TextColor3 = Library.FontColor;
+            ZIndex = 103;
+            Parent = Outer;
+        });
+        Library:AddToRegistry(Close, {TextColor3 = 'FontColor';}, true);
+        Close.Activated:Connect(function() Handle:Complete() end);
+    end;
+    Library.ProgressNotifications[Handle] = true;
+    Handle:Update(Text, Progress);
+    return Handle;
+end;
+
 function Library:NotifyGamesense(Text, Time)
     local XSize, YSize = Library:GetTextBounds(Text, Library.Font, 13);
 
@@ -6466,6 +6550,8 @@ function Library:NotifyGamesense(Text, Time)
     });
 
     TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, XSize + 20, 0, YSize) }):Play();
+
+    Library:AddNotificationBorder(Outer);
 
     task.spawn(function()
         wait(Time or Library.NotifyDuration or 5);
@@ -6519,6 +6605,8 @@ function Library:NotifySimple(Text, Time)
     if Stroke then
         TweenService:Create(Stroke, TweenInfo.new(Din, Enum.EasingStyle.Linear), { Transparency = 0 }):Play();
     end;
+
+    Library:AddNotificationBorder(Label);
 
     task.spawn(function()
         wait(Time or Library.NotifyDuration or 5);
@@ -6584,143 +6672,11 @@ function Library:NotifyGamesensical(Text, Time)
     local D = Library.ReducedMotion and 0 or 0.25;
     TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, XSize + 14, 0, 20) }):Play();
 
+    Library:AddNotificationBorder(Outer);
+
     task.spawn(function()
         wait(Time or Library.NotifyDuration or 5);
         TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, 0, 0, 20) }):Play();
-        wait(D + 0.05);
-        Outer:Destroy();
-    end);
-end;
-
-function Library:NotifyOutline(Text, Time)
-    local XSize, YSize = Library:GetTextBounds(Text, Library.Font, 13);
-    local D = Library.ReducedMotion and 0 or 0.3;
-
-    YSize = 24;
-
-    local Outer = Library:Create('Frame', {
-        BackgroundTransparency = 1;
-        BorderSizePixel = 0;
-        Size = UDim2.new(0, 0, 0, YSize);
-        ClipsDescendants = true;
-        ZIndex = 100;
-        Parent = Library.NotificationArea;
-    });
-
-    local Stroke = Library:Create('UIStroke', {
-        Color = Library.AccentColor;
-        Thickness = 1;
-        Transparency = 0;
-        Parent = Outer;
-    });
-
-    Library:AddToRegistry(Stroke, {
-        Color = 'AccentColor';
-    }, true);
-
-    Library:CreateLabel({
-        Position = UDim2.new(0, 8, 0, 0);
-        Size = UDim2.new(1, -16, 1, 0);
-        Text = Text;
-        TextSize = 13;
-        TextXAlignment = Enum.TextXAlignment.Center;
-        TextTruncate = Enum.TextTruncate.AtEnd;
-        ZIndex = 101;
-        Parent = Outer;
-    });
-
-    TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, XSize + 20, 0, YSize) }):Play();
-
-    task.spawn(function()
-        wait(Time or Library.NotifyDuration or 5);
-        TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, 0, 0, YSize) }):Play();
-        wait(D + 0.05);
-        Outer:Destroy();
-    end);
-end;
-
-function Library:NotifyAccent(Text, Time)
-    local XSize, YSize = Library:GetTextBounds(Text, Library.Font, 13);
-    local D = Library.ReducedMotion and 0 or 0.3;
-
-    YSize = 24;
-
-    local Outer = Library:Create('Frame', {
-        BorderColor3 = Color3.new(0, 0, 0);
-        Size = UDim2.new(0, 0, 0, YSize);
-        ClipsDescendants = true;
-        ZIndex = 100;
-        Parent = Library.NotificationArea;
-    });
-
-    Library:Create('Frame', {
-        BackgroundColor3 = Library.AccentColor;
-        BorderSizePixel = 0;
-        Size = UDim2.new(1, 0, 1, 0);
-        ZIndex = 101;
-        Parent = Outer;
-    });
-
-    local Label = Library:CreateLabel({
-        Position = UDim2.new(0, 8, 0, 0);
-        Size = UDim2.new(1, -16, 1, 0);
-        Text = Text;
-        TextSize = 13;
-        TextXAlignment = Enum.TextXAlignment.Center;
-        TextTruncate = Enum.TextTruncate.AtEnd;
-        ZIndex = 102;
-        Parent = Outer;
-    });
-
-    Library:RemoveFromRegistry(Label);
-    Label.TextColor3 = Color3.new(0, 0, 0);
-
-    TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, XSize + 20, 0, YSize) }):Play();
-
-    task.spawn(function()
-        wait(Time or Library.NotifyDuration or 5);
-        TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, 0, 0, YSize) }):Play();
-        wait(D + 0.05);
-        Outer:Destroy();
-    end);
-end;
-
-function Library:NotifyCompact(Text, Time)
-    local XSize = Library:GetTextBounds(Text, Library.Font, 12);
-    local D = Library.ReducedMotion and 0 or 0.2;
-
-    local Outer = Library:Create('Frame', {
-        BorderColor3 = Color3.new(0, 0, 0);
-        Size = UDim2.new(0, 0, 0, 18);
-        ClipsDescendants = true;
-        ZIndex = 100;
-        Parent = Library.NotificationArea;
-    });
-
-    Library:Create('Frame', {
-        BackgroundColor3 = Color3.fromRGB(24, 24, 24);
-        BorderSizePixel = 0;
-        Size = UDim2.new(1, 0, 1, 0);
-        ZIndex = 101;
-        Parent = Outer;
-    });
-
-    Library:CreateLabel({
-        Position = UDim2.new(0, 4, 0, 0);
-        Size = UDim2.new(1, -8, 1, 0);
-        Text = Text;
-        TextSize = 12;
-        TextXAlignment = Enum.TextXAlignment.Center;
-        TextTruncate = Enum.TextTruncate.AtEnd;
-        ZIndex = 102;
-        Parent = Outer;
-    });
-
-    TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, XSize + 12, 0, 18) }):Play();
-
-    task.spawn(function()
-        wait(Time or Library.NotifyDuration or 5);
-        TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, 0, 0, 18) }):Play();
         wait(D + 0.05);
         Outer:Destroy();
     end);
@@ -6735,12 +6691,8 @@ function Library:Notify(Text, Time)
         return Library:NotifySimple(Text, Time);
     elseif Style == 'Gamesensical' then
         return Library:NotifyGamesensical(Text, Time);
-    elseif Style == 'Outline' then
-        return Library:NotifyOutline(Text, Time);
-    elseif Style == 'Accent' then
-        return Library:NotifyAccent(Text, Time);
-    elseif Style == 'Compact' then
-        return Library:NotifyCompact(Text, Time);
+    elseif Style == 'Progress' then
+        return Library:NotifyProgress(Text, nil, true);
     end;
 
     local XSize, YSize = Library:GetTextBounds(Text, Library.Font, 14);
@@ -6823,6 +6775,8 @@ function Library:Notify(Text, Time)
     }, true);
 
     TweenService:Create(NotifyOuter, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, XSize + 8 + 4, 0, YSize) }):Play();
+
+    Library:AddNotificationBorder(NotifyOuter);
 
     task.spawn(function()
         wait(Time or Library.NotifyDuration or 5);
@@ -8195,6 +8149,62 @@ function Library:CreateWindow(...)
         return Text;
     end;
 
+    local TitleEditor = Library:Create('TextBox', {
+        Name = 'TitleEditor';
+        BackgroundColor3 = Library.MainColor;
+        BorderSizePixel = 0;
+        Position = WindowLabel.Position;
+        Size = WindowLabel.Size;
+        Font = Enum.Font.GothamBold;
+        TextSize = WindowLabel.TextSize;
+        TextColor3 = Library.FontColor;
+        Text = '';
+        ClearTextOnFocus = false;
+        Visible = false;
+        ZIndex = 15;
+        Parent = Inner;
+    });
+    Library:AddToRegistry(TitleEditor, {BackgroundColor3 = 'MainColor'; TextColor3 = 'FontColor';});
+    WindowLabel.Active = true;
+    local LastTitleClick = -math.huge;
+    local LastTitlePosition;
+    local CancelTitleEdit = false;
+    WindowLabel.InputBegan:Connect(function(Input)
+        if not Library:IsClickInput(Input) or Library:MouseIsOverOpenedFrame() then return end;
+        local Now, P = os.clock(), Input.Position;
+        local Nearby = LastTitlePosition and math.abs(P.X - LastTitlePosition.X) + math.abs(P.Y - LastTitlePosition.Y) <= 6;
+        if Nearby and Now - LastTitleClick <= 0.35 then
+            Library:ConsumeInput(Input);
+            LastTitleClick = -math.huge;
+            CancelTitleEdit = false;
+            TitleEditor.Text = WindowLabel.Text;
+            TitleEditor.Visible = true;
+            WindowLabel.Visible = false;
+            TitleEditor:CaptureFocus();
+            TitleEditor.CursorPosition = #TitleEditor.Text + 1;
+            TitleEditor.SelectionStart = 1;
+        else
+            LastTitleClick, LastTitlePosition = Now, P;
+        end;
+    end);
+    Library:GiveSignal(InputService.InputBegan:Connect(function(Input)
+        if TitleEditor:IsFocused() and Input.KeyCode == Enum.KeyCode.Escape then
+            CancelTitleEdit = true;
+            TitleEditor:ReleaseFocus();
+        end;
+    end));
+    TitleEditor.FocusLost:Connect(function()
+        if not TitleEditor.Visible then return end;
+        TitleEditor.Visible = false;
+        WindowLabel.Visible = true;
+        if not CancelTitleEdit then
+            local Text = Window:SetWindowTitle(TitleEditor.Text);
+            if Options.ui_window_title then Options.ui_window_title:SetValue(Text) end;
+            Library:AttemptSave();
+        end;
+        CancelTitleEdit = false;
+    end);
+
     function Window:AddTab(Name)
         local Tab = {
             Groupboxes = {};
@@ -8511,7 +8521,7 @@ function Library:CreateWindow(...)
                 end);
 
                 Groupbox:AddDropdown('NotificationStyle', {
-                    Values = { 'Default', 'Gamesense', 'Simple', 'Gamesensical', 'Outline', 'Accent', 'Compact' };
+                    Values = { 'Default', 'Gamesense', 'Simple', 'Gamesensical', 'Progress' };
                     Default = Library.NotificationStyle or 'Default';
                     Text = 'Notification Style';
                     Callback = function(Value)
@@ -8780,7 +8790,7 @@ function Library:CreateWindow(...)
         end;
 
         TabButton.InputBegan:Connect(function(Input)
-            if Library:IsClickInput(Input) then
+            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
                 Tab:ShowTab();
             end;
         end);
