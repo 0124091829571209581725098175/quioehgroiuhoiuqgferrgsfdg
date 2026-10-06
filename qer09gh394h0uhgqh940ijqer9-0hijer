@@ -247,9 +247,24 @@ function Library:ApplyTextStroke(Inst)
 end;
 
 Library.ControlTweens = {};
+Library.ControlTweenGoals = {};
 function Library:AnimateControl(Target, Properties)
     local Previous = Library.ControlTweens[Target];
+    local Goal = Library.ControlTweenGoals[Target];
+    if Previous and Goal and not Library.ReducedMotion then
+        local SameGoal = true;
+        for Property, Value in pairs(Properties) do
+            if Goal[Property] ~= Value then SameGoal = false; break end;
+        end;
+        if SameGoal then
+            for Property in pairs(Goal) do
+                if Properties[Property] == nil then SameGoal = false; break end;
+            end;
+        end;
+        if SameGoal then return end;
+    end;
     if Previous then Previous:Cancel(); Library.ControlTweens[Target] = nil end;
+    Library.ControlTweenGoals[Target] = nil;
     local Changed = false;
     for Property, Value in pairs(Properties) do
         if Target[Property] ~= Value then Changed = true; break end;
@@ -261,8 +276,12 @@ function Library:AnimateControl(Target, Properties)
     end;
     local Tween = TweenService:Create(Target, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), Properties);
     Library.ControlTweens[Target] = Tween;
+    Library.ControlTweenGoals[Target] = table.clone(Properties);
     Tween.Completed:Once(function()
-        if Library.ControlTweens[Target] == Tween then Library.ControlTweens[Target] = nil end;
+        if Library.ControlTweens[Target] == Tween then
+            Library.ControlTweens[Target] = nil;
+            Library.ControlTweenGoals[Target] = nil;
+        end;
     end);
     Tween:Play();
 end;
@@ -317,6 +336,7 @@ function Library:StyleControl(Outer, Inner, Radius, Region)
     Inner.Destroying:Connect(function()
         local Tween = Library.ControlTweens[Stroke];
         if Tween then Tween:Cancel(); Library.ControlTweens[Stroke] = nil end;
+        Library.ControlTweenGoals[Stroke] = nil;
     end);
     UpdateColor();
     return Stroke;
@@ -789,6 +809,7 @@ end
 function Library:Unload()
     Library.Unloaded = true;
     for Target, Tween in pairs(Library.ControlTweens) do Tween:Cancel(); Library.ControlTweens[Target] = nil end;
+    table.clear(Library.ControlTweenGoals);
     if Library.NeonConnection then Library.NeonConnection:Disconnect(); Library.NeonConnection = nil end;
     table.clear(Library.NeonBorders);
     -- Unload all of the signals
@@ -2631,6 +2652,7 @@ do
 
         local Box = Library:Create('TextBox', {
             BackgroundTransparency = 1;
+            ClearTextOnFocus = false;
 
             Position = UDim2.fromOffset(0, 0),
             Size = UDim2.fromScale(5, 1),
@@ -2671,7 +2693,7 @@ do
 
         if Textbox.Finished then
             Box.FocusLost:Connect(function(enter)
-                if not enter then return end
+                if not enter and not Info.CommitOnBlur then return end
 
                 Textbox:SetValue(Box.Text);
                 Library:AttemptSave();
@@ -3538,18 +3560,23 @@ do
             Parent = ScreenGui;
         });
 
+        local ListHeight = MAX_DROPDOWN_ITEMS * 20 + 2;
         local function RecalculateListPosition()
-            ListOuter.Position = UDim2.fromOffset(DropdownOuter.AbsolutePosition.X, DropdownOuter.AbsolutePosition.Y + DropdownOuter.Size.Y.Offset + 1);
+            local Position, Size = Library:GetDropdownLayout(DropdownOuter.AbsolutePosition - ScreenGui.AbsolutePosition, DropdownOuter.AbsoluteSize, ListHeight, ScreenGui.AbsoluteSize);
+            ListOuter.Position = Position;
+            ListOuter.Size = Size;
         end;
 
         local function RecalculateListSize(YSize)
-            ListOuter.Size = UDim2.fromOffset(DropdownOuter.AbsoluteSize.X, YSize or (MAX_DROPDOWN_ITEMS * 20 + 2))
+            ListHeight = YSize or ListHeight;
+            RecalculateListPosition();
         end;
 
         RecalculateListPosition();
         RecalculateListSize();
 
         DropdownOuter:GetPropertyChangedSignal('AbsolutePosition'):Connect(RecalculateListPosition);
+        DropdownOuter:GetPropertyChangedSignal('AbsoluteSize'):Connect(RecalculateListPosition);
 
         local ListInner = Library:Create('Frame', {
             BackgroundColor3 = Library.MainColor;
@@ -3594,17 +3621,21 @@ do
         });
 
         local RefreshCustomBox;
+        local Buttons = {};
+        local BuiltValues = {};
 
         function Dropdown:Display()
+            for _, Button in pairs(Buttons) do Button:UpdateButton() end;
             local Values = Dropdown.Values;
             local Str = '';
             if Info.Multi then
+                local SelectedValues = {};
                 for Idx, Value in next, Values do
                     if Dropdown.Value[Value] then
-                        Str = Str .. Value .. ', ';
+                        SelectedValues[#SelectedValues + 1] = tostring(Value);
                     end;
                 end;
-                Str = Str:sub(1, #Str - 2);
+                Str = table.concat(SelectedValues, ', ');
             else
                 Str = Dropdown.Value or '';
             end;
@@ -3726,7 +3757,8 @@ do
 
         function Dropdown:BuildDropdownList()
             local Values = Dropdown.Values;
-            local Buttons = {};
+            table.clear(Buttons);
+            BuiltValues = table.clone(Values);
 
             for _, Element in next, Scrolling:GetChildren() do
                 if not Element:IsA('UIListLayout') then
@@ -3746,6 +3778,7 @@ do
                     BorderColor3 = Library.OutlineColor;
                     BorderMode = Enum.BorderMode.Middle;
                     Size = UDim2.new(1, -1, 0, 20);
+                    LayoutOrder = Count;
                     ZIndex = 23;
                     Active = true,
                     Parent = Scrolling;
@@ -3763,6 +3796,7 @@ do
                     TextSize = 14;
                     Text = Value;
                     TextXAlignment = Enum.TextXAlignment.Left;
+                    TextTruncate = Enum.TextTruncate.AtEnd;
                     ZIndex = 25;
                     Parent = Button;
                 });
@@ -3826,13 +3860,10 @@ do
                                     Dropdown.Value = nil;
                                 end;
 
-                                for _, OtherButton in next, Buttons do
-                                    OtherButton:UpdateButton();
-                                end;
                             end;
 
-                            Table:UpdateButton();
                             Dropdown:Display();
+                            if not Info.Multi then Dropdown:CloseDropdown() end;
 
                             Library:SafeCallback(Dropdown.Callback, Dropdown.Value);
                             Library:SafeCallback(Dropdown.Changed, Dropdown.Value);
@@ -3843,7 +3874,6 @@ do
                 end);
 
                 Table:UpdateButton();
-                Dropdown:Display();
 
                 Buttons[Button] = Table;
             end;
@@ -3852,17 +3882,26 @@ do
 
             local Y = math.clamp(Count * 20, 0, MAX_DROPDOWN_ITEMS * 20) + 1;
             RecalculateListSize(Y);
+            Dropdown:Display();
         end;
 
         function Dropdown:SetValues(NewValues)
             if NewValues then
                 Dropdown.Values = NewValues;
+                local Unchanged = #NewValues == #BuiltValues;
+                if Unchanged then
+                    for Index, Value in ipairs(NewValues) do
+                        if BuiltValues[Index] ~= Value then Unchanged = false; break end;
+                    end;
+                end;
+                if Unchanged then Dropdown:Display(); return end;
             end;
 
             Dropdown:BuildDropdownList();
         end;
 
         function Dropdown:OpenDropdown()
+            RecalculateListPosition();
             ListOuter.Visible = true;
             Library.OpenedFrames[ListOuter] = true;
             Library:AnimateControl(DropdownArrow, {Rotation = 180});
@@ -3907,7 +3946,7 @@ do
                     end
                 end;
             end;
-            Dropdown:BuildDropdownList();
+            Dropdown:Display();
             Library:SafeCallback(Dropdown.Callback, Dropdown.Value);
             Library:SafeCallback(Dropdown.Changed, Dropdown.Value);
         end;
@@ -3923,13 +3962,13 @@ do
         end);
 
         Library:GiveSignal(InputService.InputBegan:Connect(function(Input)
-            if Library:IsClickInput(Input) then
+            if ListOuter.Visible and Library:IsClickInput(Input) then
                 local AbsPos, AbsSize = ListOuter.AbsolutePosition, ListOuter.AbsoluteSize;
+                local ButtonPos, ButtonSize = DropdownOuter.AbsolutePosition, DropdownOuter.AbsoluteSize;
                 local P = Input.Position;
-
-                if P.X < AbsPos.X or P.X > AbsPos.X + AbsSize.X
-                    or P.Y < (AbsPos.Y - 20 - 1) or P.Y > AbsPos.Y + AbsSize.Y then
-
+                local OverList = P.X >= AbsPos.X and P.X <= AbsPos.X + AbsSize.X and P.Y >= AbsPos.Y and P.Y <= AbsPos.Y + AbsSize.Y;
+                local OverButton = P.X >= ButtonPos.X and P.X <= ButtonPos.X + ButtonSize.X and P.Y >= ButtonPos.Y and P.Y <= ButtonPos.Y + ButtonSize.Y;
+                if not OverList and not OverButton then
                     Dropdown:CloseDropdown();
                 end;
             end;
@@ -3968,7 +4007,6 @@ do
                 if (not Info.Multi) then break end
             end
 
-            Dropdown:BuildDropdownList();
             Dropdown:Display();
         end
 
@@ -7810,6 +7848,16 @@ function Library:BuildCustomPanels(Window, TabContainer)
         end
     end)
 end
+function Library:GetDropdownLayout(Position, ControlSize, RequestedHeight, Viewport)
+    local Width = math.min(math.max(0, ControlSize.X), math.max(0, Viewport.X - 16));
+    local Height = math.min(math.max(1, RequestedHeight), math.max(1, Viewport.Y - 16));
+    local X = math.clamp(Position.X, 8, math.max(8, Viewport.X - Width - 8));
+    local Y = Position.Y + ControlSize.Y + 4;
+    local Above = Position.Y - Height - 4;
+    if Y + Height > Viewport.Y - 8 and Above >= 8 then Y = Above end;
+    Y = math.clamp(Y, 8, math.max(8, Viewport.Y - Height - 8));
+    return UDim2.fromOffset(X, Y), UDim2.fromOffset(Width, Height);
+end;
 function Library:CalculateTabWidths(AvailableWidth, NaturalWidths, RequestedPadding)
     local Count = #NaturalWidths;
     if Count == 0 then return {}, 0 end;
@@ -7871,6 +7919,7 @@ function Library:CreateWindow(...)
     local Window = {
         Tabs = {};
         TabSequence = 0;
+        Title = Config.Title;
     };
 
     local Outer = Library:Create('Frame', {
@@ -7904,10 +7953,11 @@ function Library:CreateWindow(...)
     });
 
     local WindowLabel = Library:CreateLabel({
-        Position = UDim2.new(0, 0, 0, 0);
-        Size = UDim2.new(1, 0, 0, 25);
+        Position = UDim2.new(0, 12, 0, 0);
+        Size = UDim2.new(1, -24, 0, 25);
         Text = Config.Title or '';
         TextXAlignment = Enum.TextXAlignment.Center;
+        TextTruncate = Enum.TextTruncate.AtEnd;
         ZIndex = 1;
         Parent = Inner;
     });
@@ -7919,15 +7969,16 @@ function Library:CreateWindow(...)
     local TitleGradient = Library:Create('UIGradient', {
         Color = ColorSequence.new({
             ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
-            ColorSequenceKeypoint.new(0.5, Color3.new(0, 0, 0)),
+            ColorSequenceKeypoint.new(0.5, Color3.new(0.55, 0.55, 0.55)),
             ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1))
         });
         Parent = WindowLabel;
     });
 
     Library:GiveSignal(RenderStepped:Connect(function()
+        if not Outer.Visible then return end;
         if Library.ReducedMotion then
-            TitleGradient.Offset = Vector2.new(0.5, 0);
+            if TitleGradient.Offset ~= Vector2.new(0.5, 0) then TitleGradient.Offset = Vector2.new(0.5, 0) end;
             return;
         end;
 
@@ -8135,10 +8186,13 @@ function Library:CreateWindow(...)
 
     Library:BuildCustomPanels(Window, TabContainer)
     function Window:SetWindowTitle(Title)
-        WindowLabel.Text = Title;
-        WindowLabel.Position = UDim2.new(0, 0, 0, 0);
-        WindowLabel.Size = UDim2.new(1, 0, 0, 25);
-        WindowLabel.TextXAlignment = Enum.TextXAlignment.Center;
+        local Text = tostring(Title or ''):gsub('%c', ''):match('^%s*(.-)%s*$');
+        local Length = utf8.len(Text);
+        if not Length or Length == 0 then Text = Config.Title
+        elseif Length > 64 then Text = Text:sub(1, utf8.offset(Text, 65) - 1) end;
+        Window.Title = Text;
+        WindowLabel.Text = Text;
+        return Text;
     end;
 
     function Window:AddTab(Name)
