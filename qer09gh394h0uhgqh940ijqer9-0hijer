@@ -284,9 +284,13 @@ function Library:StyleControl(Outer, Inner, Radius, Region)
         Parent = Inner;
     });
     local Hovered, Focused, Pressed = false, false, false;
-    local function UpdateColor()
+    local function CurrentColor()
         local IdleColor = Inner.BorderColor3 == Library.Black and Library.OutlineColor or Inner.BorderColor3;
-        Stroke.Color = (Hovered or Focused or Outer.BorderColor3 == Library.AccentColor) and Library.AccentColor or IdleColor;
+        return (Hovered or Focused or Outer.BorderColor3 == Library.AccentColor) and Library.AccentColor or IdleColor;
+    end;
+    Library:AddToRegistry(Stroke, {Color = CurrentColor;});
+    local function UpdateColor()
+        Stroke.Color = CurrentColor();
     end;
     local function UpdateInteraction()
         UpdateColor();
@@ -478,7 +482,7 @@ function Library:CreateNeonBorder(Holder, ZIndex)
         BackgroundTransparency = 1;
         BorderSizePixel = 0;
         Size = UDim2.fromScale(1, 1);
-        ZIndex = ZIndex or 80;
+        ZIndex = ZIndex or 10;
         Parent = Holder;
     });
     local Base = Library:Create('UIStroke', {
@@ -888,7 +892,7 @@ do
             BorderMode = Enum.BorderMode.Inset;
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 16;
-Parent = PickerFrameOuter;
+            Parent = PickerFrameOuter;
         });
         Library:StyleControl(PickerFrameOuter, PickerFrameInner, 4);
 
@@ -983,7 +987,7 @@ Parent = PickerFrameOuter;
             BorderMode = Enum.BorderMode.Inset;
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 18,
-Parent = HueBoxOuter;
+            Parent = HueBoxOuter;
         });
         Library:StyleControl(HueBoxOuter, HueBoxInner, 4);
 
@@ -1041,7 +1045,7 @@ Parent = HueBoxOuter;
             BorderMode = Enum.BorderMode.Inset;
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 20;
-Parent = ChromaOuter;
+            Parent = ChromaOuter;
         });
         Library:StyleControl(ChromaOuter, ChromaInner, 4);
 
@@ -1084,7 +1088,7 @@ Parent = ChromaOuter;
             BorderMode = Enum.BorderMode.Inset;
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 19;
-Parent = TransOuter;
+            Parent = TransOuter;
         });
         Library:StyleControl(TransOuter, TransInner, 4);
 
@@ -1129,7 +1133,7 @@ Parent = TransOuter;
             BorderMode = Enum.BorderMode.Inset;
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 19;
-Parent = SpeedOuter;
+            Parent = SpeedOuter;
         });
         Library:StyleControl(SpeedOuter, SpeedInner, 4);
 
@@ -1786,7 +1790,7 @@ Parent = SpeedOuter;
             BorderMode = Enum.BorderMode.Inset;
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 7;
-Parent = PickOuter;
+            Parent = PickOuter;
         });
         Library:StyleControl(PickOuter, PickInner, 4);
 
@@ -1823,7 +1827,7 @@ Parent = PickOuter;
             BorderMode = Enum.BorderMode.Inset;
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 15;
-Parent = ModeSelectOuter;
+            Parent = ModeSelectOuter;
         });
         Library:StyleControl(ModeSelectOuter, ModeSelectInner, 4);
 
@@ -2181,7 +2185,7 @@ Parent = ModeSelectOuter;
             BorderMode = Enum.BorderMode.Inset;
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 7;
-Parent = ButtonOuter;
+            Parent = ButtonOuter;
         });
         Library:StyleControl(ButtonOuter, ButtonInner, 4);
 
@@ -2351,13 +2355,16 @@ do
                 BorderMode = Enum.BorderMode.Inset;
                 Size = UDim2.new(1, 0, 1, 0);
                 ZIndex = 6;
-Parent = Outer;
+                Parent = Outer;
             });
             Library:StyleControl(Outer, Inner, 4);
 
             local Label = Library:CreateLabel({
-                Size = UDim2.new(1, 0, 1, 0);
+                Position = UDim2.new(0, 6, 0, 0);
+                Size = UDim2.new(1, -12, 1, 0);
                 TextSize = 14;
+                TextWrapped = false;
+                TextTruncate = Enum.TextTruncate.AtEnd;
                 Text = Button.Text;
                 ZIndex = 6;
                 Parent = Inner;
@@ -2392,19 +2399,22 @@ Parent = Outer;
         local function InitEvents(Button)
             local function WaitForEvent(event, timeout, validator)
                 local bindable = Instance.new('BindableEvent')
+                local finished = false
+                local function Resolve(value)
+                    if finished then return end
+                    finished = true
+                    bindable:Fire(value)
+                end
                 local connection = event:Once(function(...)
-
-                    if type(validator) == 'function' and validator(...) then
-                        bindable:Fire(true)
-                    else
-                        bindable:Fire(false)
-                    end
+                    Resolve(type(validator) == 'function' and validator(...) or false)
                 end)
                 task.delay(timeout, function()
-                    connection:disconnect()
-                    bindable:Fire(false)
+                    Resolve(false)
                 end)
-                return bindable.Event:Wait()
+                local result = bindable.Event:Wait()
+                connection:Disconnect()
+                bindable:Destroy()
+                return result
             end
 
             local function ValidateClick(Input)
@@ -2474,7 +2484,7 @@ Parent = Outer;
             SubButton.Outer, SubButton.Inner, SubButton.Label = CreateBaseButton(SubButton)
 
             SubButton.Outer.Position = UDim2.new(1, 3, 0, 0)
-            SubButton.Outer.Size = UDim2.fromOffset(self.Outer.AbsoluteSize.X - 2, self.Outer.AbsoluteSize.Y)
+            SubButton.Outer.Size = UDim2.fromScale(1, 1)
             SubButton.Outer.Parent = self.Outer
 
             function SubButton:AddTooltip(tooltip)
@@ -2525,7 +2535,7 @@ Parent = Outer;
             BorderMode = Enum.BorderMode.Inset;
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 6;
-Parent = DividerOuter;
+            Parent = DividerOuter;
         });
         Library:StyleControl(DividerOuter, DividerInner, 4);
 
@@ -2581,7 +2591,7 @@ Parent = DividerOuter;
             BorderMode = Enum.BorderMode.Inset;
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 6;
-Parent = TextBoxOuter;
+            Parent = TextBoxOuter;
         });
         Library:StyleControl(TextBoxOuter, TextBoxInner, 4);
 
@@ -2747,8 +2757,9 @@ Parent = TextBoxOuter;
 
         local ToggleOuter = Library:Create('Frame', {
             BackgroundColor3 = Color3.new(0, 0, 0);
+            BackgroundTransparency = 1;
             BorderColor3 = Color3.new(0, 0, 0);
-            Size = UDim2.new(0, 26, 0, 14);
+            Size = UDim2.new(1, -4, 0, 14);
             ZIndex = 5;
             Parent = Container;
         });
@@ -2761,7 +2772,7 @@ Parent = TextBoxOuter;
             BackgroundColor3 = Library.MainColor;
             BorderColor3 = Library.OutlineColor;
             BorderMode = Enum.BorderMode.Inset;
-            Size = UDim2.new(1, 0, 1, 0);
+            Size = UDim2.new(0, 26, 1, 0);
             ZIndex = 6;
             Parent = ToggleOuter;
         });
@@ -2772,16 +2783,35 @@ Parent = TextBoxOuter;
         });
 
         local ToggleLabel = Library:CreateLabel({
-            Size = UDim2.new(0, 203, 1, 0);
-            Position = UDim2.new(1, 6, 0, 0);
+            Size = UDim2.new(1, -32, 1, 0);
+            Position = UDim2.new(0, 32, 0, 0);
+            TextTransparency = 1;
+            ClipsDescendants = true;
             TextSize = 14;
             Text = Info.Text;
             TextXAlignment = Enum.TextXAlignment.Left;
             ZIndex = 6;
-            Parent = ToggleInner;
+            Parent = ToggleOuter;
         });
-
-        Library:Create('UIListLayout', {
+        for _, Child in ipairs(ToggleLabel:GetChildren()) do
+            if Child:IsA('UIStroke') then Child.Transparency = 1 end;
+        end;
+        local ToggleText = Library:CreateLabel({
+            Size = UDim2.new(1, -32, 1, 0);
+            Position = UDim2.new(0, 32, 0, 0);
+            Text = Info.Text;
+            TextSize = 14;
+            TextWrapped = false;
+            TextTruncate = Enum.TextTruncate.AtEnd;
+            TextXAlignment = Enum.TextXAlignment.Left;
+            ZIndex = 6;
+            Parent = ToggleOuter;
+        });
+        Library.RegistryMap[ToggleText].Properties.TextColor3 = function() return ToggleLabel.TextColor3 end;
+        for _, Property in ipairs({'Text', 'TextColor3', 'Font', 'TextSize'}) do
+            ToggleLabel:GetPropertyChangedSignal(Property):Connect(function() ToggleText[Property] = ToggleLabel[Property] end);
+        end;
+        local AddonLayout = Library:Create('UIListLayout', {
             Padding = UDim.new(0, 4);
             FillDirection = Enum.FillDirection.Horizontal;
             HorizontalAlignment = Enum.HorizontalAlignment.Right;
@@ -2791,10 +2821,21 @@ Parent = TextBoxOuter;
 
         local ToggleRegion = Library:Create('Frame', {
             BackgroundTransparency = 1;
-            Size = UDim2.new(0, 170, 1, 0);
+            Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 8;
             Parent = ToggleOuter;
         });
+        local function UpdateToggleLayout()
+            local Scale = math.max(ToggleOuter.AbsoluteSize.Y / 14, 0.01);
+            local Width = ToggleOuter.AbsoluteSize.X / Scale;
+            local AddonWidth = AddonLayout.AbsoluteContentSize.X / Scale;
+            local Reserved = AddonWidth > 0 and math.ceil(AddonWidth) + 6 or 0;
+            ToggleText.Size = UDim2.new(0, math.max(0, Width - 32 - Reserved), 1, 0);
+            ToggleRegion.Size = UDim2.new(0, math.min(Width, math.max(26, Width - Reserved)), 1, 0);
+        end;
+        ToggleOuter:GetPropertyChangedSignal('AbsoluteSize'):Connect(UpdateToggleLayout);
+        AddonLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(UpdateToggleLayout);
+        task.defer(function() if ToggleOuter.Parent then UpdateToggleLayout() end end);
         Library:StyleControl(ToggleOuter, ToggleInner, 7, ToggleRegion);
         local ToggleThumb = Library:Create('Frame', {
             Name = 'SwitchThumb';
@@ -2901,6 +2942,7 @@ Parent = TextBoxOuter;
         Groupbox:Resize();
 
         Toggle.TextLabel = ToggleLabel;
+        Toggle.VisualTextLabel = ToggleText;
         Toggle.Container = Container;
         setmetatable(Toggle, BaseAddons);
 
@@ -2977,6 +3019,14 @@ Parent = TextBoxOuter;
             BorderColor3 = 'OutlineColor';
         });
 
+        local function GetTrackWidth()
+            local Width = SliderInner.AbsoluteSize.X;
+            if Width > 0 then Slider.MaxSize = Width end;
+            return Slider.MaxSize;
+        end;
+        SliderInner:GetPropertyChangedSignal('AbsoluteSize'):Connect(GetTrackWidth);
+        GetTrackWidth();
+
         local Fill = Library:Create('Frame', {
             BackgroundColor3 = Library.AccentColor;
             BorderColor3 = Library.AccentColorDark;
@@ -3038,10 +3088,10 @@ Parent = TextBoxOuter;
                 DisplayLabel.Text = string.format('%s/%s', Slider.Value .. Suffix, Slider.Max .. Suffix);
             end
 
-            local X = math.ceil(Library:MapValue(Slider.Value, Slider.Min, Slider.Max, 0, Slider.MaxSize));
-            Fill.Size = UDim2.new(0, X, 1, 0);
+            local Ratio = math.clamp(Library:MapValue(Slider.Value, Slider.Min, Slider.Max, 0, 1), 0, 1);
+            Fill.Size = UDim2.fromScale(Ratio, 1);
 
-            HideBorderRight.Visible = not (X == Slider.MaxSize or X == 0);
+            HideBorderRight.Visible = Ratio > 0 and Ratio < 1;
         end;
 
         function Slider:OnChanged(Func)
@@ -3059,7 +3109,7 @@ Parent = TextBoxOuter;
         end;
 
         function Slider:GetValueFromXOffset(X)
-            return Round(Library:MapValue(X, 0, Slider.MaxSize, Slider.Min, Slider.Max));
+            return Round(Library:MapValue(X, 0, GetTrackWidth(), Slider.Min, Slider.Max));
         end;
 
         function Slider:SetValue(Str)
@@ -3080,15 +3130,12 @@ Parent = TextBoxOuter;
 
         SliderInner.InputBegan:Connect(function(Input)
             if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
-                local mPos = Input.Position.X;
-                local gPos = Fill.Size.X.Offset;
-                local Diff = mPos - (Fill.AbsolutePosition.X + gPos);
                 local GetTouch, StopTouch = Library:TrackTouch(Input);
 
                 while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or GetTouch() ~= nil do
                     local Active = GetTouch();
                     local nMPos = Active and Active.Position.X or Mouse.X;
-                    local nX = math.clamp(gPos + (nMPos - mPos) + Diff, 0, Slider.MaxSize);
+                    local nX = math.clamp(nMPos - SliderInner.AbsolutePosition.X, 0, GetTrackWidth());
 
                     local nValue = Slider:GetValueFromXOffset(nX);
                     local OldValue = Slider.Value;
@@ -3164,13 +3211,7 @@ Parent = TextBoxOuter;
             FirstOuter.Parent = Left;
             FirstOuter.Size = UDim2.new(1, 0, 0, 13);
 
-            if Labeled and FirstLabel == nil then
-                FirstOuter.Position = UDim2.new(0, 0, 0, 13);
-            else
-                FirstOuter.Position = UDim2.new(0, 0, 0, 0);
-            end;
-
-            Slider.MaxSize = math.floor(Slider.MaxSize / 2);
+            FirstOuter.Position = UDim2.fromOffset(0, Labeled and 13 or 0);
             Slider:Display();
 
             if not Info.Compact then
@@ -3211,6 +3252,14 @@ Parent = TextBoxOuter;
                 BackgroundColor3 = 'MainColor';
                 BorderColor3 = 'OutlineColor';
             });
+
+            local function GetTrackWidth2()
+                local Width = S2Inner.AbsoluteSize.X;
+                if Width > 0 then Slider2.MaxSize = Width end;
+                return Slider2.MaxSize;
+            end;
+            S2Inner:GetPropertyChangedSignal('AbsoluteSize'):Connect(GetTrackWidth2);
+            GetTrackWidth2();
 
             local S2Fill = Library:Create('Frame', {
                 BackgroundColor3 = Library.AccentColor;
@@ -3273,10 +3322,10 @@ Parent = TextBoxOuter;
                     S2Label.Text = string.format('%s/%s', Slider2.Value .. Suffix, Slider2.Max .. Suffix);
                 end
 
-                local X = math.ceil(Library:MapValue(Slider2.Value, Slider2.Min, Slider2.Max, 0, Slider2.MaxSize));
-                S2Fill.Size = UDim2.new(0, X, 1, 0);
+                local Ratio = math.clamp(Library:MapValue(Slider2.Value, Slider2.Min, Slider2.Max, 0, 1), 0, 1);
+                S2Fill.Size = UDim2.fromScale(Ratio, 1);
 
-                S2Hide.Visible = not (X == Slider2.MaxSize or X == 0);
+                S2Hide.Visible = Ratio > 0 and Ratio < 1;
             end;
 
             function Slider2:OnChanged(Func)
@@ -3293,7 +3342,7 @@ Parent = TextBoxOuter;
             end;
 
             function Slider2:GetValueFromXOffset(X)
-                return Round2(Library:MapValue(X, 0, Slider2.MaxSize, Slider2.Min, Slider2.Max));
+                return Round2(Library:MapValue(X, 0, GetTrackWidth2(), Slider2.Min, Slider2.Max));
             end;
 
             function Slider2:SetValue(Str)
@@ -3314,15 +3363,12 @@ Parent = TextBoxOuter;
 
             S2Inner.InputBegan:Connect(function(Input)
                 if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
-                    local mPos = Input.Position.X;
-                    local gPos = S2Fill.Size.X.Offset;
-                    local Diff = mPos - (S2Fill.AbsolutePosition.X + gPos);
                     local GetTouch, StopTouch = Library:TrackTouch(Input);
 
                     while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or GetTouch() ~= nil do
                         local Active = GetTouch();
                         local nMPos = Active and Active.Position.X or Mouse.X;
-                        local nX = math.clamp(gPos + (nMPos - mPos) + Diff, 0, Slider2.MaxSize);
+                        local nX = math.clamp(nMPos - S2Inner.AbsolutePosition.X, 0, GetTrackWidth2());
 
                         local nValue = Slider2:GetValueFromXOffset(nX);
                         local OldValue = Slider2.Value;
@@ -3433,7 +3479,7 @@ Parent = TextBoxOuter;
             BorderMode = Enum.BorderMode.Inset;
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 6;
-Parent = DropdownOuter;
+            Parent = DropdownOuter;
         });
         Library:StyleControl(DropdownOuter, DropdownInner, 4);
 
@@ -3512,7 +3558,7 @@ Parent = DropdownOuter;
             BorderSizePixel = 0;
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 21;
-Parent = ListOuter;
+            Parent = ListOuter;
         });
         Library:StyleControl(ListOuter, ListInner, 4);
 
@@ -3598,7 +3644,7 @@ Parent = ListOuter;
                 BorderMode = Enum.BorderMode.Inset;
                 Size = UDim2.new(1, 0, 1, 0);
                 ZIndex = 6;
-Parent = CustomOuter;
+                Parent = CustomOuter;
             });
             Library:StyleControl(CustomOuter, CustomInner, 4);
 
@@ -4002,7 +4048,7 @@ Parent = CustomOuter;
             BorderMode = Enum.BorderMode.Inset;
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 6;
-Parent = ListOuter;
+            Parent = ListOuter;
         });
         Library:StyleControl(ListOuter, ListInner, 4);
 
@@ -4035,7 +4081,7 @@ Parent = ListOuter;
             BorderMode = Enum.BorderMode.Inset;
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 7;
-Parent = SearchOuter;
+            Parent = SearchOuter;
         });
         Library:StyleControl(SearchOuter, SearchInner, 4);
 
@@ -4139,7 +4185,7 @@ Parent = SearchOuter;
                 BorderMode = Enum.BorderMode.Inset;
                 Size = UDim2.new(1, 0, 1, 0);
                 ZIndex = 6;
-Parent = CustomOuter;
+                Parent = CustomOuter;
             });
             Library:StyleControl(CustomOuter, CustomInner, 4);
 
@@ -4671,7 +4717,7 @@ do
         BorderMode = Enum.BorderMode.Inset;
         Size = UDim2.new(1, 0, 1, 0);
         ZIndex = 201;
-Parent = WatermarkOuter;
+        Parent = WatermarkOuter;
     });
     Library:StyleControl(WatermarkOuter, WatermarkInner, 4);
 
@@ -4740,7 +4786,7 @@ Parent = WatermarkOuter;
         Position = UDim2.new(0, 0, 0, 0);
         Size = UDim2.new(1, 0, 0, 22);
         ZIndex = 101;
-Parent = KeybindOuter;
+        Parent = KeybindOuter;
     });
     Library:StyleControl(KeybindOuter, KeybindInner, 4);
 
@@ -5085,7 +5131,7 @@ do
         BorderMode = Enum.BorderMode.Inset;
         Size = UDim2.new(1, 0, 1, 0);
         ZIndex = 94;
-Parent = ScanOuter;
+        Parent = ScanOuter;
     });
     Library:StyleControl(ScanOuter, ScanInner, 4);
 
@@ -5223,7 +5269,7 @@ Parent = ScanOuter;
                 BorderMode = Enum.BorderMode.Inset;
                 Size = UDim2.new(1, 0, 1, 0);
                 ZIndex = 95;
-Parent = BOuter;
+                Parent = BOuter;
             });
             Library:StyleControl(BOuter, BInner, 4);
 
@@ -5536,7 +5582,7 @@ Parent = BOuter;
         BorderMode = Enum.BorderMode.Inset;
         Size = UDim2.new(1, 0, 1, 0);
         ZIndex = 93;
-Parent = SearchOuter;
+        Parent = SearchOuter;
     });
     Library:StyleControl(SearchOuter, SearchInner, 4);
 
@@ -5628,7 +5674,7 @@ Parent = SearchOuter;
         BorderMode = Enum.BorderMode.Inset;
         Size = UDim2.new(1, 0, 1, 0);
         ZIndex = 93;
-Parent = JoinOuter;
+        Parent = JoinOuter;
     });
     Library:StyleControl(JoinOuter, JoinInner, 4);
 
@@ -6679,7 +6725,7 @@ function Library:Notify(Text, Time)
         BorderMode = Enum.BorderMode.Inset;
         Size = UDim2.new(1, 0, 1, 0);
         ZIndex = 101;
-Parent = NotifyOuter;
+        Parent = NotifyOuter;
     });
     Library:StyleControl(NotifyOuter, NotifyInner, 4);
 
@@ -7764,6 +7810,25 @@ function Library:BuildCustomPanels(Window, TabContainer)
         end
     end)
 end
+function Library:CalculateTabWidths(AvailableWidth, NaturalWidths, RequestedPadding)
+    local Count = #NaturalWidths;
+    if Count == 0 then return {}, 0 end;
+    local Available = math.max(0, math.floor(AvailableWidth));
+    local Padding = Count > 1 and math.min(math.max(0, math.floor(RequestedPadding or 0)), math.floor(Available * 0.08 / (Count - 1))) or 0;
+    local Budget = math.max(0, Available - Padding * (Count - 1));
+    local Total = 0;
+    for _, Width in ipairs(NaturalWidths) do Total = Total + math.max(1, Width) end;
+    local Widths, Used, Cumulative = {}, 0, 0;
+    for Index, Width in ipairs(NaturalWidths) do
+        local Natural = math.max(1, Width);
+        local Share = Total <= Budget and (Natural + (Budget - Total) / Count) or (Natural / Total * Budget);
+        Cumulative = Cumulative + Share;
+        local Edge = Index == Count and Budget or math.min(Budget, math.floor(Cumulative));
+        Widths[Index] = math.max(0, Edge - Used);
+        Used = Edge;
+    end;
+    return Widths, Padding;
+end;
 function Library:CreateWindow(...)
     local Arguments = { ... }
     local Config = { AnchorPoint = Vector2.zero }
@@ -7805,6 +7870,7 @@ function Library:CreateWindow(...)
 
     local Window = {
         Tabs = {};
+        TabSequence = 0;
     };
 
     local Outer = Library:Create('Frame', {
@@ -7992,7 +8058,7 @@ function Library:CreateWindow(...)
         Position = UDim2.new(0, 0, 0, 0);
         Size = UDim2.new(1, 0, 1, 0);
         ZIndex = 1;
-Parent = MainSectionOuter;
+        Parent = MainSectionOuter;
     });
     Library:StyleControl(MainSectionOuter, MainSectionInner, 4);
 
@@ -8002,6 +8068,7 @@ Parent = MainSectionOuter;
 
     local TabArea = Library:Create('Frame', {
         BackgroundTransparency = 1;
+        ClipsDescendants = true;
         Position = UDim2.new(0, 8, 0, 8);
         Size = UDim2.new(1, -16, 0, 21);
         ZIndex = 1;
@@ -8014,6 +8081,45 @@ Parent = MainSectionOuter;
         SortOrder = Enum.SortOrder.LayoutOrder;
         Parent = TabArea;
     });
+    local TabLayoutPending = false;
+    local function ReflowTabs()
+        if not Outer.Parent or Library.Unloaded then return end;
+        local VisibleTabs, NaturalWidths = {}, {};
+        for _, Tab in pairs(Window.Tabs) do
+            if Tab.TabButton.Parent == TabArea and Tab.TabButton.Visible then
+                VisibleTabs[#VisibleTabs + 1] = Tab;
+            end;
+        end;
+        table.sort(VisibleTabs, function(A, B)
+            local AOrder, BOrder = A.TabButton.LayoutOrder, B.TabButton.LayoutOrder;
+            return AOrder == BOrder and A.Sequence < B.Sequence or AOrder < BOrder;
+        end);
+        for Index, Tab in ipairs(VisibleTabs) do
+            local Label = Tab.TextLabel;
+            local Width = Library:GetTextBounds(Label.Text, Label.Font, 14);
+            Tab.TabButtonWidth = Width;
+            NaturalWidths[Index] = Width + 20;
+        end;
+        local Scale = Window.ScaleObject and Window.ScaleObject.Scale or 1;
+        local Available = TabArea.AbsoluteSize.X / math.max(Scale, 0.01);
+        local Widths, Padding = Library:CalculateTabWidths(Available, NaturalWidths, Config.TabPadding);
+        TabListLayout.Padding = UDim.new(0, Padding);
+        for Index, Tab in ipairs(VisibleTabs) do
+            local Width = Widths[Index];
+            Tab.TabButton.Size = UDim2.new(0, Width, 1, 0);
+            Tab.TextLabel.TextSize = math.clamp(math.floor(14 * math.max(0, Width - 12) / math.max(Tab.TabButtonWidth, 1)), 11, 14);
+        end;
+    end;
+    local function QueueTabLayout()
+        if TabLayoutPending or Library.Unloaded then return end;
+        TabLayoutPending = true;
+        task.defer(function()
+            TabLayoutPending = false;
+            ReflowTabs();
+        end);
+    end;
+    Window.RefreshTabLayout = QueueTabLayout;
+    TabArea:GetPropertyChangedSignal('AbsoluteSize'):Connect(QueueTabLayout);
 
     local TabContainer = Library:Create('Frame', {
         BackgroundColor3 = Library.MainColor;
@@ -8042,13 +8148,15 @@ Parent = MainSectionOuter;
         };
 
         Tab.Name = Name;
-
-        local TabButtonWidth = Library:GetTextBounds(Name, Library.Font, 16);
+        Window.TabSequence = Window.TabSequence + 1;
+        Tab.Sequence = Window.TabSequence;
+        local TabButtonWidth = Library:GetTextBounds(tostring(Name):lower(), Library.Font, 14);
 
         local TabButton = Library:Create('Frame', {
             BackgroundColor3 = Library.BackgroundColor;
             BorderColor3 = Library.OutlineColor;
             Size = UDim2.new(0, TabButtonWidth + 14 + 6, 1, 0);
+            LayoutOrder = Tab.Sequence;
             ZIndex = 1;
             Parent = TabArea;
         });
@@ -8058,18 +8166,28 @@ Parent = MainSectionOuter;
         TabAccent.Size = UDim2.new(1, -10, 0, 2);
 
         Tab.TabButton = TabButton
-Library:AddToRegistry(TabButton, {
+        Library:AddToRegistry(TabButton, {
             BackgroundColor3 = 'BackgroundColor';
             BorderColor3 = 'OutlineColor';
         });
 
         local TabButtonLabel = Library:CreateLabel({
-            Position = UDim2.new(0, 0, 0, 0);
-            Size = UDim2.new(1, 0, 1, -1);
+            Position = UDim2.new(0, 6, 0, 0);
+            Size = UDim2.new(1, -12, 1, -1);
+            TextSize = 14;
+            TextWrapped = false;
+            TextTruncate = Enum.TextTruncate.AtEnd;
             Text = tostring(Name):lower();
             ZIndex = 1;
             Parent = TabButton;
         });
+        Tab.TextLabel = TabButtonLabel;
+        Library:AddToolTip(tostring(Name), TabButton);
+        TabButton:GetPropertyChangedSignal('Visible'):Connect(QueueTabLayout);
+        TabButton:GetPropertyChangedSignal('LayoutOrder'):Connect(QueueTabLayout);
+        TabButton:GetPropertyChangedSignal('Parent'):Connect(QueueTabLayout);
+        TabButtonLabel:GetPropertyChangedSignal('Font'):Connect(QueueTabLayout);
+        TabButtonLabel:GetPropertyChangedSignal('Text'):Connect(QueueTabLayout);
 
         local Blocker = Library:Create('Frame', {
             BackgroundColor3 = Library.MainColor;
@@ -8083,7 +8201,7 @@ Library:AddToRegistry(TabButton, {
 
         Tab.Blocker = Blocker
         Tab.TabButtonWidth = TabButtonWidth
-Library:AddToRegistry(Blocker, {
+        Library:AddToRegistry(Blocker, {
             BackgroundColor3 = 'MainColor';
         });
 
@@ -8167,6 +8285,7 @@ Library:AddToRegistry(Blocker, {
                 Library.OpenToolbarPanel = nil;
             end;
             Blocker.BackgroundTransparency = 0;
+            Window.ActiveTab = Tab;
             TabAccent.Visible = true;
             TabButtonLabel.TextColor3 = Library.AccentColor;
             Library.RegistryMap[TabButtonLabel].Properties.TextColor3 = 'AccentColor';
@@ -8181,6 +8300,7 @@ Library:AddToRegistry(Blocker, {
         end;
 
         function Tab:HideTab()
+            if Window.ActiveTab == Tab then Window.ActiveTab = nil end;
             Blocker.BackgroundTransparency = 1;
             TabAccent.Visible = false;
             TabButtonLabel.TextColor3 = Library.FontColor;
@@ -8192,7 +8312,7 @@ Library:AddToRegistry(Blocker, {
 
         function Tab:SetLayoutOrder(Position)
             TabButton.LayoutOrder = Position;
-            TabListLayout:ApplyLayout();
+            QueueTabLayout();
         end;
 
         function Tab:AddGroupbox(Info)
@@ -8219,7 +8339,7 @@ Library:AddToRegistry(Blocker, {
                 Size = UDim2.new(1, -2, 1, -2);
                 Position = UDim2.new(0, 1, 0, 1);
                 ZIndex = 4;
-Parent = BoxOuter;
+                Parent = BoxOuter;
             });
             Library:StyleControl(BoxOuter, BoxInner, 4);
 
@@ -8269,7 +8389,7 @@ Parent = BoxOuter;
                 BorderMode = Enum.BorderMode.Inset;
                 Size = UDim2.new(1,0,1,0);
                 ZIndex = 7;
-Parent = ChromaOuter;
+                Parent = ChromaOuter;
             });
             Library:StyleControl(ChromaOuter, ChromaInner, 4);
             Library:AddToRegistry(ChromaInner, { BackgroundColor3 = 'MainColor'; BorderColor3 = 'OutlineColor'; });
@@ -8419,7 +8539,7 @@ Parent = ChromaOuter;
                 Size = UDim2.new(1, -2, 1, -2);
                 Position = UDim2.new(0, 1, 0, 1);
                 ZIndex = 4;
-Parent = BoxOuter;
+                Parent = BoxOuter;
             });
             Library:StyleControl(BoxOuter, BoxInner, 4);
 
@@ -8474,8 +8594,11 @@ Parent = BoxOuter;
                 });
 
                 local ButtonLabel = Library:CreateLabel({
-                    Size = UDim2.new(1, 0, 1, 0);
+                    Position = UDim2.new(0, 6, 0, 0);
+                    Size = UDim2.new(1, -12, 1, 0);
                     TextSize = 14;
+                    TextWrapped = false;
+                    TextTruncate = Enum.TextTruncate.AtEnd;
                     Text = Name;
                     TextXAlignment = Enum.TextXAlignment.Center;
                     ZIndex = 7;
@@ -8608,11 +8731,6 @@ Parent = BoxOuter;
             end;
         end);
 
-        -- This was the first tab added, so we show it by default.
-        if #TabContainer:GetChildren() == 1 and TabButton.Visible then
-            Tab:ShowTab();
-        end;
-
         Window.Tabs[Name] = Tab;
         local _lname = tostring(Name):lower();
         if _lname == 'ui settings' or _lname == 'ui' then
@@ -8629,6 +8747,8 @@ Parent = BoxOuter;
             TabButton.Size = UDim2.new(0, 0, 0, 0);
             Window.ProtectionTab = Tab;
         end;
+        if TabButton.Visible and not Window.ActiveTab then Tab:ShowTab() end;
+        QueueTabLayout();
         return Tab;
     end;
 
@@ -8733,7 +8853,9 @@ Parent = BoxOuter;
 
     Window.Holder = Outer;
 
-    Library:ApplyScaleTo(Outer);
+    Window.ScaleObject = Library:ApplyScaleTo(Outer);
+    Window.ScaleObject:GetPropertyChangedSignal('Scale'):Connect(QueueTabLayout);
+    QueueTabLayout();
 
     return Window;
 end;
