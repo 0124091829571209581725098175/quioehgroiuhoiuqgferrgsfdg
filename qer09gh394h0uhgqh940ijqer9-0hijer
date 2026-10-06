@@ -38,10 +38,10 @@ local Library = {
     RegistryMap = {};
     HudRegistry = {};
     FontColor = Color3.fromRGB(255, 255, 255);
-    MainColor = Color3.fromRGB(24, 24, 24);
-    BackgroundColor = Color3.fromRGB(16, 16, 16);
-    AccentColor = Color3.fromRGB(0, 85, 255);
-    OutlineColor = Color3.fromRGB(50, 50, 50);
+    MainColor = Color3.fromRGB(20, 23, 33);
+    BackgroundColor = Color3.fromRGB(12, 15, 23);
+    AccentColor = Color3.fromRGB(100, 115, 255);
+    OutlineColor = Color3.fromRGB(43, 51, 70);
     RiskColor = Color3.fromRGB(255, 50, 50),
     Black = Color3.new(0, 0, 0);
     Font = Enum.Font.GothamMedium,
@@ -301,6 +301,127 @@ function Library:TrackTouch(Input)
     return GetTouch, StopTouch;
 end;
 
+Library.NeonBorders = {};
+function Library:UpdateNeonBorder(Border, Delta)
+    local Holder = Border.Holder;
+    if not Holder.Parent or not Border.Overlay.Parent then return false end;
+    if not Holder.Visible then return true end;
+    local Width, Height = Holder.AbsoluteSize.X, Holder.AbsoluteSize.Y;
+    if Width <= 0 or Height <= 0 then return true end;
+    local Perimeter = 2 * (Width + Height);
+    if not Library.ReducedMotion then Border.Phase = (Border.Phase + Delta * 0.22) % 1 end;
+    local Color = Library.AccentColor;
+    if Border.Color ~= Color then
+        Border.Color = Color;
+        Border.Base.Color = Color;
+        for _, Segment in ipairs(Border.Segments) do
+            for _, Edge in ipairs(Segment) do
+                Edge.Core.BackgroundColor3 = Color;
+                Edge.Glow.BackgroundColor3 = Color;
+            end;
+        end;
+    end;
+    local Span = Perimeter * 0.14 / #Border.Segments;
+    for Index, Segment in ipairs(Border.Segments) do
+        local Start = (Border.Phase * Perimeter - Index * Span) % Perimeter;
+        local Finish = Start + Span;
+        local EdgeStart = 0;
+        for Side, Edge in ipairs(Segment) do
+            local Horizontal = Side == 1 or Side == 3;
+            local Length = Horizontal and Width or Height;
+            local EdgeEnd = EdgeStart + Length;
+            local A, B = math.max(Start, EdgeStart), math.min(Finish, EdgeEnd);
+            if B <= A and Finish > Perimeter then
+                A, B = EdgeStart, math.min(Finish - Perimeter, EdgeEnd);
+            end;
+            local Visible = B > A;
+            Edge.Core.Visible = Visible;
+            Edge.Glow.Visible = Visible;
+            if Visible then
+                local Offset, Extent = A - EdgeStart, B - A;
+                local X, Y;
+                if Side == 1 then X, Y = Offset / Width, 0
+                elseif Side == 2 then X, Y = 1, Offset / Height
+                elseif Side == 3 then X, Y = (Width - Offset - Extent) / Width, 1
+                else X, Y = 0, (Height - Offset - Extent) / Height end;
+                if Horizontal then
+                    Edge.Core.Position = UDim2.new(X, 0, Y, -1);
+                    Edge.Core.Size = UDim2.new(Extent / Width, 0, 0, 2);
+                    Edge.Glow.Position = UDim2.new(X, 0, Y, -3);
+                    Edge.Glow.Size = UDim2.new(Extent / Width, 0, 0, 6);
+                else
+                    Edge.Core.Position = UDim2.new(X, -1, Y, 0);
+                    Edge.Core.Size = UDim2.new(0, 2, Extent / Height, 0);
+                    Edge.Glow.Position = UDim2.new(X, -3, Y, 0);
+                    Edge.Glow.Size = UDim2.new(0, 6, Extent / Height, 0);
+                end;
+            end;
+            EdgeStart = EdgeEnd;
+        end;
+    end;
+    return true;
+end;
+function Library:DestroyNeonBorder(Border)
+    Library.NeonBorders[Border] = nil;
+    if Border.Overlay then Border.Overlay:Destroy() end;
+end;
+function Library:CreateNeonBorder(Holder, ZIndex)
+    local Overlay = Library:Create('Frame', {
+        Name = 'NeonBorder';
+        BackgroundTransparency = 1;
+        BorderSizePixel = 0;
+        Size = UDim2.fromScale(1, 1);
+        ZIndex = ZIndex or 80;
+        Parent = Holder;
+    });
+    local Base = Library:Create('UIStroke', {
+        Color = Library.AccentColor;
+        Thickness = 1;
+        Transparency = 0.65;
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border;
+        LineJoinMode = Enum.LineJoinMode.Miter;
+        Parent = Overlay;
+    });
+    local Border = {Holder = Holder; Overlay = Overlay; Base = Base; Phase = 0; Segments = {};};
+    for Index = 1, 8 do
+        local Segment = {};
+        for Side = 1, 4 do
+            local Glow = Library:Create('Frame', {
+                BackgroundColor3 = Library.AccentColor;
+                BackgroundTransparency = 0.88 + (Index - 1) / 8 * 0.09;
+                BorderSizePixel = 0;
+                Visible = false;
+                ZIndex = Overlay.ZIndex;
+                Parent = Overlay;
+            });
+            local Core = Library:Create('Frame', {
+                BackgroundColor3 = Library.AccentColor;
+                BackgroundTransparency = (Index - 1) / 8 * 0.9;
+                BorderSizePixel = 0;
+                Visible = false;
+                ZIndex = Overlay.ZIndex + 1;
+                Parent = Overlay;
+            });
+            Segment[Side] = {Core = Core; Glow = Glow;};
+        end;
+        Border.Segments[Index] = Segment;
+    end;
+    Library.NeonBorders[Border] = true;
+    Library:UpdateNeonBorder(Border, 0);
+    if not Library.NeonConnection then
+        Library.NeonConnection = RenderStepped:Connect(function(Delta)
+            for Active in pairs(Library.NeonBorders) do
+                if not Library:UpdateNeonBorder(Active, Delta) then Library:DestroyNeonBorder(Active) end;
+            end;
+        end);
+        table.insert(Library.Signals, Library.NeonConnection);
+        table.insert(Library.Signals, ScreenGui.Destroying:Connect(function()
+            if Library.NeonConnection then Library.NeonConnection:Disconnect(); Library.NeonConnection = nil end;
+            table.clear(Library.NeonBorders);
+        end));
+    end;
+    return Border;
+end;
 function Library:MakeDraggable(Instance, Cutoff)
     Instance.Active = true;
 
@@ -326,16 +447,7 @@ function Library:MakeDraggable(Instance, Cutoff)
                 Parent = ScreenGui;
             });
 
-            local GhostLine = Library:Create('UIStroke', {
-                Color = Library.AccentColor;
-                Thickness = 1;
-                Transparency = 0;
-                Parent = Ghost;
-            });
-
-            Library:AddToRegistry(GhostLine, {
-                Color = 'AccentColor';
-            });
+            local GhostBorder = Library:CreateNeonBorder(Ghost, 1001);
 
             Library:Create('UIScale', {
                 Scale = Library.UIScale or 1;
@@ -347,7 +459,7 @@ function Library:MakeDraggable(Instance, Cutoff)
             local GetTouch, StopTouch = Library:TrackTouch(Input);
             local NewPos = Instance.Position;
 
-            while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or GetTouch() ~= nil do
+            while Ghost.Parent and Instance.Parent and not Library.Unloaded and (InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or GetTouch() ~= nil) do
                 local Active = GetTouch();
                 local PX = Active and Active.Position.X or Mouse.X;
                 local PY = Active and Active.Position.Y or Mouse.Y;
@@ -365,10 +477,10 @@ function Library:MakeDraggable(Instance, Cutoff)
             end;
 
             StopTouch();
-            Instance.Position = NewPos;
-            Library:RemoveFromRegistry(GhostLine);
+            if Instance.Parent and not Library.Unloaded then Instance.Position = NewPos end;
+            Library:DestroyNeonBorder(GhostBorder);
             Ghost:Destroy();
-            Instance.Visible = true;
+            if Instance.Parent and not Library.Unloaded then Instance.Visible = true end;
         end;
     end)
 end;
@@ -564,6 +676,9 @@ function Library:GiveSignal(Signal)
 end
 
 function Library:Unload()
+    Library.Unloaded = true;
+    if Library.NeonConnection then Library.NeonConnection:Disconnect(); Library.NeonConnection = nil end;
+    table.clear(Library.NeonBorders);
     -- Unload all of the signals
     for Idx = #Library.Signals, 1, -1 do
         local Connection = table.remove(Library.Signals, Idx)
@@ -7541,10 +7656,12 @@ function Library:CreateWindow(...)
     });
 
     Library:MakeDraggable(Outer, 25);
+    Window.NeonBorder = Library:CreateNeonBorder(Outer);
 
     local Inner = Library:Create('Frame', {
         BackgroundColor3 = Library.MainColor;
         BorderColor3 = Library.AccentColor;
+        BorderSizePixel = 0;
         BorderMode = Enum.BorderMode.Inset;
         Position = UDim2.new(0, 1, 0, 1);
         Size = UDim2.new(1, -2, 1, -2);
