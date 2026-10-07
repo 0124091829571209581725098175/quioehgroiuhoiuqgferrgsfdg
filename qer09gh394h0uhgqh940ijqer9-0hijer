@@ -196,6 +196,35 @@ function Library:SafeCallback(f, ...)
     end;
 end;
 
+Library.ControlRegistry = {}
+function Library:RegisterControl(index, control, owner, label, row)
+    local group = owner and (owner.ControlGroup or owner)
+    control.ControlGroup = group
+    local tab = group and group.RootTab
+    local category = tab and tostring(tab.Name):lower() or 'other'
+    if category == 'character' then category = 'movement'
+    elseif category == 'world' then category = 'visuals'
+    elseif category == 'ui settings' then category = 'interface'
+    elseif category ~= 'visuals' and category ~= 'protection' then category = 'other' end
+    self.ControlRegistry[index] = {Index = index, Control = control, Label = tostring(label or index):lower(), Group = group, Tab = tab, Category = category, Row = row or control.TextLabel or control.Label or control.Container}
+end
+function Library:JumpToControl(index)
+    local entry = self.ControlRegistry[index]
+    if not entry then return false end
+    if entry.Tab and entry.Tab.ShowTab then entry.Tab:ShowTab() end
+    if entry.Group and entry.Group.Show then entry.Group:Show() end
+    local row = entry.Row
+    if typeof(row) ~= 'Instance' or not row.Parent then return false end
+    local parent = row.Parent
+    while parent do
+        if parent:IsA('ScrollingFrame') then
+            parent.CanvasPosition = Vector2.new(parent.CanvasPosition.X, math.max(0, parent.CanvasPosition.Y + row.AbsolutePosition.Y - parent.AbsolutePosition.Y - 20))
+            break
+        end
+        parent = parent.Parent
+    end
+    return true
+end
 function Library:AttemptSave()
     if Library.SuppressSave then return end;
     Library.ConfigDirty = true;
@@ -1767,6 +1796,7 @@ do
         ColorPicker.DisplayFrame = DisplayFrame
 
         Options[Idx] = ColorPicker;
+        Library:RegisterControl(Idx, ColorPicker, self, Info.Text, self.TextLabel);
 
         return self;
     end;
@@ -2156,6 +2186,7 @@ do
         KeyPicker:Update();
 
         Options[Idx] = KeyPicker;
+        Library:RegisterControl(Idx, KeyPicker, self, Info.Text, self.TextLabel);
 
         return self;
     end;
@@ -2312,6 +2343,7 @@ do
 
         Label.TextLabel = TextLabel;
         Label.Container = Container;
+        Label.ControlGroup = Groupbox;
 
         function Label:SetText(Text)
             TextLabel.Text = Text
@@ -2755,6 +2787,7 @@ do
         Groupbox:Resize();
 
         Options[Idx] = Textbox;
+        Library:RegisterControl(Idx, Textbox, Groupbox, Info.Text, InputLabel);
 
         return Textbox;
     end;
@@ -2968,6 +3001,7 @@ do
         setmetatable(Toggle, BaseAddons);
 
         Toggles[Idx] = Toggle;
+        Library:RegisterControl(Idx, Toggle, Groupbox, Info.Text, ToggleLabel);
 
         Library:UpdateDependencyBoxes();
 
@@ -3419,6 +3453,7 @@ do
             PairGroupbox:Resize();
 
             Options[Idx] = Slider2;
+            Library:RegisterControl(Idx, Slider2, PairGroupbox, Info.Text, S2Outer);
 
             return Slider2;
         end;
@@ -3428,6 +3463,7 @@ do
         Groupbox:Resize();
 
         Options[Idx] = Slider;
+        Library:RegisterControl(Idx, Slider, Groupbox, Info.Text, Slider.Label or Slider.Outer);
 
         return Slider;
     end;
@@ -4014,6 +4050,7 @@ do
         Groupbox:Resize();
 
         Options[Idx] = Dropdown;
+        Library:RegisterControl(Idx, Dropdown, Groupbox, Info.Text, DropdownOuter);
 
         return Dropdown;
     end;
@@ -4573,6 +4610,7 @@ do
         Groupbox:Resize();
 
         Options[Idx] = Dropdown;
+        Library:RegisterControl(Idx, Dropdown, Groupbox, Info.Text, ListOuter);
 
         return Dropdown;
     end;
@@ -4646,6 +4684,7 @@ do
         end;
 
         Depbox.Container = Frame;
+        Depbox.ControlGroup, Depbox.RootTab = self.ControlGroup or self, self.RootTab;
 
         setmetatable(Depbox, BaseGroupbox);
 
@@ -8504,6 +8543,7 @@ function Library:CreateWindow(...)
             end;
 
             Groupbox.Container = Container;
+            Groupbox.RootTab, Groupbox.Name = Tab, Info.Name;
             setmetatable(Groupbox, BaseGroupbox);
 
             Groupbox:AddBlank(3);
@@ -8578,6 +8618,7 @@ function Library:CreateWindow(...)
         end;
 
         function Tab:AddTabbox(Info)
+            local RootTab = self;
             local Tabbox = {
                 Tabs = {};
             };
@@ -8761,6 +8802,7 @@ function Library:CreateWindow(...)
                 end);
 
                 Tab.Container = Container;
+                Tab.RootTab, Tab.Name = RootTab, Name;
                 Tabbox.Tabs[Name] = Tab;
 
                 setmetatable(Tab, BaseGroupbox);
