@@ -52,6 +52,7 @@ local Library = {
     Toggles = Toggles;
     Options = Options;
 };
+Library.PhowgRevision = 3;
 Library.ChromaPickers = {};
 Library.ChromaSet = {};
 Library.ChromaConn = nil;
@@ -102,12 +103,23 @@ function Library:SetChromaEnabled(picker, enabled)
         end
     end
     if picker.UpdateChromaBtn then picker.UpdateChromaBtn() end
+    if picker.Groupbox then Library:RefreshGroupChroma(picker.Groupbox) end
 end
 function Library:SetGroupChroma(groupbox, enabled)
     if not groupbox or not groupbox.ColorPickers then return end
     for _,p in ipairs(groupbox.ColorPickers) do
         Library:SetChromaEnabled(p, enabled)
     end
+    Library:UpdateGroupChromaDisplay(groupbox, enabled)
+end
+function Library:RefreshGroupChroma(groupbox)
+    local enabled = groupbox.ColorPickers and #groupbox.ColorPickers > 0 or false
+    for _, picker in ipairs(groupbox.ColorPickers or {}) do
+        if not picker.RgbEnabled then enabled = false; break end
+    end
+    Library:UpdateGroupChromaDisplay(groupbox, enabled)
+end
+function Library:UpdateGroupChromaDisplay(groupbox, enabled)
     if groupbox.ChromaBtn then
         groupbox.ChromaOn = enabled
         local inner = groupbox.ChromaBtnInner
@@ -1234,6 +1246,7 @@ do
             SpeedFill.Size = UDim2.new(0, X, 1, 0);
             SpeedHide.Visible = not (X == 222 or X == 0);
         end;
+        ColorPicker.UpdateChromaSpeed = UpdateSpeed;
 
         SpeedInner.InputBegan:Connect(function(Input)
             if not Library:IsClickInput(Input) then
@@ -1258,6 +1271,7 @@ do
             end;
 
             StopTouch();
+            Library:AttemptSave();
         end);
 
         UpdateSpeed();
@@ -1302,6 +1316,7 @@ do
         ChromaOuter.InputBegan:Connect(function(Input)
             if not Library:IsClickInput(Input) then return end
             Library:SetChromaEnabled(ColorPicker, not ColorPicker.RgbEnabled)
+            Library:AttemptSave();
         end);
 
         TransInner.InputBegan:Connect(function(Input)
@@ -8528,6 +8543,7 @@ function Library:CreateWindow(...)
                 if not Library:IsClickInput(Input) then return end
                 Groupbox.ChromaOn = not Groupbox.ChromaOn
                 Library:SetGroupChroma(Groupbox, Groupbox.ChromaOn)
+                Library:AttemptSave();
             end);
             function Groupbox:SetChroma(v) Library:SetGroupChroma(Groupbox, v) end
             function Groupbox:Resize()
