@@ -7627,12 +7627,15 @@ function Library:BuildCustomPanels(Window, TabContainer)
     SmallButton('Scan', ServersPanel, UDim2.new(1, -70, 0, 68), UDim2.new(0, 62, 0, 20), function()
         ScanServers()
     end)
-    local SSortMode, SSortModeLabel = SmallButton('Sort: Players', ServersPanel, UDim2.new(0, 4, 0, 92), UDim2.new(0.5, -6, 0, 18), function()
+    local SSortModeLabel, SSortDirLabel
+    local _SSortMode, _SSortModeInner
+    _SSortMode, _SSortModeInner, SSortModeLabel = SmallButton('Sort: Players', ServersPanel, UDim2.new(0, 4, 0, 92), UDim2.new(0.5, -6, 0, 18), function()
         Library.ServerSortMode = Library.ServerSortMode == 'Players' and 'Ping' or 'Players'
         SSortModeLabel.Text = 'Sort: ' .. (Library.ServerSortMode or 'Players')
         RenderServers()
     end)
-    local SSortDir, SSortDirLabel = SmallButton('Desc', ServersPanel, UDim2.new(0.5, 2, 0, 92), UDim2.new(0.5, -6, 0, 18), function()
+    local _SSortDir, _SSortDirInner
+    _SSortDir, _SSortDirInner, SSortDirLabel = SmallButton('Desc', ServersPanel, UDim2.new(0.5, 2, 0, 92), UDim2.new(0.5, -6, 0, 18), function()
         Library.ServerSortDesc = not Library.ServerSortDesc
         SSortDirLabel.Text = Library.ServerSortDesc and 'Desc' or 'Asc'
         RenderServers()
@@ -7741,8 +7744,8 @@ function Library:BuildCustomPanels(Window, TabContainer)
     end
     Window.RefreshCustom['Servers'] = function()
         SCount.Text = 'Players: ' .. #Players:GetPlayers() .. '/' .. tostring(Players.MaxPlayers)
-        SSortMode.Text = 'Sort: ' .. (Library.ServerSortMode or 'Players')
-        SSortDir.Text = Library.ServerSortDesc and 'Desc' or 'Asc'
+        SSortModeLabel.Text = 'Sort: ' .. (Library.ServerSortMode or 'Players')
+        SSortDirLabel.Text = Library.ServerSortDesc and 'Desc' or 'Asc'
         ScanServers()
     end
     local ExecPanel = Library:Create('Frame', {
