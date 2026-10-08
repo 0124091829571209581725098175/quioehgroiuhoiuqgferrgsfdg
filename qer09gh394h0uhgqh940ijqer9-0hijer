@@ -52,7 +52,7 @@ local Library = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 4;
+Library.PhowgRevision = 5;
 Library.ChromaPickers = {};
 Library.ChromaSet = {};
 Library.ChromaConn = nil;
@@ -779,6 +779,72 @@ Library:GiveSignal(ScreenGui.DescendantRemoving:Connect(function(Instance)
     end;
 end))
 
+function Library:BindPopupPosition(Anchor, Popup, Update)
+    local Connections = {};
+    local function Disconnect()
+        for _, Connection in ipairs(Connections) do Connection:Disconnect() end;
+        table.clear(Connections);
+    end;
+    local function Refresh()
+        if not Popup.Visible or not Popup.Parent or not Anchor.Parent or Library.Unloaded then return end;
+        local Current = Anchor;
+        local Position, Size = Anchor.AbsolutePosition, Anchor.AbsoluteSize;
+        while Current do
+            if Current:IsA('GuiObject') then
+                local Clipped = false;
+                if Current:IsA('ScrollingFrame') then
+                    local Bounds, BoundsSize = Current.AbsolutePosition, Current.AbsoluteSize;
+                    Clipped = Position.X + Size.X <= Bounds.X or Position.X >= Bounds.X + BoundsSize.X or Position.Y + Size.Y <= Bounds.Y or Position.Y >= Bounds.Y + BoundsSize.Y;
+                end;
+                if not Current.Visible or Clipped then
+                    Popup.Visible = false;
+                    Library.OpenedFrames[Popup] = nil;
+                    return;
+                end;
+            end;
+            Current = Current.Parent;
+        end;
+        Update();
+    end;
+    local function Sync()
+        Disconnect();
+        if Popup.Visible then
+            Connections[1] = Anchor:GetPropertyChangedSignal('AbsolutePosition'):Connect(Refresh);
+            Connections[2] = Anchor:GetPropertyChangedSignal('AbsoluteSize'):Connect(Refresh);
+            Refresh();
+        end;
+    end;
+    Popup:GetPropertyChangedSignal('Visible'):Connect(Sync);
+    Popup.Destroying:Once(Disconnect);
+    Anchor.Destroying:Once(function()
+        Disconnect();
+        Popup.Visible = false;
+        Library.OpenedFrames[Popup] = nil;
+    end);
+    Sync();
+end;
+function Library:QueueKeybindLayout()
+    if Library.KeybindLayoutPending or Library.Unloaded then return end;
+    Library.KeybindLayoutPending = true;
+    task.defer(function()
+        Library.KeybindLayoutPending = false;
+        if Library.Unloaded or not Library.KeybindFrame or not Library.KeybindFrame.Parent then return end;
+        local Height, Width = 0, 0;
+        for _, Row in ipairs(Library.KeybindContainer:GetChildren()) do
+            if Row:IsA('Frame') and Row.Visible then
+                Height = Height + 18;
+                local RowWidth = 0;
+                for _, Label in ipairs(Row:GetChildren()) do
+                    if Label:IsA('TextLabel') then RowWidth = RowWidth + Label.TextBounds.X end;
+                end;
+                Width = math.max(Width, RowWidth);
+            end;
+        end;
+        Library.KeybindFrame.Size = UDim2.new(0, math.max(Width + 20, 210), 0, Height + 22);
+        Library:RefreshKeybindVisibility();
+    end);
+end;
+
 local BaseAddons = {};
 
 do
@@ -846,9 +912,9 @@ do
             Parent = ScreenGui,
         });
 
-        DisplayFrame:GetPropertyChangedSignal('AbsolutePosition'):Connect(function()
+        Library:BindPopupPosition(DisplayFrame, PickerFrameOuter, function()
             PickerFrameOuter.Position = UDim2.fromOffset(DisplayFrame.AbsolutePosition.X, DisplayFrame.AbsolutePosition.Y + 18);
-        end)
+        end);
 
         local PickerFrameInner = Library:Create('Frame', {
             BackgroundColor3 = Library.BackgroundColor;
@@ -1359,7 +1425,7 @@ do
                 )
             end
 
-            DisplayFrame:GetPropertyChangedSignal('AbsolutePosition'):Connect(updateMenuPosition)
+            Library:BindPopupPosition(DisplayFrame, ContextMenu.Container, updateMenuPosition);
             ContextMenu.Inner.Layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(updateMenuSize)
 
             task.spawn(updateMenuPosition)
@@ -1499,16 +1565,8 @@ do
             ColorPicker:Display()
         end)
 
-        function ColorPicker:Display()
-            ColorPicker.Value = Color3.fromHSV(ColorPicker.Hue, ColorPicker.Sat, ColorPicker.Vib);
+        local function UpdatePickerVisuals()
             SatVibMap.BackgroundColor3 = Color3.fromHSV(ColorPicker.Hue, 1, 1);
-
-            Library:Create(DisplayFrame, {
-                BackgroundColor3 = ColorPicker.Value;
-                BackgroundTransparency = ColorPicker.Transparency;
-                BorderColor3 = Library:GetDarkerColor(ColorPicker.Value);
-            });
-
             if TransparencyBoxInner then
                 TransparencyBoxInner.BackgroundColor3 = ColorPicker.Value;
                 TransparencyCursor.Position = UDim2.new(1 - ColorPicker.Transparency, 0, 0, 0);
@@ -1523,6 +1581,15 @@ do
             HueBox.Text = '#' .. ColorPicker.Value:ToHex()
             RgbBox.Text = table.concat({ math.floor(ColorPicker.Value.R * 255), math.floor(ColorPicker.Value.G * 255), math.floor(ColorPicker.Value.B * 255) }, ', ')
 
+        end;
+        function ColorPicker:Display()
+            ColorPicker.Value = Color3.fromHSV(ColorPicker.Hue, ColorPicker.Sat, ColorPicker.Vib);
+            Library:Create(DisplayFrame, {
+                BackgroundColor3 = ColorPicker.Value;
+                BackgroundTransparency = ColorPicker.Transparency;
+                BorderColor3 = Library:GetDarkerColor(ColorPicker.Value);
+            });
+            if PickerFrameOuter.Visible then UpdatePickerVisuals() end;
             Library:SafeCallback(ColorPicker.Callback, ColorPicker.Value);
             Library:SafeCallback(ColorPicker.Changed, ColorPicker.Value);
         end;
@@ -1540,6 +1607,7 @@ do
                 end;
             end;
 
+            UpdatePickerVisuals();
             PickerFrameOuter.Visible = true;
             Library.OpenedFrames[PickerFrameOuter] = true;
         end;
@@ -1689,7 +1757,7 @@ do
         end;
 
         Library:GiveSignal(InputService.InputBegan:Connect(function(Input)
-            if Library:IsClickInput(Input) then
+            if PickerFrameOuter.Visible and Library:IsClickInput(Input) then
                 local AbsPos, AbsSize = PickerFrameOuter.AbsolutePosition, PickerFrameOuter.AbsoluteSize;
                 local P = Input.Position;
 
@@ -1699,12 +1767,9 @@ do
                     ColorPicker:Hide();
                 end;
 
-                if not Library:IsMouseOverFrame(ContextMenu.Container) then
-                    ContextMenu:Hide()
-                end
             end;
 
-            if Input.UserInputType == Enum.UserInputType.MouseButton2 and ContextMenu.Container.Visible then
+            if ContextMenu.Container.Visible and (Library:IsClickInput(Input) or Input.UserInputType == Enum.UserInputType.MouseButton2) then
                 if not Library:IsMouseOverFrame(ContextMenu.Container) and not Library:IsMouseOverFrame(DisplayFrame) then
                     ContextMenu:Hide()
                 end
@@ -1785,7 +1850,7 @@ do
             Parent = ScreenGui;
         });
 
-        ToggleLabel:GetPropertyChangedSignal('AbsolutePosition'):Connect(function()
+        Library:BindPopupPosition(ToggleLabel, ModeSelectOuter, function()
             ModeSelectOuter.Position = UDim2.fromOffset(ToggleLabel.AbsolutePosition.X + ToggleLabel.AbsoluteSize.X + 4, ToggleLabel.AbsolutePosition.Y + 1);
         end);
 
@@ -1900,40 +1965,16 @@ do
         end;
 
         function KeyPicker:Update()
-            if Info.NoUI then
-                return;
-            end;
-
+            if Info.NoUI then return end;
             local State = KeyPicker:GetState();
-
-            local ModeText = 'Toggled';
-            if KeyPicker.Mode == 'Always' then ModeText = 'On' elseif KeyPicker.Mode == 'Hold' then ModeText = 'Holding' end;
             local RawName = tostring(Info.Text or 'bind');
-            local DispName = string.upper(RawName:sub(1, 1)) .. RawName:sub(2);
-
-            KeyName.Text = DispName;
+            if KeyPicker.DisplayState == State and KeyPicker.DisplayMode == KeyPicker.Mode and KeyPicker.DisplayName == RawName then return end;
+            KeyPicker.DisplayState, KeyPicker.DisplayMode, KeyPicker.DisplayName = State, KeyPicker.Mode, RawName;
+            local ModeText = KeyPicker.Mode == 'Always' and 'On' or KeyPicker.Mode == 'Hold' and 'Holding' or 'Toggled';
+            KeyName.Text = string.upper(RawName:sub(1, 1)) .. RawName:sub(2);
             KeyState.Text = '[' .. ModeText .. ']';
-
             KeyRow.Visible = State and true or false;
-
-            local YSize = 0
-            local XSize = 0
-
-            for _, R in next, Library.KeybindContainer:GetChildren() do
-                if R:IsA('Frame') and R.Visible then
-                    YSize = YSize + 18;
-                    local W = 0;
-                    for _, L in next, R:GetChildren() do
-                        if L:IsA('TextLabel') then W = W + L.TextBounds.X end
-                    end
-                    if (W > XSize) then
-                        XSize = W
-                    end
-                end;
-            end;
-
-            Library.KeybindFrame.Size = UDim2.new(0, math.max(XSize + 20, 210), 0, YSize + 22)
-            Library:RefreshKeybindVisibility();
+            Library:QueueKeybindLayout();
         end;
 
         function KeyPicker:GetState()
@@ -2056,7 +2097,8 @@ do
         end);
 
         Library:GiveSignal(InputService.InputBegan:Connect(function(Input, Processed)
-            if (not Picking) then
+            local BindInput = Input.UserInputType == Enum.UserInputType.Keyboard or Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.MouseButton2;
+            if not Picking and BindInput then
                 local Typing = Processed or InputService:GetFocusedTextBox() ~= nil;
 
                 if (not Typing) or KeyPicker.AllowWhileTyping then
@@ -2084,7 +2126,7 @@ do
                 KeyPicker:Update();
             end;
 
-            if Library:IsClickInput(Input) then
+            if ModeSelectOuter.Visible and Library:IsClickInput(Input) then
                 local AbsPos, AbsSize = ModeSelectOuter.AbsolutePosition, ModeSelectOuter.AbsoluteSize;
                 local P = Input.Position;
 
@@ -2097,7 +2139,7 @@ do
         end))
 
         Library:GiveSignal(InputService.InputEnded:Connect(function(Input)
-            if (not Picking) then
+            if not Picking and (Input.UserInputType == Enum.UserInputType.Keyboard or Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.MouseButton2) then
                 KeyPicker:Update();
             end;
         end))
@@ -3523,8 +3565,7 @@ do
         RecalculateListPosition();
         RecalculateListSize();
 
-        DropdownOuter:GetPropertyChangedSignal('AbsolutePosition'):Connect(RecalculateListPosition);
-        DropdownOuter:GetPropertyChangedSignal('AbsoluteSize'):Connect(RecalculateListPosition);
+        Library:BindPopupPosition(DropdownOuter, ListOuter, RecalculateListPosition);
 
         local ListInner = Library:Create('Frame', {
             BackgroundColor3 = Library.MainColor;
