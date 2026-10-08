@@ -52,7 +52,7 @@ local Library = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 5;
+Library.PhowgRevision = 6;
 Library.ChromaPickers = {};
 Library.ChromaSet = {};
 Library.ChromaConn = nil;
@@ -208,6 +208,59 @@ function Library:SafeCallback(f, ...)
     end;
 end;
 
+Library.SettingsBoxes = setmetatable({}, {__mode = 'k'})
+Library.SettingsLayers = setmetatable({}, {__mode = 'k'})
+Library.PopupAnchors = setmetatable({}, {__mode = 'k'})
+function Library:GetSettingsBox(frame)
+    while frame do
+        local box = self.SettingsBoxes[frame]
+        if box then return box end
+        frame = frame.Parent
+    end
+end
+function Library:GetSettingsLayer(frame)
+    while frame do
+        local layer = self.SettingsLayers[frame]
+        if layer then return layer end
+        frame = frame.Parent
+    end
+    return 0
+end
+function Library:IsPopupAncestor(frame, box)
+    if typeof(box) == 'Instance' then return frame == box end
+    while box do
+        if box.Frame == frame then return true end
+        box = box.ParentSettings
+    end
+    return false
+end
+function Library:ClosePopups(except)
+    for frame in pairs(table.clone(self.OpenedFrames)) do
+        if not self:IsPopupAncestor(frame, except) then
+            local closer = self.PopupClosers and self.PopupClosers[frame]
+            if closer then closer() elseif frame.Parent then frame.Visible = false end
+            self.OpenedFrames[frame] = nil
+        end
+    end
+end
+table.insert(Library.Signals, InputService.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.Escape then Library:ClosePopups(); return end
+    if not Library:IsClickInput(input, true) or not next(Library.OpenedFrames) then return end
+    local point = input.Position
+    for frame in pairs(Library.OpenedFrames) do
+        local position, size = frame.AbsolutePosition, frame.AbsoluteSize
+        if point.X >= position.X and point.X <= position.X + size.X and point.Y >= position.Y and point.Y <= position.Y + size.Y then return end
+        local box = Library.SettingsBoxes[frame]
+        if box then
+            position, size = box.Button.AbsolutePosition, box.Button.AbsoluteSize
+            if point.X >= position.X and point.X <= position.X + size.X and point.Y >= position.Y and point.Y <= position.Y + size.Y then return end
+        elseif Library.PopupAnchors[frame] then
+            position, size = Library.PopupAnchors[frame].AbsolutePosition, Library.PopupAnchors[frame].AbsoluteSize
+            if point.X >= position.X and point.X <= position.X + size.X and point.Y >= position.Y and point.Y <= position.Y + size.Y then return end
+        end
+    end
+    Library:ClosePopups()
+end))
 Library.ControlRegistry = {}
 function Library:RegisterControl(index, control, owner, label, row)
     local group = owner and (owner.ControlGroup or owner)
@@ -218,13 +271,16 @@ function Library:RegisterControl(index, control, owner, label, row)
     elseif category == 'world' then category = 'visuals'
     elseif category == 'ui settings' then category = 'interface'
     elseif category ~= 'visuals' and category ~= 'protection' then category = 'other' end
-    self.ControlRegistry[index] = {Index = index, Control = control, Label = tostring(label or index):lower(), Group = group, Tab = tab, Category = category, Row = row or control.TextLabel or control.Label or control.Container}
+    self.ControlRegistry[index] = {Index = index, Control = control, Label = tostring(label or index):lower(), Group = group, Tab = tab, Category = category, Row = row or control.TextLabel or control.Label or control.Container, Settings = self:GetSettingsBox(owner and owner.Container)}
 end
 function Library:JumpToControl(index)
     local entry = self.ControlRegistry[index]
     if not entry then return false end
     if entry.Tab and entry.Tab.ShowTab then entry.Tab:ShowTab() end
     if entry.Group and entry.Group.Show then entry.Group:Show() end
+    local chain, settings = {}, entry.Settings
+    while settings do chain[#chain + 1] = settings; settings = settings.ParentSettings end
+    for i = #chain, 1, -1 do chain[i]:Open() end
     local row = entry.Row
     if typeof(row) ~= 'Instance' or not row.Parent then return false end
     local parent = row.Parent
@@ -249,10 +305,23 @@ function Library:Create(Class, Properties)
         _Instance = Instance.new(Class);
     end;
 
+    local layer = Properties.SettingsLayer or self:GetSettingsLayer(Properties.Parent)
+    if Properties.PopupAnchor then
+        local anchorLayer = self:GetSettingsLayer(Properties.PopupAnchor)
+        if anchorLayer > 0 then layer = anchorLayer + 50 end
+        self.PopupAnchors[_Instance] = Properties.PopupAnchor
+    end
+    if layer > 0 then self.SettingsLayers[_Instance] = layer end
     for Property, Value in next, Properties do
+        if Property == 'SettingsLayer' or Property == 'PopupAnchor' then
+        elseif Property == 'ZIndex' and layer > 0 then
+            _Instance.ZIndex = Value >= layer and Value or Value + layer
+        else
         if Property == 'CornerRadius' and Value.Scale == 0 then Value = UDim.new(0, math.min(3, Value.Offset)) end;
         _Instance[Property] = Value;
+        end
     end;
+    if layer > 0 and not Properties.ZIndex and _Instance:IsA('GuiObject') then _Instance.ZIndex = layer + 1 end
 
     return _Instance;
 end;
@@ -595,7 +664,7 @@ function Library:AddToolTip(InfoStr, HoverInstance)
     local IsHovering = false
 
     HoverInstance.MouseEnter:Connect(function()
-        if Library:MouseIsOverOpenedFrame() then
+        if Library:MouseIsOverOpenedFrame(HoverInstance) then
             return
         end
 
@@ -642,17 +711,16 @@ function Library:OnHighlight(HighlightInstance, Instance, Properties, Properties
     end)
 end;
 
-function Library:MouseIsOverOpenedFrame()
-    for Frame, _ in next, Library.OpenedFrames do
-        local AbsPos, AbsSize = Frame.AbsolutePosition, Frame.AbsoluteSize;
-
-        if Mouse.X >= AbsPos.X and Mouse.X <= AbsPos.X + AbsSize.X
-            and Mouse.Y >= AbsPos.Y and Mouse.Y <= AbsPos.Y + AbsSize.Y then
-
-            return true;
-        end;
-    end;
-end;
+function Library:MouseIsOverOpenedFrame(region)
+    local box = region and self:GetSettingsBox(region)
+    for frame in pairs(self.OpenedFrames) do
+        if not self:IsPopupAncestor(frame, box) then
+            local position, size = frame.AbsolutePosition, frame.AbsoluteSize
+            if Mouse.X >= position.X and Mouse.X <= position.X + size.X and Mouse.Y >= position.Y and Mouse.Y <= position.Y + size.Y then return true end
+        end
+    end
+    return false
+end
 
 function Library:IsMouseOverFrame(Frame)
     local AbsPos, AbsSize = Frame.AbsolutePosition, Frame.AbsoluteSize;
@@ -780,6 +848,16 @@ Library:GiveSignal(ScreenGui.DescendantRemoving:Connect(function(Instance)
 end))
 
 function Library:BindPopupPosition(Anchor, Popup, Update)
+    self.PopupAnchors[Popup] = Anchor
+    self.PopupOwners = self.PopupOwners or {}
+    self.PopupClosers = self.PopupClosers or {}
+    self.PopupOwners[Popup] = Anchor
+    self.PopupClosers[Popup] = self.PopupClosers[Popup] or function() Popup.Visible = false end
+    Popup:GetPropertyChangedSignal('Visible'):Connect(function()
+        self.OpenedFrames[Popup] = Popup.Visible and true or nil
+        local box = self.SettingsBoxes[Popup]
+        if box and not Popup.Visible then box:Close() end
+    end)
     local Connections = {};
     local function Disconnect()
         for _, Connection in ipairs(Connections) do Connection:Disconnect() end;
@@ -909,6 +987,7 @@ do
             Size = UDim2.fromOffset(230, 295);
             Visible = false;
             ZIndex = 15;
+            PopupAnchor = DisplayFrame;
             Parent = ScreenGui,
         });
 
@@ -1379,6 +1458,7 @@ do
                 ZIndex = 14,
 
                 Visible = false,
+                PopupAnchor = DisplayFrame;
                 Parent = ScreenGui
             })
 
@@ -1437,6 +1517,7 @@ do
             });
 
             function ContextMenu:Show()
+                Library:ClosePopups(Library:GetSettingsBox(DisplayFrame))
                 self.Container.Visible = true
             end
 
@@ -1706,14 +1787,14 @@ do
         end);
 
         DisplayFrame.InputBegan:Connect(function(Input)
-            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
+            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame(DisplayFrame) then
                 if PickerFrameOuter.Visible then
                     ColorPicker:Hide()
                 else
                     ContextMenu:Hide()
                     ColorPicker:Show()
                 end;
-            elseif Input.UserInputType == Enum.UserInputType.MouseButton2 and not Library:MouseIsOverOpenedFrame() then
+            elseif Input.UserInputType == Enum.UserInputType.MouseButton2 and not Library:MouseIsOverOpenedFrame(DisplayFrame) then
                 ContextMenu:Show()
                 ColorPicker:Hide()
             end
@@ -1847,6 +1928,7 @@ do
             Size = UDim2.new(0, 60, 0, 45 + 2);
             Visible = false;
             ZIndex = 14;
+            PopupAnchor = PickOuter;
             Parent = ScreenGui;
         });
 
@@ -2043,7 +2125,7 @@ do
         local Picking = false;
 
         PickOuter.InputBegan:Connect(function(Input)
-            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
+            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame(PickOuter) then
                 Picking = true;
 
                 DisplayLabel.Text = '';
@@ -2091,7 +2173,8 @@ do
 
                     Event:Disconnect();
                 end);
-            elseif Input.UserInputType == Enum.UserInputType.MouseButton2 and not Library:MouseIsOverOpenedFrame() then
+            elseif Input.UserInputType == Enum.UserInputType.MouseButton2 and not Library:MouseIsOverOpenedFrame(PickOuter) then
+                Library:ClosePopups(Library:GetSettingsBox(PickOuter))
                 ModeSelectOuter.Visible = true;
             end;
         end);
@@ -2233,7 +2316,7 @@ do
         end;
 
         ButtonOuter.InputBegan:Connect(function(Input)
-            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
+            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame(ButtonOuter) then
                 Library:SafeCallback(Func);
             end;
         end);
@@ -2252,6 +2335,10 @@ do
 
         return ParentObj;
     end;
+
+    function Funcs:AddSettings(info)
+        return self.Owner:AddSettingsBox(self, info)
+    end
 
     BaseAddons.__index = Funcs;
 end;
@@ -2431,7 +2518,7 @@ do
             end
 
             local function ValidateClick(Input)
-                if Library:MouseIsOverOpenedFrame() then
+                if Library:MouseIsOverOpenedFrame(Button.Outer) then
                     return false
                 end
 
@@ -2908,7 +2995,7 @@ do
         end;
 
         ToggleRegion.InputBegan:Connect(function(Input)
-            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
+            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame(ToggleRegion) then
                 Toggle:SetValue(not Toggle.Value) -- Why was it not like this from the start?
                 Library:AttemptSave();
             end;
@@ -2953,6 +3040,7 @@ do
         Toggle.TextLabel = ToggleLabel;
         Toggle.VisualTextLabel = ToggleText;
         Toggle.Container = Container;
+        Toggle.Owner = Groupbox;
         setmetatable(Toggle, BaseAddons);
 
         Toggles[Idx] = Toggle;
@@ -3139,7 +3227,7 @@ do
         end;
 
         SliderInner.InputBegan:Connect(function(Input)
-            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
+            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame(SliderInner) then
                 local GetTouch, StopTouch = Library:TrackTouch(Input);
 
                 while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or GetTouch() ~= nil do
@@ -3372,7 +3460,7 @@ do
             end;
 
             S2Inner.InputBegan:Connect(function(Input)
-                if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
+                if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame(S2Inner) then
                     local GetTouch, StopTouch = Library:TrackTouch(Input);
 
                     while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or GetTouch() ~= nil do
@@ -3547,6 +3635,7 @@ do
             BorderColor3 = Color3.new(0, 0, 0);
             ZIndex = 20;
             Visible = false;
+            PopupAnchor = DropdownOuter;
             Parent = ScreenGui;
         });
 
@@ -3942,7 +4031,7 @@ do
         end;
 
         DropdownOuter.InputBegan:Connect(function(Input)
-            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
+            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame(DropdownOuter) then
                 if ListOuter.Visible then
                     Dropdown:CloseDropdown();
                 else
@@ -4564,10 +4653,105 @@ do
         Groupbox:Resize();
 
         Options[Idx] = Dropdown;
-        Library:RegisterControl(Idx, Dropdown, Groupbox, Info.Text, ListOuter);
+        Library:RegisterControl(Idx, Dropdown, Groupbox, Info.Text, DropdownOuter);
 
         return Dropdown;
     end;
+
+    function Funcs:AddSettingsBox(toggle, info)
+        assert(toggle and toggle.Type == 'Toggle', 'AddSettingsBox: toggle required')
+        if toggle.Settings then return toggle.Settings end
+        info = info or {}
+        local box = {ControlGroup = self.ControlGroup or self, RootTab = self.RootTab, ParentSettings = Library:GetSettingsBox(self.Container)}
+        local button = Library:Create('TextButton', {
+            Name = 'Settings'; Text = utf8.char(9881); Font = Library.Font; TextSize = 17;
+            TextColor3 = Library.FontColor; BackgroundTransparency = 1; BorderSizePixel = 0;
+            Size = UDim2.fromOffset(18, 14); LayoutOrder = 1000; ZIndex = 8; AutoButtonColor = false;
+            Parent = toggle.TextLabel;
+        })
+        Library:AddToRegistry(button, {TextColor3 = 'FontColor'})
+        local frame = Library:Create('Frame', {
+            Name = 'ToggleSettings'; BackgroundColor3 = Library.MainColor; BorderColor3 = Library.OutlineColor;
+            Size = UDim2.fromOffset(280, 42); Active = true; Visible = false; ZIndex = 1;
+            SettingsLayer = Library:GetSettingsLayer(button) + 100; Parent = ScreenGui;
+        })
+        box.Frame, box.Button = frame, button
+        Library.SettingsBoxes[frame] = box
+        Library.PopupAnchors[frame] = button
+        Library:AddToRegistry(frame, {BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor'})
+        Library:CreateLabel({Text = info.Text or toggle.TextLabel.Text; TextSize = 14; TextXAlignment = Enum.TextXAlignment.Left;
+            Position = UDim2.fromOffset(10, 0); Size = UDim2.new(1, -42, 0, 28); ZIndex = 4; Parent = frame})
+        local close = Library:Create('TextButton', {Text = '×'; Font = Library.Font; TextSize = 20; TextColor3 = Library.FontColor;
+            BackgroundTransparency = 1; Position = UDim2.new(1, -28, 0, 0); Size = UDim2.fromOffset(28, 28);
+            BorderSizePixel = 0; ZIndex = 8; Parent = frame})
+        Library:AddToRegistry(close, {TextColor3 = 'FontColor'})
+        local scroll = Library:Create('ScrollingFrame', {BackgroundTransparency = 1; BorderSizePixel = 0;
+            Position = UDim2.fromOffset(10, 32); Size = UDim2.new(1, -20, 1, -40);
+            CanvasSize = UDim2.fromOffset(0, 0); ScrollBarThickness = 2; ScrollBarImageColor3 = Library.AccentColor;
+            ScrollingDirection = Enum.ScrollingDirection.Y; Active = true; ZIndex = 4; Parent = frame})
+        Library:AddToRegistry(scroll, {ScrollBarImageColor3 = 'AccentColor'})
+        local container = Library:Create('Frame', {BackgroundTransparency = 1; Size = UDim2.new(1, -4, 0, 0); ZIndex = 4; Parent = scroll})
+        local layout = Library:Create('UIListLayout', {FillDirection = Enum.FillDirection.Vertical; SortOrder = Enum.SortOrder.LayoutOrder; Parent = container})
+        box.Container = container
+        setmetatable(box, BaseGroupbox)
+        function box:Position()
+            local viewport = ScreenGui.AbsoluteSize
+            local scale = Library.UIScale or 1
+            local width = math.min(info.Width or 280, math.max(120, (viewport.X - 16) / scale))
+            local height = math.min(math.max(42, layout.AbsoluteContentSize.Y / scale + 40), math.max(42, (viewport.Y - 16) / scale))
+            frame.Size = UDim2.fromOffset(width, height)
+            local point, size = button.AbsolutePosition - ScreenGui.AbsolutePosition, frame.AbsoluteSize
+            local x = point.X + button.AbsoluteSize.X + 8
+            if x + size.X > viewport.X - 8 then x = point.X - size.X - 8 end
+            frame.Position = UDim2.fromOffset(math.clamp(x, 8, math.max(8, viewport.X - size.X - 8)), math.clamp(point.Y, 8, math.max(8, viewport.Y - size.Y - 8)))
+        end
+        function box:Resize()
+            local scale = Library.UIScale or 1
+            container.Size = UDim2.new(1, -4, 0, layout.AbsoluteContentSize.Y / scale)
+            scroll.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y / scale)
+            if frame.Visible then self:Position() end
+        end
+        function box:Open()
+            if Library.Unloaded or not button.Parent then return end
+            if Library.IsControlVisible and not Library:IsControlVisible(button) then return end
+            Library:ClosePopups(self)
+            self:Resize(); self:Position()
+            frame.Visible = true
+            Library.OpenedFrames[frame] = true
+        end
+        function box:Close()
+            if self.Closing then return end
+            self.Closing = true
+            for popup in pairs(table.clone(Library.OpenedFrames)) do
+                local child = Library:GetSettingsBox(Library.PopupAnchors[popup])
+                if popup ~= frame and Library:IsPopupAncestor(frame, child) then
+                    local closer = Library.PopupClosers and Library.PopupClosers[popup]
+                    if closer then closer() elseif popup.Parent then popup.Visible = false end
+                    Library.OpenedFrames[popup] = nil
+                end
+            end
+            frame.Visible = false
+            Library.OpenedFrames[frame] = nil
+            self.Closing = false
+        end
+        Library.PopupOwners = Library.PopupOwners or {}
+        Library.PopupClosers = Library.PopupClosers or {}
+        Library.PopupOwners[frame], Library.PopupClosers[frame] = button, function() box:Close() end
+        Library:ApplyScaleTo(frame)
+        Library:BindPopupPosition(button, frame, function() box:Position() end)
+        layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function() box:Resize() end)
+        scroll:GetPropertyChangedSignal('CanvasPosition'):Connect(function() if Library.PrunePopups then Library:PrunePopups() end end)
+        button.InputBegan:Connect(function(input)
+            if not Library:IsClickInput(input) or Library:MouseIsOverOpenedFrame(button) then return end
+            Library:ConsumeInput(input)
+            if frame.Visible then box:Close() else box:Open() end
+        end)
+        close.InputBegan:Connect(function(input)
+            if Library:IsClickInput(input) then Library:ConsumeInput(input); box:Close() end
+        end)
+        toggle.Settings = box
+        return box
+    end
 
     function Funcs:AddDependencyBox()
         local Depbox = {
