@@ -37,11 +37,11 @@ local Library = {
     Registry = {};
     RegistryMap = {};
     HudRegistry = {};
-    FontColor = Color3.fromRGB(255, 255, 255);
-    MainColor = Color3.fromRGB(20, 23, 33);
-    BackgroundColor = Color3.fromRGB(12, 15, 23);
-    AccentColor = Color3.fromRGB(100, 115, 255);
-    OutlineColor = Color3.fromRGB(43, 51, 70);
+    FontColor = Color3.fromRGB(220, 220, 220);
+    MainColor = Color3.fromRGB(30, 30, 30);
+    BackgroundColor = Color3.fromRGB(22, 22, 22);
+    AccentColor = Color3.fromRGB(0, 134, 229);
+    OutlineColor = Color3.fromRGB(52, 52, 52);
     RiskColor = Color3.fromRGB(255, 50, 50),
     Black = Color3.new(0, 0, 0);
     Font = Enum.Font.GothamMedium,
@@ -52,7 +52,7 @@ local Library = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 3;
+Library.PhowgRevision = 4;
 Library.ChromaPickers = {};
 Library.ChromaSet = {};
 Library.ChromaConn = nil;
@@ -250,6 +250,7 @@ function Library:Create(Class, Properties)
     end;
 
     for Property, Value in next, Properties do
+        if Property == 'CornerRadius' and Value.Scale == 0 then Value = UDim.new(0, math.min(3, Value.Offset)) end;
         _Instance[Property] = Value;
     end;
 
@@ -312,7 +313,7 @@ function Library:StyleControl(Outer, Inner, Radius, Region)
     Inner.BorderSizePixel = 0;
     for _, Surface in ipairs(Outer == Inner and {Inner} or {Outer, Inner}) do
         if not Surface:FindFirstChildOfClass('UICorner') then
-            Library:Create('UICorner', {CornerRadius = UDim.new(0, Radius or 4); Parent = Surface;});
+            Library:Create('UICorner', {CornerRadius = UDim.new(0, math.min(Radius or 2, 2)); Parent = Surface;});
         end;
     end;
     local Stroke = Library:Create('UIStroke', {
@@ -458,124 +459,27 @@ function Library:TrackTouch(Input)
 end;
 
 Library.NeonBorders = {};
-function Library:UpdateNeonBorder(Border, Delta)
-    local Holder = Border.Holder;
-    if not Holder.Parent or not Border.Overlay.Parent then return false end;
-    if not Holder.Visible then return true end;
-    local Width, Height = Holder.AbsoluteSize.X, Holder.AbsoluteSize.Y;
-    if Width <= 0 or Height <= 0 then return true end;
-    local Perimeter = 2 * (Width + Height);
-    if not Library.ReducedMotion then Border.Phase = (Border.Phase + Delta * 0.22) % 1 end;
-    local Color = Library.AccentColor;
-    if Border.Color ~= Color then
-        Border.Color = Color;
-        Border.Base.Color = Color;
-        for _, Segment in ipairs(Border.Segments) do
-            for _, Edge in ipairs(Segment) do
-                Edge.Core.BackgroundColor3 = Color;
-                Edge.Glow.BackgroundColor3 = Color;
-            end;
-        end;
-    end;
-    local Span = Perimeter * 0.14 / #Border.Segments;
-    for Index, Segment in ipairs(Border.Segments) do
-        local Start = (Border.Phase * Perimeter - Index * Span) % Perimeter;
-        local Finish = Start + Span;
-        local EdgeStart = 0;
-        for Side, Edge in ipairs(Segment) do
-            local Horizontal = Side == 1 or Side == 3;
-            local Length = Horizontal and Width or Height;
-            local EdgeEnd = EdgeStart + Length;
-            local A, B = math.max(Start, EdgeStart), math.min(Finish, EdgeEnd);
-            if B <= A and Finish > Perimeter then
-                A, B = EdgeStart, math.min(Finish - Perimeter, EdgeEnd);
-            end;
-            local Visible = B > A;
-            Edge.Core.Visible = Visible;
-            Edge.Glow.Visible = Visible;
-            if Visible then
-                local Offset, Extent = A - EdgeStart, B - A;
-                local X, Y;
-                if Side == 1 then X, Y = Offset / Width, 0
-                elseif Side == 2 then X, Y = 1, Offset / Height
-                elseif Side == 3 then X, Y = (Width - Offset - Extent) / Width, 1
-                else X, Y = 0, (Height - Offset - Extent) / Height end;
-                if Horizontal then
-                    Edge.Core.Position = UDim2.new(X, 0, Y, -1);
-                    Edge.Core.Size = UDim2.new(Extent / Width, 0, 0, 2);
-                    Edge.Glow.Position = UDim2.new(X, 0, Y, -3);
-                    Edge.Glow.Size = UDim2.new(Extent / Width, 0, 0, 6);
-                else
-                    Edge.Core.Position = UDim2.new(X, -1, Y, 0);
-                    Edge.Core.Size = UDim2.new(0, 2, Extent / Height, 0);
-                    Edge.Glow.Position = UDim2.new(X, -3, Y, 0);
-                    Edge.Glow.Size = UDim2.new(0, 6, Extent / Height, 0);
-                end;
-            end;
-            EdgeStart = EdgeEnd;
-        end;
-    end;
-    return true;
+function Library:UpdateNeonBorder(Border)
+    return Border.Holder.Parent ~= nil and Border.Overlay.Parent ~= nil;
 end;
 function Library:DestroyNeonBorder(Border)
     Library.NeonBorders[Border] = nil;
+    if Border.Base then Library:RemoveFromRegistry(Border.Base) end;
     if Border.Overlay then Border.Overlay:Destroy() end;
 end;
 function Library:CreateNeonBorder(Holder, ZIndex)
     local Overlay = Library:Create('Frame', {
-        Name = 'NeonBorder';
-        BackgroundTransparency = 1;
-        BorderSizePixel = 0;
-        Size = UDim2.fromScale(1, 1);
-        ZIndex = ZIndex or 10;
-        Parent = Holder;
+        Name = 'AccentBorder'; BackgroundTransparency = 1; BorderSizePixel = 0;
+        Size = UDim2.fromScale(1, 1); ZIndex = ZIndex or 10; Parent = Holder;
     });
     local Base = Library:Create('UIStroke', {
-        Color = Library.AccentColor;
-        Thickness = 1;
-        Transparency = 0.65;
-        ApplyStrokeMode = Enum.ApplyStrokeMode.Border;
-        LineJoinMode = Enum.LineJoinMode.Miter;
-        Parent = Overlay;
+        Color = Library.AccentColor; Thickness = 1; Transparency = 0.5;
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border; LineJoinMode = Enum.LineJoinMode.Miter; Parent = Overlay;
     });
-    local Border = {Holder = Holder; Overlay = Overlay; Base = Base; Phase = 0; Segments = {};};
-    for Index = 1, 8 do
-        local Segment = {};
-        for Side = 1, 4 do
-            local Glow = Library:Create('Frame', {
-                BackgroundColor3 = Library.AccentColor;
-                BackgroundTransparency = 0.88 + (Index - 1) / 8 * 0.09;
-                BorderSizePixel = 0;
-                Visible = false;
-                ZIndex = Overlay.ZIndex;
-                Parent = Overlay;
-            });
-            local Core = Library:Create('Frame', {
-                BackgroundColor3 = Library.AccentColor;
-                BackgroundTransparency = (Index - 1) / 8 * 0.9;
-                BorderSizePixel = 0;
-                Visible = false;
-                ZIndex = Overlay.ZIndex + 1;
-                Parent = Overlay;
-            });
-            Segment[Side] = {Core = Core; Glow = Glow;};
-        end;
-        Border.Segments[Index] = Segment;
-    end;
+    Library:AddToRegistry(Base, {Color = 'AccentColor'});
+    local Border = {Holder = Holder; Overlay = Overlay; Base = Base; Segments = {};};
     Library.NeonBorders[Border] = true;
-    Library:UpdateNeonBorder(Border, 0);
-    if not Library.NeonConnection then
-        Library.NeonConnection = RenderStepped:Connect(function(Delta)
-            for Active in pairs(Library.NeonBorders) do
-                if not Library:UpdateNeonBorder(Active, Delta) then Library:DestroyNeonBorder(Active) end;
-            end;
-        end);
-        table.insert(Library.Signals, Library.NeonConnection);
-        table.insert(Library.Signals, ScreenGui.Destroying:Connect(function()
-            if Library.NeonConnection then Library.NeonConnection:Disconnect(); Library.NeonConnection = nil end;
-            table.clear(Library.NeonBorders);
-        end));
-    end;
+    Holder.Destroying:Once(function() Library:DestroyNeonBorder(Border) end);
     return Border;
 end;
 function Library:MakeDraggable(Instance, Cutoff)
@@ -2841,7 +2745,7 @@ do
             BackgroundColor3 = Library.MainColor;
             BorderColor3 = Library.OutlineColor;
             BorderMode = Enum.BorderMode.Inset;
-            Size = UDim2.new(0, 26, 1, 0);
+            Size = UDim2.new(0, 14, 1, 0);
             ZIndex = 6;
             Parent = ToggleOuter;
         });
@@ -2852,8 +2756,8 @@ do
         });
 
         local ToggleLabel = Library:CreateLabel({
-            Size = UDim2.new(1, -32, 1, 0);
-            Position = UDim2.new(0, 32, 0, 0);
+            Size = UDim2.new(1, -24, 1, 0);
+            Position = UDim2.new(0, 24, 0, 0);
             TextTransparency = 1;
             ClipsDescendants = true;
             TextSize = 14;
@@ -2866,8 +2770,8 @@ do
             if Child:IsA('UIStroke') then Child.Transparency = 1 end;
         end;
         local ToggleText = Library:CreateLabel({
-            Size = UDim2.new(1, -32, 1, 0);
-            Position = UDim2.new(0, 32, 0, 0);
+            Size = UDim2.new(1, -24, 1, 0);
+            Position = UDim2.new(0, 24, 0, 0);
             Text = Info.Text;
             TextSize = 14;
             TextWrapped = false;
@@ -2899,24 +2803,20 @@ do
             local Width = ToggleOuter.AbsoluteSize.X / Scale;
             local AddonWidth = AddonLayout.AbsoluteContentSize.X / Scale;
             local Reserved = AddonWidth > 0 and math.ceil(AddonWidth) + 6 or 0;
-            ToggleText.Size = UDim2.new(0, math.max(0, Width - 32 - Reserved), 1, 0);
-            ToggleRegion.Size = UDim2.new(0, math.min(Width, math.max(26, Width - Reserved)), 1, 0);
+            ToggleText.Size = UDim2.new(0, math.max(0, Width - 24 - Reserved), 1, 0);
+            ToggleRegion.Size = UDim2.new(0, math.min(Width, math.max(14, Width - Reserved)), 1, 0);
         end;
         ToggleOuter:GetPropertyChangedSignal('AbsoluteSize'):Connect(UpdateToggleLayout);
         AddonLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(UpdateToggleLayout);
         task.defer(function() if ToggleOuter.Parent then UpdateToggleLayout() end end);
         Library:StyleControl(ToggleOuter, ToggleInner, 7, ToggleRegion);
-        local ToggleThumb = Library:Create('Frame', {
-            Name = 'SwitchThumb';
-            BackgroundColor3 = Library.FontColor;
-            BorderSizePixel = 0;
-            Position = UDim2.fromOffset(2, 2);
-            Size = UDim2.fromOffset(10, 10);
-            ZIndex = 7;
-            Parent = ToggleInner;
+        local ToggleThumb = Library:Create('ImageLabel', {
+            Name = 'Check'; BackgroundTransparency = 1; BorderSizePixel = 0;
+            Position = UDim2.fromOffset(0, 0); Size = UDim2.fromScale(1, 1);
+            Image = 'rbxassetid://10709790644'; ImageColor3 = Library.FontColor;
+            Visible = false; ZIndex = 7; Parent = ToggleInner;
         });
-        Library:Create('UICorner', {CornerRadius = UDim.new(1, 0); Parent = ToggleThumb;});
-        Library:AddToRegistry(ToggleThumb, {BackgroundColor3 = 'FontColor';});
+        Library:AddToRegistry(ToggleThumb, {ImageColor3 = 'FontColor';});
 
         Library:OnHighlight(ToggleRegion, ToggleOuter,
             { BorderColor3 = 'AccentColor' },
@@ -2937,9 +2837,7 @@ do
 
             Library.RegistryMap[ToggleInner].Properties.BackgroundColor3 = Toggle.Value and 'AccentColor' or 'MainColor';
             Library.RegistryMap[ToggleInner].Properties.BorderColor3 = Toggle.Value and 'AccentColorDark' or 'OutlineColor';
-            ToggleThumb.BackgroundColor3 = Toggle.Value and Library.FontColor or Library.OutlineColor;
-            Library.RegistryMap[ToggleThumb].Properties.BackgroundColor3 = Toggle.Value and 'FontColor' or 'OutlineColor';
-            Library:AnimateControl(ToggleThumb, {Position = Toggle.Value and UDim2.fromOffset(14, 2) or UDim2.fromOffset(2, 2)});
+            ToggleThumb.Visible = Toggle.Value;
         end;
 
         function Toggle:OnChanged(Func)
@@ -5852,82 +5750,8 @@ do
         end);
     end;
 
-    local FadeCache = {};
-    local PanelOrigPos = {};
-
-    local function FadeProps(Desc)
-        if Desc:IsA('ImageLabel') then
-            return { 'ImageTransparency', 'BackgroundTransparency' };
-        elseif Desc:IsA('TextLabel') or Desc:IsA('TextBox') then
-            return { 'TextTransparency' };
-        elseif Desc:IsA('ScrollingFrame') then
-            return { 'BackgroundTransparency', 'ScrollBarImageTransparency' };
-        elseif Desc:IsA('Frame') then
-            return { 'BackgroundTransparency' };
-        elseif Desc:IsA('UIStroke') then
-            return { 'Transparency' };
-        end;
-
-        return {};
-    end;
-
-    local function FadePanel(Frame, Show, Name)
-        local Time = Library.ReducedMotion and 0 or (Library.MenuFadeTime or 0.2);
-        local Cache = FadeCache[Frame];
-
-        if not Cache then
-            Cache = {};
-            FadeCache[Frame] = Cache;
-        end;
-
-        if Time <= 0 then
-            Frame.Visible = Show;
-            return;
-        end;
-
-        if Show then
-            local Orig = PanelOrigPos[Frame];
-
-            if not Orig then
-                Orig = Frame.Position;
-                PanelOrigPos[Frame] = Orig;
-            end;
-
-            Frame.Position = UDim2.new(Orig.X.Scale, Orig.X.Offset - 16, Orig.Y.Scale, Orig.Y.Offset);
-            Frame.Visible = true;
-            TweenService:Create(Frame, TweenInfo.new(Time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = Orig }):Play();
-        end;
-
-        for _, Desc in next, Frame:GetDescendants() do
-            local Props = FadeProps(Desc);
-
-            if #Props > 0 then
-                local C = Cache[Desc];
-
-                if not C then
-                    C = {};
-                    Cache[Desc] = C;
-                end;
-
-                for _, Prop in next, Props do
-                    if C[Prop] == nil then
-                        C[Prop] = Desc[Prop];
-                    end;
-
-                    if C[Prop] ~= 1 then
-                        TweenService:Create(Desc, TweenInfo.new(Time, Enum.EasingStyle.Linear), { [Prop] = Show and C[Prop] or 1 }):Play();
-                    end;
-                end;
-            end;
-        end;
-
-        if not Show then
-            task.delay(Time, function()
-                if Library.OpenToolbarPanel ~= Name then
-                    Frame.Visible = false;
-                end;
-            end);
-        end;
+    local function FadePanel(Frame, Show)
+        Frame.Visible = Show;
     end;
 
     local SettingsPanel, SettingsContainer = CreatePanel('Settings', 300, 236, 240, 200);
@@ -7905,7 +7729,7 @@ function Library:CreateWindow(...)
     Library.MenuFadeTime = Config.MenuFadeTime;
 
     if typeof(Config.Position) ~= 'UDim2' then Config.Position = UDim2.new(1, -590, 1, -640) end
-    if typeof(Config.Size) ~= 'UDim2' then Config.Size = UDim2.fromOffset(550, 600) end
+    if typeof(Config.Size) ~= 'UDim2' then Config.Size = UDim2.fromOffset(700, 600) end
 
     if Config.Center then
         Config.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -7974,28 +7798,9 @@ function Library:CreateWindow(...)
     });
 
     Library:RemoveFromRegistry(WindowLabel);
-    WindowLabel.TextColor3 = Color3.new(1, 1, 1);
+    WindowLabel.TextColor3 = Library.FontColor;
+    Library:AddToRegistry(WindowLabel, {TextColor3 = 'FontColor'});
     WindowLabel.Font = Enum.Font.GothamBold;
-
-    local TitleGradient = Library:Create('UIGradient', {
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
-            ColorSequenceKeypoint.new(0.5, Color3.new(0.55, 0.55, 0.55)),
-            ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1))
-        });
-        Parent = WindowLabel;
-    });
-
-    Library:GiveSignal(RenderStepped:Connect(function()
-        if not Outer.Visible then return end;
-        if Library.ReducedMotion then
-            if TitleGradient.Offset ~= Vector2.new(0.5, 0) then TitleGradient.Offset = Vector2.new(0.5, 0) end;
-            return;
-        end;
-
-        local T = (math.sin(os.clock() * 1.5) + 1) / 2;
-        TitleGradient.Offset = Vector2.new(T, 0);
-    end));
 
     local GameName = game.Name;
 
@@ -8016,7 +7821,7 @@ function Library:CreateWindow(...)
     });
 
     Library:RemoveFromRegistry(WindowGameLabel);
-    WindowGameLabel.TextColor3 = Color3.fromRGB(180, 0, 0);
+    WindowGameLabel.TextColor3 = Color3.fromRGB(160, 160, 160);
 
     local MainSectionOuter = Library:Create('Frame', {
         BackgroundColor3 = Library.BackgroundColor;
@@ -8128,49 +7933,40 @@ function Library:CreateWindow(...)
         BackgroundColor3 = 'BackgroundColor';
     });
 
-    local TabArea = Library:Create('Frame', {
-        BackgroundTransparency = 1;
-        ClipsDescendants = true;
-        Position = UDim2.new(0, 8, 0, 8);
-        Size = UDim2.new(1, -16, 0, 21);
-        ZIndex = 1;
-        Parent = MainSectionInner;
+    local TabArea = Library:Create('ScrollingFrame', {
+        BackgroundColor3 = Color3.fromRGB(19, 19, 19); BorderSizePixel = 0;
+        ClipsDescendants = true; Position = UDim2.new(0, 8, 0, 8);
+        Size = UDim2.new(0, 140, 1, -16); CanvasSize = UDim2.fromOffset(0, 0);
+        ScrollBarThickness = 2; ScrollBarImageColor3 = Library.OutlineColor;
+        ScrollingDirection = Enum.ScrollingDirection.Y; ZIndex = 1; Parent = MainSectionInner;
     });
-
+    Library:AddToRegistry(TabArea, {ScrollBarImageColor3 = 'OutlineColor'});
     local TabListLayout = Library:Create('UIListLayout', {
-        Padding = UDim.new(0, Config.TabPadding);
-        FillDirection = Enum.FillDirection.Horizontal;
-        SortOrder = Enum.SortOrder.LayoutOrder;
-        Parent = TabArea;
+        Padding = UDim.new(0, 6); FillDirection = Enum.FillDirection.Vertical;
+        SortOrder = Enum.SortOrder.LayoutOrder; HorizontalAlignment = Enum.HorizontalAlignment.Center; Parent = TabArea;
     });
+    local TabContainer;
     local TabLayoutPending = false;
     local function ReflowTabs()
         if not Outer.Parent or Library.Unloaded then return end;
-        local VisibleTabs, NaturalWidths = {}, {};
+        local Scale = Window.ScaleObject and Window.ScaleObject.Scale or 1;
+        local Width = MainSectionInner.AbsoluteSize.X / math.max(Scale, 0.01);
+        local SidebarWidth = math.clamp(math.floor(Width * 0.22), 85, 140);
+        TabArea.Size = UDim2.new(0, SidebarWidth, 1, -16);
+        if TabContainer then
+            TabContainer.Position = UDim2.new(0, SidebarWidth + 16, 0, 8);
+            TabContainer.Size = UDim2.new(1, -SidebarWidth - 24, 1, -16);
+        end;
+        local Count = 0;
         for _, Tab in pairs(Window.Tabs) do
             if Tab.TabButton.Parent == TabArea and Tab.TabButton.Visible then
-                VisibleTabs[#VisibleTabs + 1] = Tab;
+                Count = Count + 1;
+                Tab.TabButton.Size = UDim2.new(1, -8, 0, 32);
+                Tab.TextLabel.TextSize = 14;
             end;
         end;
-        table.sort(VisibleTabs, function(A, B)
-            local AOrder, BOrder = A.TabButton.LayoutOrder, B.TabButton.LayoutOrder;
-            return AOrder == BOrder and A.Sequence < B.Sequence or AOrder < BOrder;
-        end);
-        for Index, Tab in ipairs(VisibleTabs) do
-            local Label = Tab.TextLabel;
-            local Width = Library:GetTextBounds(Label.Text, Label.Font, 14);
-            Tab.TabButtonWidth = Width;
-            NaturalWidths[Index] = Width + 20;
-        end;
-        local Scale = Window.ScaleObject and Window.ScaleObject.Scale or 1;
-        local Available = TabArea.AbsoluteSize.X / math.max(Scale, 0.01);
-        local Widths, Padding = Library:CalculateTabWidths(Available, NaturalWidths, Config.TabPadding);
-        TabListLayout.Padding = UDim.new(0, Padding);
-        for Index, Tab in ipairs(VisibleTabs) do
-            local Width = Widths[Index];
-            Tab.TabButton.Size = UDim2.new(0, Width, 1, 0);
-            Tab.TextLabel.TextSize = math.clamp(math.floor(14 * math.max(0, Width - 12) / math.max(Tab.TabButtonWidth, 1)), 11, 14);
-        end;
+        TabArea.CanvasSize = UDim2.fromOffset(0, math.max(0, Count * 38 - 6));
+        TabListLayout.Padding = UDim.new(0, 6);
     end;
     local function QueueTabLayout()
         if TabLayoutPending or Library.Unloaded then return end;
@@ -8181,13 +7977,14 @@ function Library:CreateWindow(...)
         end);
     end;
     Window.RefreshTabLayout = QueueTabLayout;
-    TabArea:GetPropertyChangedSignal('AbsoluteSize'):Connect(QueueTabLayout);
+    Library:GiveSignal(TabArea:GetPropertyChangedSignal('AbsoluteSize'):Connect(QueueTabLayout));
+    Library:GiveSignal(MainSectionInner:GetPropertyChangedSignal('AbsoluteSize'):Connect(QueueTabLayout));
 
-    local TabContainer = Library:Create('Frame', {
+    TabContainer = Library:Create('Frame', {
         BackgroundColor3 = Library.MainColor;
         BorderColor3 = Library.OutlineColor;
-        Position = UDim2.new(0, 8, 0, 30);
-        Size = UDim2.new(1, -16, 1, -38);
+        Position = UDim2.new(0, 156, 0, 8);
+        Size = UDim2.new(1, -164, 1, -16);
         ZIndex = 2;
         Parent = MainSectionInner;
     });Library:AddToRegistry(TabContainer, {
@@ -8276,15 +8073,15 @@ function Library:CreateWindow(...)
         local TabButton = Library:Create('Frame', {
             BackgroundColor3 = Library.BackgroundColor;
             BorderColor3 = Library.OutlineColor;
-            Size = UDim2.new(0, TabButtonWidth + 14 + 6, 1, 0);
+            Size = UDim2.new(1, -8, 0, 32);
             LayoutOrder = Tab.Sequence;
             ZIndex = 1;
             Parent = TabArea;
         });
         Library:StyleControl(TabButton, TabButton, 4);
         local TabAccent = Library:CreateSelectionMarker(TabButton);
-        TabAccent.Position = UDim2.new(0, 5, 1, -2);
-        TabAccent.Size = UDim2.new(1, -10, 0, 2);
+        TabAccent.Position = UDim2.new(0, 0, 0, 4);
+        TabAccent.Size = UDim2.new(0, 2, 1, -8);
 
         Tab.TabButton = TabButton
         Library:AddToRegistry(TabButton, {
@@ -8293,8 +8090,9 @@ function Library:CreateWindow(...)
         });
 
         local TabButtonLabel = Library:CreateLabel({
-            Position = UDim2.new(0, 6, 0, 0);
-            Size = UDim2.new(1, -12, 1, -1);
+            Position = UDim2.new(0, 12, 0, 0);
+            Size = UDim2.new(1, -20, 1, 0);
+            TextXAlignment = Enum.TextXAlignment.Left;
             TextSize = 14;
             TextWrapped = false;
             TextTruncate = Enum.TextTruncate.AtEnd;
@@ -8886,74 +8684,16 @@ function Library:CreateWindow(...)
         Parent = ScreenGui;
     });
 
-    local TransparencyCache = {};
     local Toggled = false;
-    local Fading = false;
-
     function Library:Toggle()
-        if Fading then
-            return;
-        end;
-
-        local FadeTime = Library.ReducedMotion and 0 or Config.MenuFadeTime;
-        Fading = true;
-        Toggled = (not Toggled);
+        if Library.Unloaded then return end;
+        Toggled = not Toggled;
         ModalElement.Modal = Toggled;
-
-        if Toggled then
-            -- A bit scuffed, but if we're going from not toggled -> toggled we want to show the frame immediately so that the fade is visible.
-            Outer.Visible = true;
-        end;
-
-        for _, Desc in next, Outer:GetDescendants() do
-            local Properties = {};
-
-            if Desc:IsA('ImageLabel') then
-                table.insert(Properties, 'ImageTransparency');
-                table.insert(Properties, 'BackgroundTransparency');
-            elseif Desc:IsA('TextLabel') or Desc:IsA('TextBox') then
-                table.insert(Properties, 'TextTransparency');
-            elseif Desc:IsA('Frame') or Desc:IsA('ScrollingFrame') then
-                table.insert(Properties, 'BackgroundTransparency');
-            elseif Desc:IsA('UIStroke') then
-                table.insert(Properties, 'Transparency');
-            end;
-
-            local Cache = TransparencyCache[Desc];
-
-            if (not Cache) then
-                Cache = {};
-                TransparencyCache[Desc] = Cache;
-            end;
-
-            for _, Prop in next, Properties do
-                if not Cache[Prop] then
-                    Cache[Prop] = Desc[Prop];
-                end;
-
-                if Cache[Prop] == 1 then
-                    continue;
-                end;
-
-                TweenService:Create(Desc, TweenInfo.new(FadeTime, Enum.EasingStyle.Linear), { [Prop] = Toggled and Cache[Prop] or 1 }):Play();
-            end;
-        end;
-
-        if FadeTime > 0 then
-            task.wait(FadeTime);
-        end;
-
         Outer.Visible = Toggled;
-
-        if Library.ToolbarHolder then
-            Library.ToolbarHolder.Visible = false;
-
-            if not Toggled then
-                Library:HideToolbarPanels();
-            end;
-        end;
-
-        Fading = false;
+        Library.MainVisible = Toggled;
+        if Library.ClosePopups then Library:ClosePopups() end;
+        if Library.ToolbarHolder then Library.ToolbarHolder.Visible = false end;
+        if not Toggled then Library:HideToolbarPanels() end;
     end
 
     Library:GiveSignal(InputService.InputBegan:Connect(function(Input, Processed)
