@@ -3932,6 +3932,7 @@ do
         end;
 
         function Dropdown:BuildDropdownList()
+            Dropdown.ListDirty = false;
             local Values = Dropdown.Values;
             table.clear(Buttons);
             BuiltValues = table.clone(Values);
@@ -4074,10 +4075,15 @@ do
                 if Unchanged then Dropdown:Display(); return end;
             end;
 
+            if Dropdown.SpecialType == 'Player' and not ListOuter.Visible then
+                Dropdown.ListDirty = true;
+                return;
+            end;
             Dropdown:BuildDropdownList();
         end;
 
         function Dropdown:OpenDropdown()
+            if Dropdown.ListDirty then Dropdown:BuildDropdownList(); end;
             RecalculateListPosition();
             ListOuter.Visible = true;
             Library.OpenedFrames[ListOuter] = true;
@@ -9059,14 +9065,18 @@ function Library:CreateWindow(...)
     return Window;
 end;
 
+local PlayerChangePending = false;
 local function OnPlayerChange()
-    local PlayerList = GetPlayersString();
-
-    for _, Value in next, Options do
-        if Value.Type == 'Dropdown' and Value.SpecialType == 'Player' then
-            Value:SetValues(PlayerList);
+    if PlayerChangePending or Library.Unloaded then return; end;
+    PlayerChangePending = true;
+    task.defer(function()
+        PlayerChangePending = false;
+        if Library.Unloaded then return; end;
+        local PlayerList = GetPlayersString();
+        for _, Value in next, Options do
+            if Value.Type == 'Dropdown' and Value.SpecialType == 'Player' then Value:SetValues(PlayerList); end;
         end;
-    end;
+    end);
 end;
 
 Library:GiveSignal(Players.PlayerAdded:Connect(OnPlayerChange));
