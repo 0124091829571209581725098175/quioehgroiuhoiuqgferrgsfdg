@@ -52,7 +52,7 @@ local Library = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 6;
+Library.PhowgRevision = 7;
 Library.ChromaPickers = {};
 Library.ChromaSet = {};
 Library.ChromaConn = nil;
@@ -818,6 +818,9 @@ end
 
 function Library:Unload()
     Library.Unloaded = true;
+    Library.CustomCursorEnabled = false;
+    Library:RefreshCustomCursor();
+    Library:RestoreMouseIcon();
     for Handle in pairs(Library.ProgressNotifications or {}) do Handle:Complete() end;
     for Target, Tween in pairs(Library.ControlTweens) do Tween:Cancel(); Library.ControlTweens[Target] = nil end;
     table.clear(Library.ControlTweenGoals);
@@ -901,6 +904,88 @@ function Library:BindPopupPosition(Anchor, Popup, Update)
     end);
     Sync();
 end;
+Library.CustomCursorEnabled = true;
+Library.MouseIconRequests = {};
+function Library:SetMouseIconHidden(Owner, Hidden)
+    Hidden = Hidden == true and not Library.Unloaded;
+    if Hidden then
+        if Library.MouseIconOriginal == nil then Library.MouseIconOriginal = InputService.MouseIconEnabled end;
+        Library.MouseIconRequests[Owner] = true;
+    else
+        Library.MouseIconRequests[Owner] = nil;
+    end;
+    if next(Library.MouseIconRequests) then
+        InputService.MouseIconEnabled = false;
+    elseif Library.MouseIconOriginal ~= nil then
+        InputService.MouseIconEnabled = Library.MouseIconOriginal;
+        Library.MouseIconOriginal = nil;
+    end;
+end;
+function Library:RestoreMouseIcon()
+    table.clear(Library.MouseIconRequests);
+    if Library.MouseIconOriginal ~= nil then
+        InputService.MouseIconEnabled = Library.MouseIconOriginal;
+        Library.MouseIconOriginal = nil;
+    end;
+end;
+function Library:RefreshCustomCursor()
+    local Visible = Library.CustomCursorEnabled and Library.MainVisible and not Library.Unloaded;
+    if Visible and not Library.CustomCursor then
+        local Cursor = Library:Create('Frame', {
+            Name = 'CustomCursor';
+            AnchorPoint = Vector2.new(0.5, 0.5);
+            BackgroundTransparency = 1;
+            BorderSizePixel = 0;
+            Size = UDim2.fromOffset(21, 21);
+            Active = false;
+            ZIndex = 10000;
+            Parent = ScreenGui;
+        });
+        Library:Create('Frame', {
+            AnchorPoint = Vector2.new(0.5, 0.5);
+            Position = UDim2.fromScale(0.5, 0.5);
+            Size = UDim2.fromOffset(21, 1);
+            BackgroundColor3 = Color3.new(1, 1, 1);
+            BorderSizePixel = 0;
+            Active = false;
+            ZIndex = 10000;
+            Parent = Cursor;
+        });
+        Library:Create('Frame', {
+            AnchorPoint = Vector2.new(0.5, 0.5);
+            Position = UDim2.fromScale(0.5, 0.5);
+            Size = UDim2.fromOffset(1, 21);
+            BackgroundColor3 = Color3.new(1, 1, 1);
+            BorderSizePixel = 0;
+            Active = false;
+            ZIndex = 10000;
+            Parent = Cursor;
+        });
+        Library.CustomCursor = Cursor;
+    end;
+    if Library.CustomCursor then
+        Library.CustomCursor.Visible = Visible == true;
+        if Visible then Library.CustomCursor.Position = UDim2.fromOffset(Mouse.X, Mouse.Y) end;
+    end;
+    Library:SetMouseIconHidden('custom cursor', Visible == true);
+    if Visible and not Library.CustomCursorConnection then
+        Library.CustomCursorConnection = InputService.InputChanged:Connect(function(Input)
+            if Input.UserInputType == Enum.UserInputType.MouseMovement and Library.CustomCursor then
+                Library.CustomCursor.Position = UDim2.fromOffset(Mouse.X, Mouse.Y);
+            end;
+        end);
+        Library:GiveSignal(Library.CustomCursorConnection);
+    elseif not Visible and Library.CustomCursorConnection then
+        Library.CustomCursorConnection:Disconnect();
+        local Index = table.find(Library.Signals, Library.CustomCursorConnection);
+        if Index then table.remove(Library.Signals, Index) end;
+        Library.CustomCursorConnection = nil;
+    end;
+end;
+function Library:SetCustomCursor(Enabled)
+    Library.CustomCursorEnabled = Enabled == true;
+    Library:RefreshCustomCursor();
+end;
 function Library:QueueKeybindLayout()
     if Library.KeybindLayoutPending or Library.Unloaded then return end;
     Library.KeybindLayoutPending = true;
@@ -913,7 +998,16 @@ function Library:QueueKeybindLayout()
                 Height = Height + 18;
                 local RowWidth = 0;
                 for _, Label in ipairs(Row:GetChildren()) do
-                    if Label:IsA('TextLabel') then RowWidth = RowWidth + Label.TextBounds.X end;
+                    if Label:IsA('TextLabel') then
+                        RowWidth = RowWidth + Label.TextBounds.X;
+                        if Label.Name == 'State' then
+                            local StateWidth = math.ceil(Label.TextBounds.X) + 5;
+                            Label.Position = UDim2.new(1, -StateWidth - 5, 0, 0);
+                            Label.Size = UDim2.new(0, StateWidth, 1, 0);
+                            local NameLabel = Row:FindFirstChild('Name');
+                            if NameLabel then NameLabel.Size = UDim2.new(1, -StateWidth - 15, 1, 0) end;
+                        end;
+                    end;
                 end;
                 Width = math.max(Width, RowWidth);
             end;
@@ -1966,6 +2060,7 @@ do
             Parent = Library.KeybindContainer;
         });
         local KeyName = Library:CreateLabel({
+            Name = 'Name';
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
             Position = UDim2.new(0, 5, 0, 0);
@@ -1978,6 +2073,7 @@ do
             Parent = KeyRow;
         }, true);
         local KeyState = Library:CreateLabel({
+            Name = 'State';
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
             Position = UDim2.new(1, -70, 0, 0);
@@ -2022,6 +2118,7 @@ do
                 Library.RegistryMap[Label].Properties.TextColor3 = 'AccentColor';
 
                 ModeSelectOuter.Visible = false;
+                if KeyPicker.Update then KeyPicker:Update() end;
             end;
 
             function ModeButton:Deselect()
@@ -2050,11 +2147,12 @@ do
             if Info.NoUI then return end;
             local State = KeyPicker:GetState();
             local RawName = tostring(Info.Text or 'bind');
-            if KeyPicker.DisplayState == State and KeyPicker.DisplayMode == KeyPicker.Mode and KeyPicker.DisplayName == RawName then return end;
-            KeyPicker.DisplayState, KeyPicker.DisplayMode, KeyPicker.DisplayName = State, KeyPicker.Mode, RawName;
+            local Key = tostring(KeyPicker.Value or 'None');
+            if KeyPicker.DisplayState == State and KeyPicker.DisplayMode == KeyPicker.Mode and KeyPicker.DisplayName == RawName and KeyPicker.DisplayKey == Key then return end;
+            KeyPicker.DisplayState, KeyPicker.DisplayMode, KeyPicker.DisplayName, KeyPicker.DisplayKey = State, KeyPicker.Mode, RawName, Key;
             local ModeText = KeyPicker.Mode == 'Always' and 'On' or KeyPicker.Mode == 'Hold' and 'Holding' or 'Toggled';
             KeyName.Text = string.upper(RawName:sub(1, 1)) .. RawName:sub(2);
-            KeyState.Text = '[' .. ModeText .. ']';
+            KeyState.Text = '[' .. Key .. '] [' .. ModeText .. ']';
             KeyRow.Visible = State and true or false;
             Library:QueueKeybindLayout();
         end;
@@ -3997,7 +4095,7 @@ do
             Func(Dropdown.Value);
         end;
 
-        function Dropdown:SetValue(Val)
+        function Dropdown:SetValue(Val, Silent)
             if Dropdown.Multi then
                 local nTable = {};
                 if type(Val) == "string" then
@@ -4026,8 +4124,10 @@ do
                 end;
             end;
             Dropdown:Display();
-            Library:SafeCallback(Dropdown.Callback, Dropdown.Value);
-            Library:SafeCallback(Dropdown.Changed, Dropdown.Value);
+            if not Silent then
+                Library:SafeCallback(Dropdown.Callback, Dropdown.Value);
+                Library:SafeCallback(Dropdown.Changed, Dropdown.Value);
+            end;
         end;
 
         DropdownOuter.InputBegan:Connect(function(Input)
@@ -4576,7 +4676,7 @@ do
             Func(Dropdown.Value);
         end;
 
-        function Dropdown:SetValue(Val)
+        function Dropdown:SetValue(Val, Silent)
             if Dropdown.Multi then
                 local nTable = {};
                 if type(Val) == "string" then
@@ -4605,8 +4705,10 @@ do
                 end;
             end;
             Dropdown:BuildList();
-            Library:SafeCallback(Dropdown.Callback, Dropdown.Value);
-            Library:SafeCallback(Dropdown.Changed, Dropdown.Value);
+            if not Silent then
+                Library:SafeCallback(Dropdown.Callback, Dropdown.Value);
+                Library:SafeCallback(Dropdown.Changed, Dropdown.Value);
+            end;
         end;
 
         SearchBox:GetPropertyChangedSignal('Text'):Connect(function()
@@ -5979,7 +6081,7 @@ do
         Frame.Visible = Show;
     end;
 
-    local SettingsPanel, SettingsContainer = CreatePanel('Settings', 300, 236, 240, 200);
+    local SettingsPanel, SettingsContainer = CreatePanel('Settings', 300, 256, 240, 220);
 
     local SettingButtons = {};
     local RefreshSettings;
@@ -6090,6 +6192,12 @@ do
         return 'Keybinds: Off';
     end, function()
         Library:SetKeybindIndicator(not Library.KeybindIndicatorEnabled);
+    end);
+
+    AddSettingRow('Custom cursor', function()
+        return Library.CustomCursorEnabled and 'Cursor: On' or 'Cursor: Off';
+    end, function()
+        Library:SetCustomCursor(not Library.CustomCursorEnabled);
     end);
 
     RefreshSettings = function()
@@ -8916,6 +9024,7 @@ function Library:CreateWindow(...)
         ModalElement.Modal = Toggled;
         Outer.Visible = Toggled;
         Library.MainVisible = Toggled;
+        Library:RefreshCustomCursor();
         if Library.ClosePopups then Library:ClosePopups() end;
         if Library.ToolbarHolder then Library.ToolbarHolder.Visible = false end;
         if not Toggled then Library:HideToolbarPanels() end;
