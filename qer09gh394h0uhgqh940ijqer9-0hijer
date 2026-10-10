@@ -4670,9 +4670,19 @@ do
             end;
         end));
 
-        function Dropdown:SetValues(NewValues)
+        local UpdatingSearch = false;
+
+        function Dropdown:SetValues(NewValues, ResetSearch)
             if NewValues then
                 Dropdown.Values = NewValues;
+            end;
+
+            if ResetSearch then
+                UpdatingSearch = true;
+                SearchBox.Text = '';
+                UpdatingSearch = false;
+                Dropdown.Highlight = nil;
+                Scrolling.CanvasPosition = Vector2.new(0, 0);
             end;
 
             Dropdown:BuildList();
@@ -4711,7 +4721,7 @@ do
                     end
                 end;
             end;
-            Dropdown:BuildList();
+            Dropdown:Display();
             if not Silent then
                 Library:SafeCallback(Dropdown.Callback, Dropdown.Value);
                 Library:SafeCallback(Dropdown.Changed, Dropdown.Value);
@@ -4719,7 +4729,7 @@ do
         end;
 
         SearchBox:GetPropertyChangedSignal('Text'):Connect(function()
-            Dropdown:BuildList();
+            if not UpdatingSearch then Dropdown:BuildList(); end;
         end);
 
         Dropdown:BuildList();
@@ -4762,7 +4772,7 @@ do
         Groupbox:Resize();
 
         Options[Idx] = Dropdown;
-        Library:RegisterControl(Idx, Dropdown, Groupbox, Info.Text, DropdownOuter);
+        Library:RegisterControl(Idx, Dropdown, Groupbox, Info.Text, ListOuter);
 
         return Dropdown;
     end;
@@ -6061,6 +6071,7 @@ do
 
         task.spawn(function()
             while ScreenGui.Parent do
+                if not ExecOuter.Visible then task.wait(0.5); continue end
                 local Start = os.clock();
                 local Frames = 0;
 
@@ -8006,6 +8017,7 @@ function Library:BuildCustomPanels(Window, TabContainer)
     end
     task.spawn(function()
         while ScreenGui.Parent do
+            if not ExecPanel.Visible then task.wait(0.5); continue end
             local Start = os.clock()
             local Frames = 0
             while os.clock() - Start < 0.5 do
