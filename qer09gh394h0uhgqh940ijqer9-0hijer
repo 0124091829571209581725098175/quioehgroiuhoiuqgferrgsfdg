@@ -37,11 +37,11 @@ local Library = {
     Registry = {};
     RegistryMap = {};
     HudRegistry = {};
-    FontColor = Color3.fromRGB(238, 241, 245);
-    MainColor = Color3.fromRGB(28, 31, 35);
-    BackgroundColor = Color3.fromRGB(20, 22, 25);
-    AccentColor = Color3.fromRGB(114, 171, 230);
-    OutlineColor = Color3.fromRGB(52, 57, 64);
+    FontColor = Color3.fromRGB(225, 225, 225);
+    MainColor = Color3.fromRGB(24, 24, 24);
+    BackgroundColor = Color3.fromRGB(16, 16, 16);
+    AccentColor = Color3.fromRGB(93, 205, 119);
+    OutlineColor = Color3.fromRGB(58, 58, 58);
     RiskColor = Color3.fromRGB(255, 50, 50),
     Black = Color3.new(0, 0, 0);
     Font = Enum.Font.Gotham,
@@ -52,8 +52,9 @@ local Library = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 8;
+Library.PhowgRevision = 9;
 Library.WorkspaceEnabled = true;
+Library.ClassicEnabled = true;
 Library.ChromaPickers = {};
 Library.ChromaSet = {};
 Library.ChromaConn = nil;
@@ -320,7 +321,7 @@ function Library:Create(Class, Properties)
         elseif Property == 'ZIndex' and layer > 0 then
             _Instance.ZIndex = Value >= layer and Value or Value + layer
         else
-        if Property == 'CornerRadius' and Value.Scale == 0 then Value = UDim.new(0, math.min(14, Value.Offset)) end;
+        if Property == 'CornerRadius' and Value.Scale == 0 then Value = UDim.new(0, math.min(Library.ClassicEnabled and 1 or 14, Value.Offset)) end;
         _Instance[Property] = Value;
         end
     end;
@@ -379,7 +380,7 @@ function Library:StyleControl(Outer, Inner, Radius, Region)
     if Outer ~= Inner then Outer.BackgroundTransparency = 1 end;
     for _, Surface in ipairs(Outer == Inner and {Inner} or {Outer, Inner}) do
         if not Surface:FindFirstChildOfClass('UICorner') then
-            Library:Create('UICorner', {CornerRadius = UDim.new(0, math.min(Radius or 7, 14)); Parent = Surface;});
+            Library:Create('UICorner', {CornerRadius = UDim.new(0, math.min(Radius or 7, Library.ClassicEnabled and 1 or 14)); Parent = Surface;});
         end;
     end;
     local Stroke = Library:Create('UIStroke', {
@@ -2959,7 +2960,7 @@ do
             BackgroundColor3 = Color3.new(0, 0, 0);
             BackgroundTransparency = 1;
             BorderColor3 = Color3.new(0, 0, 0);
-            Size = UDim2.new(1, -4, 0, 40);
+            Size = UDim2.new(1, -4, 0, 28);
             ZIndex = 5;
             Parent = Container;
         });
@@ -2972,8 +2973,8 @@ do
             BackgroundColor3 = Library.MainColor;
             BorderColor3 = Library.OutlineColor;
             BorderMode = Enum.BorderMode.Inset;
-            Position = UDim2.new(1, -34, 0, 10);
-            Size = UDim2.fromOffset(32, 18);
+            Position = UDim2.fromOffset(0, 7);
+            Size = UDim2.fromOffset(14, 14);
             ZIndex = 6;
             Parent = ToggleOuter;
         });
@@ -2984,8 +2985,8 @@ do
         });
 
         local ToggleLabel = Library:CreateLabel({
-            Size = UDim2.new(1, -50, 1, 0);
-            Position = UDim2.fromOffset(0, 0);
+            Size = UDim2.new(1, -24, 1, 0);
+            Position = UDim2.fromOffset(24, 0);
             TextTransparency = 1;
             ClipsDescendants = true;
             TextSize = 14;
@@ -2998,8 +2999,8 @@ do
             if Child:IsA('UIStroke') then Child.Transparency = 1 end;
         end;
         local ToggleText = Library:CreateLabel({
-            Size = UDim2.new(1, -50, 1, 0);
-            Position = UDim2.fromOffset(0, 0);
+            Size = UDim2.new(1, -24, 1, 0);
+            Position = UDim2.fromOffset(24, 0);
             Text = Info.Text;
             TextSize = 14;
             TextWrapped = false;
@@ -3028,26 +3029,20 @@ do
             Parent = ToggleOuter;
         });
         local function UpdateToggleLayout()
-            local Scale = math.max(ToggleOuter.AbsoluteSize.Y / 40, 0.01);
+            local Scale = math.max(ToggleOuter.AbsoluteSize.Y / 28, 0.01);
             local Width = ToggleOuter.AbsoluteSize.X / Scale;
             local AddonWidth = AddonLayout.AbsoluteContentSize.X / Scale;
             local Reserved = AddonWidth > 0 and math.ceil(AddonWidth) + 6 or 0;
-            ToggleText.Size = UDim2.new(0, math.max(0, Width - 50 - Reserved), 1, 0);
-            ToggleRegion.Size = UDim2.new(0, math.max(0, Width - 50 - Reserved), 1, 0);
+            ToggleText.Size = UDim2.new(0, math.max(0, Width - 24 - Reserved), 1, 0);
+            ToggleRegion.Position = UDim2.fromOffset(24, 0);
+            ToggleRegion.Size = UDim2.new(0, math.max(0, Width - 24 - Reserved), 1, 0);
         end;
         ToggleOuter:GetPropertyChangedSignal('AbsoluteSize'):Connect(UpdateToggleLayout);
         AddonLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(UpdateToggleLayout);
         task.defer(function() if ToggleOuter.Parent then UpdateToggleLayout() end end);
         Library:StyleControl(ToggleOuter, ToggleInner, 7, ToggleRegion);
-        local ToggleThumb = Library:Create('Frame', {
-            Name = 'SwitchThumb'; BackgroundColor3 = Library.FontColor; BorderSizePixel = 0;
-            Position = UDim2.fromOffset(3, 3); Size = UDim2.fromOffset(12, 12);
-            ZIndex = 7; Parent = ToggleInner;
-        });
-        Library:Create('UICorner', {CornerRadius = UDim.new(1, 0); Parent = ToggleThumb});
-        ToggleInner:FindFirstChildOfClass('UICorner').CornerRadius = UDim.new(1, 0);
-        Library:AddToRegistry(ToggleThumb, {BackgroundColor3 = 'FontColor';});
-
+        local ToggleThumb = Library:CreateLabel({Name = 'ClassicCheck', Text = utf8.char(10003), Font = Enum.Font.GothamBold, TextColor3 = Library.BackgroundColor, TextSize = 12, Size = UDim2.fromScale(1, 1), ZIndex = 7, Parent = ToggleInner})
+        Library:AddToRegistry(ToggleThumb, {TextColor3 = 'BackgroundColor'})
         Library:OnHighlight(ToggleRegion, ToggleOuter,
             { BorderColor3 = 'AccentColor' },
             { BorderColor3 = 'Black' }
@@ -3067,7 +3062,7 @@ do
 
             Library.RegistryMap[ToggleInner].Properties.BackgroundColor3 = Toggle.Value and 'AccentColor' or 'MainColor';
             Library.RegistryMap[ToggleInner].Properties.BorderColor3 = Toggle.Value and 'AccentColorDark' or 'OutlineColor';
-            Library:AnimateControl(ToggleThumb, {Position = UDim2.fromOffset(Toggle.Value and 17 or 3, 3)});
+            Library:AnimateControl(ToggleThumb, {TextTransparency = Toggle.Value and 0 or 1});
         end;
 
         function Toggle:OnChanged(Func)
@@ -5168,1368 +5163,14 @@ do
     Library:ApplyScaleTo(KeybindOuter);
 end;
 
-do
-    local TeleportService = game:GetService('TeleportService');
-
-    Library.ToolbarPanels = {};
-    Library.OpenToolbarPanel = nil;
-    Library.Spectating = nil;
-    Library.ThumbnailCache = {};
-    Library.ServerSortMode = 'Players';
-    Library.ServerSortDesc = true;
-    local ToolbarButtons = {};
-
-    local Holder = Library:Create('Frame', {
-        AnchorPoint = Vector2.new(0.5, 0);
-        BackgroundColor3 = Color3.new(0, 0, 0);
-        BorderSizePixel = 0;
-        Position = UDim2.new(0.5, 0, 0, 10);
-        Size = UDim2.new(0, 170, 0, 42);
-        Visible = false;
-        ZIndex = 90;
-        Parent = ScreenGui;
-    });
-
-    local HolderInner = Library:Create('Frame', {
-        BackgroundColor3 = Library.MainColor;
-        BorderColor3 = Library.OutlineColor;
-        BorderMode = Enum.BorderMode.Inset;
-        Position = UDim2.new(0, 1, 0, 1);
-        Size = UDim2.new(1, -2, 1, -2);
-        ZIndex = 91;
-        Parent = Holder;
-    });
-
-    Library:AddToRegistry(HolderInner, {
-        BackgroundColor3 = 'MainColor';
-        BorderColor3 = 'OutlineColor';
-    });
-
-    local HolderAccent = Library:Create('Frame', {
-        BackgroundColor3 = Library.AccentColor;
-        BorderSizePixel = 0;
-        Size = UDim2.new(1, 0, 0, 2);
-        ZIndex = 92;
-        Parent = HolderInner;
-    });
-
-    Library:AddToRegistry(HolderAccent, {
-        BackgroundColor3 = 'AccentColor';
-    });
-
-    local ButtonRow = Library:Create('Frame', {
-        BackgroundTransparency = 1;
-        Position = UDim2.new(0, 0, 0, 2);
-        Size = UDim2.new(1, 0, 1, -2);
-        ZIndex = 92;
-        Parent = HolderInner;
-    });
-
-    Library:Create('UIListLayout', {
-        FillDirection = Enum.FillDirection.Horizontal;
-        HorizontalAlignment = Enum.HorizontalAlignment.Center;
-        VerticalAlignment = Enum.VerticalAlignment.Center;
-        Padding = UDim.new(0, 6);
-        SortOrder = Enum.SortOrder.LayoutOrder;
-        Parent = ButtonRow;
-    });
-
-    local function CreatePanelButton(Text, Size, Parent, Callback)
-        local Outer = Library:Create('Frame', {
-            BackgroundColor3 = Color3.new(0, 0, 0);
-            BorderColor3 = Color3.new(0, 0, 0);
-            Size = Size;
-            ZIndex = 92;
-            Parent = Parent;
-        });
-
-        local Inner = Library:Create('Frame', {
-            BackgroundColor3 = Library.MainColor;
-            BorderColor3 = Library.OutlineColor;
-            BorderMode = Enum.BorderMode.Inset;
-            Size = UDim2.new(1, 0, 1, 0);
-            ZIndex = 93;
-            Parent = Outer;
-        });
-
-        Library:AddToRegistry(Inner, {
-            BackgroundColor3 = 'MainColor';
-            BorderColor3 = 'OutlineColor';
-        });
-        Library:StyleControl(Outer, Inner, 4);
-
-        local Label = Library:CreateLabel({
-            Size = UDim2.new(1, 0, 1, 0);
-            TextSize = 13;
-            Text = Text;
-            ZIndex = 94;
-            Parent = Inner;
-        });
-
-        Library:OnHighlight(Outer, Outer,
-            { BorderColor3 = 'AccentColor' },
-            { BorderColor3 = 'Black' }
-        );
-
-        Outer.InputBegan:Connect(function(Input)
-            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
-                Library:SafeCallback(Callback);
-            end;
-        end);
-
-        return Outer, Inner, Label;
-    end;
-
-    local function CreatePanel(Name, Width, Height, MinW, MinH)
-        MinW = MinW or 240;
-        MinH = MinH or 200;
-
-        local Outer = Library:Create('Frame', {
-            AnchorPoint = Vector2.new(0, 0.5);
-            BackgroundColor3 = Color3.new(0, 0, 0);
-            BorderSizePixel = 0;
-            Position = UDim2.new(0, 10, 0.5, 0);
-            Size = UDim2.new(0, Width, 0, Height);
-            Visible = false;
-            ZIndex = 90;
-            Parent = ScreenGui;
-        });
-
-        local Inner = Library:Create('Frame', {
-            BackgroundColor3 = Library.MainColor;
-            BorderColor3 = Library.OutlineColor;
-            BorderMode = Enum.BorderMode.Inset;
-            Position = UDim2.new(0, 1, 0, 1);
-            Size = UDim2.new(1, -2, 1, -2);
-            ZIndex = 91;
-            Parent = Outer;
-        });
-
-        Library:AddToRegistry(Inner, {
-            BackgroundColor3 = 'MainColor';
-            BorderColor3 = 'OutlineColor';
-        });
-
-        local Accent = Library:Create('Frame', {
-            BackgroundColor3 = Library.AccentColor;
-            BorderSizePixel = 0;
-            Size = UDim2.new(1, 0, 0, 2);
-            ZIndex = 92;
-            Parent = Inner;
-        });
-
-        Library:AddToRegistry(Accent, {
-            BackgroundColor3 = 'AccentColor';
-        });
-
-        Library:CreateLabel({
-            Position = UDim2.new(0, 8, 0, 4);
-            Size = UDim2.new(1, -16, 0, 16);
-            TextSize = 14;
-            Text = tostring(Name):lower();
-            TextXAlignment = Enum.TextXAlignment.Left;
-            ZIndex = 92;
-            Parent = Inner;
-        });
-
-        local Container = Library:Create('Frame', {
-            BackgroundTransparency = 1;
-            Position = UDim2.new(0, 8, 0, 24);
-            Size = UDim2.new(1, -16, 1, -30);
-            ZIndex = 92;
-            Parent = Inner;
-        });
-
-        Library:Create('UIListLayout', {
-            FillDirection = Enum.FillDirection.Vertical;
-            SortOrder = Enum.SortOrder.LayoutOrder;
-            Padding = UDim.new(0, 4);
-            Parent = Container;
-        });
-
-        local Grip = Library:Create('Frame', {
-            Active = true;
-            AnchorPoint = Vector2.new(1, 1);
-            BackgroundColor3 = Library.AccentColor;
-            BorderSizePixel = 0;
-            Position = UDim2.new(1, -3, 1, -3);
-            Size = UDim2.new(0, 10, 0, 10);
-            ZIndex = 97;
-            Parent = Inner;
-        });
-
-        Library:AddToRegistry(Grip, {
-            BackgroundColor3 = 'AccentColor';
-        });
-
-        Library:AddToolTip('Resize', Grip);
-
-        Grip.InputBegan:Connect(function(Input)
-            if Library:IsClickInput(Input) then
-                local StartX = Input.Position.X;
-                local StartY = Input.Position.Y;
-                local StartSX = Outer.AbsoluteSize.X;
-                local StartSY = Outer.AbsoluteSize.Y;
-                local GetTouch, StopTouch = Library:TrackTouch(Input);
-
-                while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or GetTouch() ~= nil do
-                    local Active = GetTouch();
-                    local PX = Active and Active.Position.X or Mouse.X;
-                    local PY = Active and Active.Position.Y or Mouse.Y;
-
-                    Outer.Size = UDim2.new(0, math.clamp(StartSX + PX - StartX, MinW, 1200), 0, math.clamp(StartSY + PY - StartY, MinH, 900));
-                    RenderStepped:Wait();
-                end;
-
-                StopTouch();
-            end;
-        end);
-
-        Library.ToolbarPanels[Name] = Outer;
-        Library:ApplyScaleTo(Outer);
-
-        return Outer, Container;
-    end;
-
-    local function CreateInfoRow(Text, Parent)
-        return Library:CreateLabel({
-            Size = UDim2.new(1, 0, 0, 14);
-            TextSize = 13;
-            Text = Text;
-            TextXAlignment = Enum.TextXAlignment.Left;
-            TextTruncate = Enum.TextTruncate.AtEnd;
-            ZIndex = 93;
-            Parent = Parent;
-        });
-    end;
-
-    local ServersOuter, ServersContainer = CreatePanel('Servers', 340, 380, 260, 240);
-
-    local ServerCount = CreateInfoRow('Players: ...', ServersContainer);
-
-    CreatePanelButton('Rejoin Current Server', UDim2.new(1, 0, 0, 20), ServersContainer, function()
-        pcall(function()
-            TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer);
-        end);
-    end);
-
-    CreatePanelButton('Server Hop', UDim2.new(1, 0, 0, 20), ServersContainer, function()
-        pcall(function()
-            TeleportService:Teleport(game.PlaceId, LocalPlayer);
-        end);
-    end);
-
-    local BrowserHead = Library:Create('Frame', {
-        BackgroundTransparency = 1;
-        Size = UDim2.new(1, 0, 0, 18);
-        ZIndex = 92;
-        Parent = ServersContainer;
-    });
-
-    local BrowserStatus = Library:CreateLabel({
-        Position = UDim2.new(0, 0, 0, 0);
-        Size = UDim2.new(1, -70, 0, 18);
-        TextSize = 13;
-        Text = 'Server Browser';
-        TextXAlignment = Enum.TextXAlignment.Left;
-        TextTruncate = Enum.TextTruncate.AtEnd;
-        ZIndex = 93;
-        Parent = BrowserHead;
-    });
-
-    local ScanOuter = Library:Create('Frame', {
-        AnchorPoint = Vector2.new(1, 0);
-        BackgroundColor3 = Color3.new(0, 0, 0);
-        BorderColor3 = Color3.new(0, 0, 0);
-        Position = UDim2.new(1, 0, 0, 1);
-        Size = UDim2.new(0, 62, 0, 16);
-        ZIndex = 93;
-        Parent = BrowserHead;
-    });
-
-    local ScanInner = Library:Create('Frame', {
-        BackgroundColor3 = Library.MainColor;
-        BorderColor3 = Library.OutlineColor;
-        BorderMode = Enum.BorderMode.Inset;
-        Size = UDim2.new(1, 0, 1, 0);
-        ZIndex = 94;
-        Parent = ScanOuter;
-    });
-    Library:StyleControl(ScanOuter, ScanInner, 4);
-
-    Library:AddToRegistry(ScanInner, {
-        BackgroundColor3 = 'MainColor';
-        BorderColor3 = 'OutlineColor';
-    });
-
-    Library:CreateLabel({
-        Size = UDim2.new(1, 0, 1, 0);
-        TextSize = 12;
-        Text = 'Scan';
-        ZIndex = 95;
-        Parent = ScanInner;
-    });
-
-    Library:OnHighlight(ScanOuter, ScanOuter,
-        { BorderColor3 = 'AccentColor' },
-        { BorderColor3 = 'Black' }
-    );
-
-    local SortRow = Library:Create('Frame', {
-        BackgroundTransparency = 1;
-        Size = UDim2.new(1, 0, 0, 18);
-        ZIndex = 92;
-        Parent = ServersContainer;
-    });
-
-    local function SetPanelButtonText(Outer, Text)
-        for _, Desc in next, Outer:GetDescendants() do
-            if Desc:IsA('TextLabel') then
-                Desc.Text = Text;
-                return;
-            end;
-        end;
-    end;
-
-    function Library:UpdateSortButtons()
-        local Panel = Library.ToolbarPanels['Servers'];
-
-        if not Panel then
-            return;
-        end;
-
-        for _, Desc in next, Panel:GetDescendants() do
-            if Desc.Name == 'SortModeBtn' then
-                SetPanelButtonText(Desc, 'Sort: ' .. (Library.ServerSortMode or 'Players'));
-            elseif Desc.Name == 'SortDirBtn' then
-                SetPanelButtonText(Desc, Library.ServerSortDesc and 'Desc' or 'Asc');
-            end;
-        end;
-    end;
-
-    local SortModeOuter = CreatePanelButton('Sort: Players', UDim2.new(0.5, -2, 0, 18), SortRow, function()
-        Library.ServerSortMode = Library.ServerSortMode == 'Players' and 'Ping' or 'Players';
-        Library:UpdateSortButtons();
-        Library:RenderServerList();
-    end);
-
-    SortModeOuter.Position = UDim2.new(0, 0, 0, 0);
-    SortModeOuter.Name = 'SortModeBtn';
-
-    local SortDirOuter = CreatePanelButton('Desc', UDim2.new(0.5, -2, 0, 18), SortRow, function()
-        Library.ServerSortDesc = not Library.ServerSortDesc;
-        Library:UpdateSortButtons();
-        Library:RenderServerList();
-    end);
-
-    SortDirOuter.Position = UDim2.new(0.5, 2, 0, 0);
-    SortDirOuter.Name = 'SortDirBtn';
-
-    local BrowserList = Library:Create('ScrollingFrame', {
-        BackgroundTransparency = 1;
-        BorderSizePixel = 0;
-        Size = UDim2.new(1, 0, 1, -114);
-        CanvasSize = UDim2.new(0, 0, 0, 0);
-        ScrollBarThickness = 2;
-        ZIndex = 92;
-        Parent = ServersContainer;
-    });
-
-    local BrowserLayout = Library:Create('UIListLayout', {
-        FillDirection = Enum.FillDirection.Vertical;
-        SortOrder = Enum.SortOrder.LayoutOrder;
-        Padding = UDim.new(0, 2);
-        Parent = BrowserList;
-    });
-
-    BrowserLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-        BrowserList.CanvasSize = UDim2.fromOffset(0, BrowserLayout.AbsoluteContentSize.Y);
-    end);
-
-    local function AddServerRow(S, Current)
-        local Row = Library:Create('Frame', {
-            BackgroundTransparency = 1;
-            Size = UDim2.new(1, 0, 0, 18);
-            ZIndex = 93;
-            Parent = BrowserList;
-        });
-
-        local Text = S.playing .. '/' .. S.maxPlayers .. '  ' .. math.floor(S.fps or 0) .. 'fps';
-
-        if S.ping then
-            Text = Text .. '  ' .. tostring(S.ping) .. 'ms';
-        end;
-
-        if Current then
-            Text = Text .. ' (you)';
-        end;
-
-        Library:CreateLabel({
-            Position = UDim2.new(0, 0, 0, 0);
-            Size = UDim2.new(1, -84, 0, 18);
-            TextSize = 13;
-            Text = Text;
-            TextXAlignment = Enum.TextXAlignment.Left;
-            TextTruncate = Enum.TextTruncate.AtEnd;
-            ZIndex = 94;
-            Parent = Row;
-        });
-
-        local function Small(Text, OffsetX, Callback)
-            local BOuter = Library:Create('Frame', {
-                BackgroundColor3 = Color3.new(0, 0, 0);
-                BorderColor3 = Color3.new(0, 0, 0);
-                Position = UDim2.new(1, OffsetX, 0, 1);
-                Size = UDim2.new(0, 36, 0, 16);
-                ZIndex = 94;
-                Parent = Row;
-            });
-
-            local BInner = Library:Create('Frame', {
-                BackgroundColor3 = Library.MainColor;
-                BorderColor3 = Library.OutlineColor;
-                BorderMode = Enum.BorderMode.Inset;
-                Size = UDim2.new(1, 0, 1, 0);
-                ZIndex = 95;
-                Parent = BOuter;
-            });
-            Library:StyleControl(BOuter, BInner, 4);
-
-            Library:AddToRegistry(BInner, {
-                BackgroundColor3 = 'MainColor';
-                BorderColor3 = 'OutlineColor';
-            });
-
-            Library:CreateLabel({
-                Size = UDim2.new(1, 0, 1, 0);
-                TextSize = 12;
-                Text = Text;
-                ZIndex = 96;
-                Parent = BInner;
-            });
-
-            Library:OnHighlight(BOuter, BOuter,
-                { BorderColor3 = 'AccentColor' },
-                { BorderColor3 = 'Black' }
-            );
-
-            BOuter.InputBegan:Connect(function(Input)
-                if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
-                    Library:SafeCallback(Callback);
-                end;
-            end);
-        end;
-
-        Small('ID', -78, function()
-            pcall(setclipboard, tostring(S.id));
-            Library:Notify('Copied JobId', 2);
-        end);
-
-        if not Current then
-            Small('Join', -38, function()
-                pcall(function()
-                    TeleportService:TeleportToPlaceInstance(game.PlaceId, S.id, LocalPlayer);
-                end);
-            end);
-        end;
-    end;
-
-    local LastServers = {};
-
-    function Library:RenderServerList()
-        for _, Child in next, BrowserList:GetChildren() do
-            if not Child:IsA('UIListLayout') then
-                Child:Destroy();
-            end;
-        end;
-
-        table.sort(LastServers, function(A, B)
-            local AV = Library.ServerSortMode == 'Ping' and (A.ping or 0) or (A.playing or 0);
-            local BV = Library.ServerSortMode == 'Ping' and (B.ping or 0) or (B.playing or 0);
-
-            if Library.ServerSortDesc then
-                return AV > BV;
-            end;
-
-            return AV < BV;
-        end);
-
-        local Shown = 0;
-
-        for _, S in next, LastServers do
-            if Shown >= 50 then
-                break;
-            end;
-
-            if S.id and S.playing and S.maxPlayers then
-                AddServerRow(S, S.id == game.JobId);
-                Shown = Shown + 1;
-            end;
-        end;
-
-        BrowserStatus.Text = 'Servers (' .. Shown .. ')';
-    end;
-
-    local function RefreshServerBrowser()
-        for _, Child in next, BrowserList:GetChildren() do
-            if not Child:IsA('UIListLayout') then
-                Child:Destroy();
-            end;
-        end;
-
-        BrowserStatus.Text = 'Loading...';
-
-        task.spawn(function()
-            local Url = 'https://games.roblox.com/v1/games/' .. tostring(game.PlaceId) .. '/servers/Public?sortOrder=Desc&limit=100';
-            local Ok, Result = pcall(function()
-                return game:HttpGet(Url);
-            end);
-
-            local Data;
-
-            if Ok and Result then
-                pcall(function()
-                    Data = game:GetService('HttpService'):JSONDecode(Result);
-                end);
-            end;
-
-            if not Data or not Data.data then
-                BrowserStatus.Text = 'Failed to load';
-                return;
-            end;
-
-            LastServers = Data.data;
-            Library:RenderServerList();
-        end);
-    end;
-
-    ScanOuter.InputBegan:Connect(function(Input)
-        if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
-            RefreshServerBrowser();
-        end;
-    end);
-
-    local function RefreshServerInfo()
-        ServerCount.Text = 'Players: ' .. #Players:GetPlayers() .. '/' .. tostring(Players.MaxPlayers);
-        RefreshServerBrowser();
-        Library:UpdateSortButtons();
-    end;
-
-    local PlayersOuter, PlayersContainer = CreatePanel('Players', 380, 360, 260, 200);
-
-    local PlayerList = Library:Create('ScrollingFrame', {
-        BackgroundTransparency = 1;
-        BorderSizePixel = 0;
-        LayoutOrder = 3;
-        Size = UDim2.new(1, 0, 1, -46);
-        CanvasSize = UDim2.new(0, 0, 0, 0);
-        ScrollBarThickness = 2;
-        ZIndex = 92;
-        Parent = PlayersContainer;
-    });
-
-    local PlayerLayout = Library:Create('UIListLayout', {
-        FillDirection = Enum.FillDirection.Vertical;
-        SortOrder = Enum.SortOrder.LayoutOrder;
-        Padding = UDim.new(0, 2);
-        Parent = PlayerList;
-    });
-
-    PlayerLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-        PlayerList.CanvasSize = UDim2.fromOffset(0, PlayerLayout.AbsoluteContentSize.Y);
-    end);
-
-    local function AddPlayerRow(Target)
-        local Row = Library:Create('Frame', {
-            BackgroundTransparency = 1;
-            Size = UDim2.new(1, 0, 0, 40);
-            ZIndex = 93;
-            Parent = PlayerList;
-        });
-        local Avatar = Library:Create('ImageLabel', {
-            BackgroundColor3 = Library.MainColor;
-            BorderColor3 = Library.OutlineColor;
-            BorderMode = Enum.BorderMode.Inset;
-            Position = UDim2.new(0, 0, 0, 0);
-            Size = UDim2.new(0, 40, 0, 40);
-            ZIndex = 94;
-            Parent = Row;
-        });
-        local CachedThumb = Library.ThumbnailCache[Target.UserId];
-        if CachedThumb then
-            Avatar.Image = CachedThumb;
-        else
-            task.spawn(function()
-                local Ok, Thumb = pcall(function()
-                    return Players:GetUserThumbnailAsync(Target.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48);
-                end);
-                if Ok and Thumb and Thumb ~= '' then
-                    Library.ThumbnailCache[Target.UserId] = Thumb;
-                    if Avatar.Parent then
-                        pcall(function()
-                            Avatar.Image = Thumb;
-                        end);
-                    end;
-                end;
-            end);
-        end;
-        local Info = Library:Create('Frame', {
-            BackgroundColor3 = Library.MainColor;
-            BorderColor3 = Library.OutlineColor;
-            BorderMode = Enum.BorderMode.Inset;
-            Position = UDim2.new(0, 46, 0, 0);
-            Size = UDim2.new(1, -46, 1, 0);
-            ZIndex = 94;
-            Parent = Row;
-        });
-        Library:AddToRegistry(Info, {
-            BackgroundColor3 = 'MainColor';
-            BorderColor3 = 'OutlineColor';
-        });
-        Library:AddToRegistry(Avatar, {
-            BorderColor3 = 'OutlineColor';
-        });
-        Library:CreateLabel({
-            Position = UDim2.new(0, 6, 0, 4);
-            Size = UDim2.new(1, -12, 0, 16);
-            TextSize = 13;
-            Text = Target.DisplayName .. ' @' .. Target.Name;
-            TextXAlignment = Enum.TextXAlignment.Left;
-            TextTruncate = Enum.TextTruncate.AtEnd;
-            ZIndex = 95;
-            Parent = Info;
-        });
-        local CrewLabel = Library:CreateLabel({
-            Position = UDim2.new(0, 6, 0, 20);
-            Size = UDim2.new(1, -12, 0, 12);
-            TextSize = 11;
-            Text = Library:GetCrewDisplayWithCount(Target) .. ' | ' .. Library:FormatJoinedTime(Target);
-            TextXAlignment = Enum.TextXAlignment.Left;
-            TextTruncate = Enum.TextTruncate.AtEnd;
-            ZIndex = 95;
-            Parent = Info;
-        });
-        Library:RemoveFromRegistry(CrewLabel);
-        CrewLabel.TextColor3 = Color3.fromRGB(170, 170, 170);
-        local Btn = Library:Create('TextButton', {
-            BackgroundTransparency = 1;
-            Size = UDim2.new(1, 0, 1, 0);
-            Text = '';
-            ZIndex = 96;
-            Parent = Row;
-        });
-        Btn.InputBegan:Connect(function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseButton2 then
-                Library:ShowPlayerContextMenu(Target, Vector2.new(Mouse.X, Mouse.Y));
-            elseif Library:IsClickInput(Input) then
-                Library:TeleportToPlayer(Target);
-            end;
-        end);
-    end;
-
-    local CountLabel;
-    local SearchBox;
-
-    local function RefreshPlayerList()
-        for _, Child in next, PlayerList:GetChildren() do
-            if not Child:IsA('UIListLayout') then
-                Child:Destroy();
-            end;
-        end;
-
-        local Query = '';
-
-        if SearchBox and SearchBox.Text then
-            Query = SearchBox.Text:lower();
-        end;
-
-        local List = Players:GetPlayers();
-
-        table.sort(List, function(A, B)
-            return A.Name:lower() < B.Name:lower();
-        end);
-
-        Library.StreamerNames = {};
-
-        for i, P in next, List do
-            Library.StreamerNames[P.UserId] = 'Player' .. i;
-        end;
-
-        local Shown = 0;
-
-        for _, P in next, List do
-            if Query == '' or P.Name:lower():find(Query, 1, true) or P.DisplayName:lower():find(Query, 1, true) then
-                AddPlayerRow(P);
-                Shown = Shown + 1;
-            end;
-        end;
-
-        if Query == '' then
-            CountLabel.Text = 'Players (' .. #List .. ')';
-        else
-            CountLabel.Text = 'Players (' .. Shown .. '/' .. #List .. ')';
-        end;
-    end;
-
-    local PlayersHead = Library:Create('Frame', {
-        BackgroundTransparency = 1;
-        LayoutOrder = 1;
-        Size = UDim2.new(1, 0, 0, 18);
-        ZIndex = 92;
-        Parent = PlayersContainer;
-    });
-
-    CountLabel = Library:CreateLabel({
-        Position = UDim2.new(0, 0, 0, 0);
-        Size = UDim2.new(1, 0, 0, 18);
-        TextSize = 13;
-        Text = 'Players (0)';
-        TextXAlignment = Enum.TextXAlignment.Left;
-        ZIndex = 93;
-        Parent = PlayersHead;
-    });
-
-    local SearchOuter = Library:Create('Frame', {
-        BackgroundColor3 = Color3.new(0, 0, 0);
-        BorderColor3 = Color3.new(0, 0, 0);
-        LayoutOrder = 2;
-        Size = UDim2.new(1, 0, 0, 20);
-        ZIndex = 92;
-        Parent = PlayersContainer;
-    });
-
-    local SearchInner = Library:Create('Frame', {
-        BackgroundColor3 = Library.MainColor;
-        BorderColor3 = Library.OutlineColor;
-        BorderMode = Enum.BorderMode.Inset;
-        Size = UDim2.new(1, 0, 1, 0);
-        ZIndex = 93;
-        Parent = SearchOuter;
-    });
-    Library:StyleControl(SearchOuter, SearchInner, 4);
-
-    Library:AddToRegistry(SearchInner, {
-        BackgroundColor3 = 'MainColor';
-        BorderColor3 = 'OutlineColor';
-    });
-
-    Library:OnHighlight(SearchOuter, SearchOuter,
-        { BorderColor3 = 'AccentColor' },
-        { BorderColor3 = 'Black' }
-    );
-
-    SearchBox = Library:Create('TextBox', {
-        BackgroundTransparency = 1;
-        ClearTextOnFocus = false;
-        Position = UDim2.new(0, 5, 0, 0);
-        Size = UDim2.new(1, -10, 1, 0);
-        Font = Library.Font;
-        PlaceholderColor3 = Color3.fromRGB(190, 190, 190);
-        PlaceholderText = 'Search players...';
-        Text = '';
-        TextColor3 = Library.FontColor;
-        TextSize = 13;
-        TextXAlignment = Enum.TextXAlignment.Left;
-        ZIndex = 94;
-        Parent = SearchInner;
-    });
-
-    Library:ApplyTextStroke(SearchBox);
-
-    Library:AddToRegistry(SearchBox, {
-        TextColor3 = 'FontColor';
-    });
-
-    SearchBox:GetPropertyChangedSignal('Text'):Connect(function()
-        RefreshPlayerList();
-    end);
-
-    local ExecOuter, InfoContainer = CreatePanel('Executor', 340, 320, 240, 220);
-
-    local InfoGame = game.Name;
-
-    pcall(function()
-        InfoGame = game:GetService('MarketplaceService'):GetProductInfo(game.PlaceId).Name;
-    end);
-
-    CreateInfoRow('Game: ' .. InfoGame, InfoContainer);
-    CreateInfoRow('PlaceId: ' .. tostring(game.PlaceId), InfoContainer);
-
-    local ExecJob = CreateInfoRow('JobId: ...', InfoContainer);
-    local InfoCount = CreateInfoRow('Players: ...', InfoContainer);
-
-    local ExecName = 'Unknown';
-    local GetExec = rawget(getgenv(), 'identifyexecutor');
-
-    if type(GetExec) == 'function' then
-        pcall(function()
-            ExecName = tostring(GetExec());
-        end);
-    end;
-
-    CreateInfoRow('Executor: ' .. ExecName, InfoContainer);
-
-    local FpsLabel = CreateInfoRow('FPS: ...', InfoContainer);
-    local PingLabel = CreateInfoRow('Ping: ...', InfoContainer);
-
-    CreatePanelButton('Copy PlaceId', UDim2.new(1, 0, 0, 20), InfoContainer, function()
-        pcall(setclipboard, tostring(game.PlaceId));
-        Library:Notify('Copied PlaceId', 2);
-    end);
-
-    CreatePanelButton('Copy JobId', UDim2.new(1, 0, 0, 20), InfoContainer, function()
-        pcall(setclipboard, tostring(game.JobId));
-        Library:Notify('Copied JobId', 2);
-    end);
-
-    local JoinOuter = Library:Create('Frame', {
-        BackgroundColor3 = Color3.new(0, 0, 0);
-        BorderColor3 = Color3.new(0, 0, 0);
-        Size = UDim2.new(1, 0, 0, 20);
-        ZIndex = 92;
-        Parent = InfoContainer;
-    });
-
-    local JoinInner = Library:Create('Frame', {
-        BackgroundColor3 = Library.MainColor;
-        BorderColor3 = Library.OutlineColor;
-        BorderMode = Enum.BorderMode.Inset;
-        Size = UDim2.new(1, 0, 1, 0);
-        ZIndex = 93;
-        Parent = JoinOuter;
-    });
-    Library:StyleControl(JoinOuter, JoinInner, 4);
-
-    Library:AddToRegistry(JoinInner, {
-        BackgroundColor3 = 'MainColor';
-        BorderColor3 = 'OutlineColor';
-    });
-
-    Library:OnHighlight(JoinOuter, JoinOuter,
-        { BorderColor3 = 'AccentColor' },
-        { BorderColor3 = 'Black' }
-    );
-
-    local JoinBox = Library:Create('TextBox', {
-        BackgroundTransparency = 1;
-        ClearTextOnFocus = false;
-        Position = UDim2.new(0, 5, 0, 0);
-        Size = UDim2.new(1, -10, 1, 0);
-        Font = Library.Font;
-        PlaceholderColor3 = Color3.fromRGB(190, 190, 190);
-        PlaceholderText = 'Paste JobId...';
-        Text = '';
-        TextColor3 = Library.FontColor;
-        TextSize = 13;
-        TextXAlignment = Enum.TextXAlignment.Left;
-        ZIndex = 94;
-        Parent = JoinInner;
-    });
-
-    Library:ApplyTextStroke(JoinBox);
-
-    Library:AddToRegistry(JoinBox, {
-        TextColor3 = 'FontColor';
-    });
-
-    CreatePanelButton('Join JobId', UDim2.new(1, 0, 0, 20), InfoContainer, function()
-        if JoinBox.Text ~= '' then
-            pcall(function()
-                TeleportService:TeleportToPlaceInstance(game.PlaceId, JoinBox.Text, LocalPlayer);
-            end);
-        else
-            Library:Notify('Paste a JobId first', 2);
-        end;
-    end);
-
-    local function RefreshInfo()
-        local Short = tostring(game.JobId);
-
-        if #Short > 24 then
-            Short = Short:sub(1, 21) .. '...';
-        end;
-
-        ExecJob.Text = 'JobId: ' .. Short;
-        InfoCount.Text = 'Players: ' .. #Players:GetPlayers() .. '/' .. tostring(Players.MaxPlayers);
-    end;
-
-    if not Library._ToolbarStatsLoop then
-        Library._ToolbarStatsLoop = true;
-
-        task.spawn(function()
-            while ScreenGui.Parent do
-                if not ExecOuter.Visible then task.wait(0.5); continue end
-                local Start = os.clock();
-                local Frames = 0;
-
-                while os.clock() - Start < 0.5 do
-                    RenderStepped:Wait();
-                    Frames = Frames + 1;
-                end;
-
-                if ExecOuter.Visible then
-                    FpsLabel.Text = 'FPS: ' .. math.floor(Frames / (os.clock() - Start));
-
-                    local Ping = 'N/A';
-
-                    pcall(function()
-                        Ping = tostring(math.floor(game:GetService('Stats').Network.ServerStatsItem['Data Ping']:GetValue()));
-                    end);
-
-                    PingLabel.Text = 'Ping: ' .. Ping .. ' ms';
-                end;
-            end;
-        end);
-    end;
-
-    local function FadePanel(Frame, Show)
-        Frame.Visible = Show;
-    end;
-
-    local SettingsPanel, SettingsContainer = CreatePanel('Settings', 300, 256, 240, 220);
-
-    local SettingButtons = {};
-    local RefreshSettings;
-
-    local function AddSettingRow(Key, GetText, OnPress)
-        local Row = Library:Create('Frame', {
-            BackgroundTransparency = 1;
-            Size = UDim2.new(1, 0, 0, 20);
-            ZIndex = 92;
-            Parent = SettingsContainer;
-        });
-
-        Library:CreateLabel({
-            Position = UDim2.new(0, 0, 0, 0);
-            Size = UDim2.new(1, -120, 1, 0);
-            TextSize = 13;
-            Text = Key:lower();
-            TextXAlignment = Enum.TextXAlignment.Left;
-            TextTruncate = Enum.TextTruncate.AtEnd;
-            ZIndex = 93;
-            Parent = Row;
-        });
-
-        local BOuter, BInner, BLabel = CreatePanelButton('', UDim2.new(0, 112, 0, 20), Row, function()
-            OnPress();
-            RefreshSettings();
-        end);
-
-        BOuter.Position = UDim2.new(1, -112, 0, 0);
-
-        SettingButtons[Key] = { Label = BLabel; GetText = GetText; };
-    end;
-
-    AddSettingRow('Style', function()
-        return 'Style: ' .. (Library.NotificationStyle or 'Default');
-    end, function()
-        local Styles = { 'Default', 'Gamesense', 'Simple', 'Gamesensical', 'Progress' };
-        local Idx = table.find(Styles, Library.NotificationStyle) or 1;
-        Library:SetNotificationStyle(Styles[Idx % #Styles + 1]);
-    end);
-
-    AddSettingRow('Position', function()
-        return 'Position: ' .. (Library.NotificationPosition or 'Bottom');
-    end, function()
-        local Positions = { 'Bottom', 'Top', 'Bottom Left', 'Bottom Right', 'Top Left', 'Top Right' };
-        local Idx = table.find(Positions, Library.NotificationPosition) or 1;
-        Library:SetNotificationPosition(Positions[Idx % #Positions + 1]);
-    end);
-
-    AddSettingRow('Duration', function()
-        return 'Duration: ' .. tostring(Library.NotifyDuration or 5) .. 's';
-    end, function()
-        local Durations = { 3, 5, 8, 10 };
-        local Idx = table.find(Durations, Library.NotifyDuration) or 2;
-        Library.NotifyDuration = Durations[Idx % #Durations + 1];
-    end);
-
-    AddSettingRow('Streamer', function()
-        return 'Streamer: ' .. (Library.StreamerMode or 'Off');
-    end, function()
-        local Modes = { 'Off', 'Others', 'Everyone' };
-        local Idx = table.find(Modes, Library.StreamerMode) or 1;
-        Library.StreamerMode = Modes[Idx % #Modes + 1];
-
-        if Library.ToolbarPanels['Players'] and Library.ToolbarPanels['Players'].Visible then
-            RefreshPlayerList();
-        end;
-    end);
-
-    AddSettingRow('Font', function()
-        return 'Font: ' .. (Library.UIFontName or 'GothamMedium');
-    end, function()
-        local Idx = table.find(Library.UIFonts, Library.UIFontName) or 1;
-        Library:SetUIFont(Library.UIFonts[Idx % #Library.UIFonts + 1]);
-    end);
-
-    AddSettingRow('Scale', function()
-        return 'Scale: ' .. tostring(math.floor((Library.UIScale or 1) * 100)) .. '%';
-    end, function()
-        local Scales = { 0.75, 1, 1.25, 1.5 };
-        local Idx = 2;
-
-        for i, S in next, Scales do
-            if math.abs(S - (Library.UIScale or 1)) < 0.01 then
-                Idx = i;
-                break;
-            end;
-        end;
-
-        Library:SetUIScale(Scales[Idx % #Scales + 1]);
-    end);
-
-    AddSettingRow('Motion', function()
-        if Library.ReducedMotion then
-            return 'Motion: Reduced';
-        end;
-
-        return 'Motion: Full';
-    end, function()
-        Library.ReducedMotion = not Library.ReducedMotion;
-    end);
-
-    AddSettingRow('Keybinds', function()
-        if Library.KeybindIndicatorEnabled then
-            return 'Keybinds: On';
-        end;
-
-        return 'Keybinds: Off';
-    end, function()
-        Library:SetKeybindIndicator(not Library.KeybindIndicatorEnabled);
-    end);
-
-    AddSettingRow('Custom cursor', function()
-        return Library.CustomCursorEnabled and 'Cursor: On' or 'Cursor: Off';
-    end, function()
-        Library:SetCustomCursor(not Library.CustomCursorEnabled);
-    end);
-
-    RefreshSettings = function()
-        for _, Entry in next, SettingButtons do
-            Entry.Label.Text = Entry.GetText();
-        end;
-    end;
-
-    RefreshSettings();
-
-    local function SetToolbarActive(Name)
-        for Key, Btn in next, ToolbarButtons do
-            local Data = Library.RegistryMap[Btn.Inner];
-
-            if Key == Name then
-                Btn.Inner.BorderColor3 = Library.AccentColor;
-
-                if Data then
-                    Data.Properties.BorderColor3 = 'AccentColor';
-                end;
-            else
-                Btn.Inner.BorderColor3 = Library.OutlineColor;
-
-                if Data then
-                    Data.Properties.BorderColor3 = 'OutlineColor';
-                end;
-            end;
-        end;
-    end;
-
-    function Library:ShowToolbarPanel(Name)
-        if Library.OpenToolbarPanel == Name then
-            FadePanel(Library.ToolbarPanels[Name], false, Name);
-            Library.OpenToolbarPanel = nil;
-            SetToolbarActive(nil);
-            return;
-        end;
-
-        for Key, Frame in next, Library.ToolbarPanels do
-            FadePanel(Frame, false, Key);
-        end;
-
-        local Frame = Library.ToolbarPanels[Name];
-
-        if Frame then
-            if Name == 'Players' then
-                RefreshPlayerList();
-            elseif Name == 'Servers' then
-                RefreshServerInfo();
-            elseif Name == 'Executor' then
-                RefreshInfo();
-            elseif Name == 'Settings' then
-                RefreshSettings();
-            end;
-
-            FadePanel(Frame, true, Name);
-            Library.OpenToolbarPanel = Name;
-            SetToolbarActive(Name);
-        end;
-    end;
-
-    function Library:HideToolbarPanels()
-        if Library._DockedPanelKind then
-            local _dp = Library.ToolbarPanels[Library._DockedPanelKind];
-            if _dp then
-                local _do = Library._PanelOrig[Library._DockedPanelKind];
-                if _do then _dp.AnchorPoint = _do.AnchorPoint; _dp.Position = _do.Position; _dp.Size = _do.Size; _dp.Parent = _do.Parent; end;
-                for _, _dg in next, _dp:GetDescendants() do
-                    if _dg:IsA('Frame') and _dg.Size == UDim2.new(0, 10, 0, 10) then _dg.Visible = true; end;
-                end;
-                _dp.Visible = false;
-            end;
-            Library._DockedPanelKind = nil;
-        end;
-        for Key, Frame in next, Library.ToolbarPanels do
-            Frame.Visible = false;
-        end;
-        Library.OpenToolbarPanel = nil;
-        SetToolbarActive(nil);
-    end;
-
-    local function DrawIcon(Kind, Parent)
-        if Kind == 'Protection' then
-            local Body = Library:Create('Frame', {
-                AnchorPoint = Vector2.new(0.5, 0);
-                BackgroundColor3 = Library.FontColor;
-                BorderSizePixel = 0;
-                Position = UDim2.new(0.5, 0, 0.5, -8);
-                Size = UDim2.new(0, 15, 0, 10);
-                ZIndex = 95;
-                Parent = Parent;
-            });
-            Library:Create('UICorner', {
-                CornerRadius = UDim.new(0, 4);
-                Parent = Body;
-            });
-            Library:AddToRegistry(Body, {
-                BackgroundColor3 = 'FontColor';
-            });
-            local Tip = Library:Create('Frame', {
-                AnchorPoint = Vector2.new(0.5, 0.5);
-                BackgroundColor3 = Library.FontColor;
-                BorderSizePixel = 0;
-                Position = UDim2.new(0.5, 0, 0.5, 4);
-                Rotation = 45;
-                Size = UDim2.new(0, 10, 0, 10);
-                ZIndex = 95;
-                Parent = Parent;
-            });
-            Library:AddToRegistry(Tip, {
-                BackgroundColor3 = 'FontColor';
-            });
-            local CheckShort = Library:Create('Frame', {
-                AnchorPoint = Vector2.new(0.5, 0.5);
-                BackgroundColor3 = Library.MainColor;
-                BorderSizePixel = 0;
-                Position = UDim2.new(0.5, -2, 0.5, 2);
-                Rotation = -45;
-                Size = UDim2.new(0, 2, 0, 5);
-                ZIndex = 96;
-                Parent = Parent;
-            });
-            Library:AddToRegistry(CheckShort, {
-                BackgroundColor3 = 'MainColor';
-            });
-            local CheckLong = Library:Create('Frame', {
-                AnchorPoint = Vector2.new(0.5, 0.5);
-                BackgroundColor3 = Library.MainColor;
-                BorderSizePixel = 0;
-                Position = UDim2.new(0.5, 2, 0.5, -1);
-                Rotation = 45;
-                Size = UDim2.new(0, 2, 0, 9);
-                ZIndex = 96;
-                Parent = Parent;
-            });
-            Library:AddToRegistry(CheckLong, {
-                BackgroundColor3 = 'MainColor';
-            });
-        elseif Kind == 'Servers' then
-            local Box = Library:Create('Frame', {
-                AnchorPoint = Vector2.new(0.5, 0.5);
-                BackgroundTransparency = 1;
-                Position = UDim2.new(0.5, 0, 0.5, 0);
-                Size = UDim2.new(0, 14, 0, 16);
-                ZIndex = 95;
-                Parent = Parent;
-            });
-
-            local Stroke = Library:Create('UIStroke', {
-                Color = Library.FontColor;
-                Thickness = 1;
-                Transparency = 0;
-                Parent = Box;
-            });
-
-            Library:AddToRegistry(Stroke, {
-                Color = 'FontColor';
-            });
-
-            for i = 0, 1 do
-                local Line = Library:Create('Frame', {
-                    BackgroundColor3 = Library.FontColor;
-                    BorderSizePixel = 0;
-                    Position = UDim2.new(0, 0, 0, 5 + i * 6);
-                    Size = UDim2.new(1, 0, 0, 1);
-                    ZIndex = 96;
-                    Parent = Box;
-                });
-
-                Library:AddToRegistry(Line, {
-                    BackgroundColor3 = 'FontColor';
-                });
-            end;
-        elseif Kind == 'Players' then
-            local Head = Library:Create('Frame', {
-                AnchorPoint = Vector2.new(0.5, 0.5);
-                BackgroundColor3 = Library.FontColor;
-                BorderSizePixel = 0;
-                Position = UDim2.new(0.5, 0, 0.5, -5);
-                Size = UDim2.new(0, 6, 0, 6);
-                ZIndex = 95;
-                Parent = Parent;
-            });
-
-            Library:Create('UICorner', {
-                CornerRadius = UDim.new(1, 0);
-                Parent = Head;
-            });
-
-            Library:AddToRegistry(Head, {
-                BackgroundColor3 = 'FontColor';
-            });
-
-            local Body = Library:Create('Frame', {
-                AnchorPoint = Vector2.new(0.5, 0);
-                BackgroundColor3 = Library.FontColor;
-                BorderSizePixel = 0;
-                Position = UDim2.new(0.5, 0, 0.5, 0);
-                Size = UDim2.new(0, 13, 0, 7);
-                ZIndex = 95;
-                Parent = Parent;
-            });
-
-            Library:Create('UICorner', {
-                CornerRadius = UDim.new(1, 0);
-                Parent = Body;
-            });
-
-            Library:AddToRegistry(Body, {
-                BackgroundColor3 = 'FontColor';
-            });
-        elseif Kind == 'Executor' then
-            local Box = Library:Create('Frame', {
-                AnchorPoint = Vector2.new(0.5, 0.5);
-                BackgroundTransparency = 1;
-                Position = UDim2.new(0.5, 0, 0.5, 0);
-                Size = UDim2.new(0, 17, 0, 13);
-                ZIndex = 95;
-                Parent = Parent;
-            });
-
-            local Stroke = Library:Create('UIStroke', {
-                Color = Library.FontColor;
-                Thickness = 1;
-                Transparency = 0;
-                Parent = Box;
-            });
-
-            Library:AddToRegistry(Stroke, {
-                Color = 'FontColor';
-            });
-
-            Library:CreateLabel({
-                Position = UDim2.new(0, 2, 0, 0);
-                Size = UDim2.new(1, -2, 1, 0);
-                TextSize = 11;
-                Text = '>_';
-                TextXAlignment = Enum.TextXAlignment.Left;
-                ZIndex = 96;
-                Parent = Box;
-            });
-        elseif Kind == 'Settings' then
-            for i = 0, 2 do
-                local Line = Library:Create('Frame', {
-                    AnchorPoint = Vector2.new(0.5, 0.5);
-                    BackgroundColor3 = Library.FontColor;
-                    BorderSizePixel = 0;
-                    Position = UDim2.new(0.5, 0, 0.5, -5 + i * 5);
-                    Size = UDim2.new(0, 15, 0, 1);
-                    ZIndex = 95;
-                    Parent = Parent;
-                });
-
-                Library:AddToRegistry(Line, {
-                    BackgroundColor3 = 'FontColor';
-                });
-
-                local Knob = Library:Create('Frame', {
-                    AnchorPoint = Vector2.new(0.5, 0.5);
-                    BackgroundColor3 = Library.FontColor;
-                    BorderSizePixel = 0;
-                    Position = UDim2.new(0.5, -4 + i * 4, 0.5, -5 + i * 5);
-                    Size = UDim2.new(0, 3, 0, 3);
-                    ZIndex = 96;
-                    Parent = Parent;
-                });
-
-                Library:AddToRegistry(Knob, {
-                    BackgroundColor3 = 'FontColor';
-                });
-            end;
-        end;
-    end;
-
-    local Tools = { 'Servers', 'Players', 'Executor', 'Settings' };
-
-    for _, Tool in next, Tools do
-        local BOuter, BInner = CreatePanelButton('', UDim2.new(0, 34, 0, 26), ButtonRow, function()
-            Library:ShowToolbarPanel(Tool);
-        end);
-
-        DrawIcon(Tool, BInner);
-        Library:AddToolTip(Tool:lower(), BOuter);
-
-        ToolbarButtons[Tool] = { Outer = BOuter; Inner = BInner; };
-    end;
-
-    Library.ToolbarHolder = Holder;
-    Library:ApplyScaleTo(Holder);
-    Library._CreatePanelButton = CreatePanelButton
-    Library._DrawIcon = DrawIcon
-    Library._ToolbarButtons = ToolbarButtons
-    Library._DockedPanelKind = nil
-    Library._PanelOrig = {}
-    function Library.RefreshToolbarPanel(Name)
-        if Name == 'Players' then RefreshPlayerList();
-        elseif Name == 'Servers' then RefreshServerInfo();
-        elseif Name == 'Executor' then RefreshInfo();
-        elseif Name == 'Settings' then RefreshSettings(); end;
-    end;
-
-    Library:GiveSignal(Players.PlayerAdded:Connect(function()
-        if Library.ToolbarPanels['Players'] and Library.ToolbarPanels['Players'].Visible then
-            RefreshPlayerList();
-        end;
-    end));
-
-    Library:GiveSignal(Players.PlayerRemoving:Connect(function(Player)
-        if Library.Spectating == Player then
-            Library.Spectating = nil;
-
-            local Cam = workspace.CurrentCamera;
-            local Char = LocalPlayer.Character;
-            local Hum = Char and Char:FindFirstChildOfClass('Humanoid');
-
-            if Cam and Hum then
-                pcall(function()
-                    Cam.CameraSubject = Hum;
-                end);
-            end;
-        end;
-
-        if Library.ToolbarPanels['Players'] and Library.ToolbarPanels['Players'].Visible then
-            RefreshPlayerList();
-        end;
-    end));
-end;
+Library.ToolbarPanels = {}
+Library.Spectating = nil
+Library.ThumbnailCache = Library.ThumbnailCache or {}
+Library.ServerSortMode, Library.ServerSortDesc = 'Players', true
+function Library:HideToolbarPanels()
+    if self.WorkspaceWindow and self.WorkspaceWindow.HideCustomPanels then self.WorkspaceWindow.HideCustomPanels() end
+    self.OpenToolbarPanel = nil
+end
 
 function Library:SetWatermarkVisibility(Bool)
     Library.Watermark.Visible = Bool;
@@ -7432,634 +6073,330 @@ function Library:UnwhitelistCrew(player)
         Library:Notify("unwhitelisted crew " .. tostring(Library:GetCrewGroupName(cid)), 2)
     end
 end
-function Library:ShowPlayerContextMenu(target, pos)
-    if Library.PlayerContextMenu then Library.PlayerContextMenu:Destroy() Library.PlayerContextMenu=nil end
-    local menu = Instance.new("Frame")
-    menu.Name = "PlayerContext"
-    menu.BackgroundColor3 = Library.BackgroundColor
-    menu.BorderColor3 = Library.OutlineColor
-    menu.BorderMode = Enum.BorderMode.Inset
-    menu.Size = UDim2.fromOffset(192, 132)
-    menu.Position = UDim2.fromOffset(pos.X, pos.Y)
-    menu.ZIndex = 90
-    menu.Parent = ScreenGui
-    Library:AddToRegistry(menu, {BackgroundColor3="BackgroundColor", BorderColor3="OutlineColor"})
-    local btnCount = 0
-    local function addBtn(txt, cb)
-        btnCount = btnCount + 1
-        local b = Instance.new("TextButton")
-        b.BackgroundColor3 = Library.MainColor
-        b.BorderColor3 = Library.OutlineColor
-        b.BorderMode = Enum.BorderMode.Inset
-        b.Size = UDim2.new(1,-4,0,22)
-        b.Text = txt
-        b.TextSize = 13
-        b.Font = Library.Font
-        b.TextColor3 = Library.FontColor
-        b.ZIndex = 91
-        b.Parent = menu
-        Library:AddToRegistry(b, {BackgroundColor3="MainColor", BorderColor3="OutlineColor"})
-        Library:AddToRegistry(b, {TextColor3="FontColor"})
-        b.MouseEnter:Connect(function() b.BackgroundColor3 = Library.AccentColor b.TextColor3 = Color3.new(1,1,1) end)
-        b.MouseLeave:Connect(function() b.BackgroundColor3 = Library.MainColor b.TextColor3 = Library.FontColor end)
-        b.MouseButton1Click:Connect(function() if Library.PlayerContextMenu==menu then menu:Destroy() Library.PlayerContextMenu=nil Library.OpenedFrames[menu]=nil end cb() end)
-        return b
+function Library:ShowPlayerContextMenu(target, position)
+    self:ClosePopups()
+    if self.PlayerContextMenu then self.PlayerContextMenu:Destroy() end
+    local menu = self:Create('Frame', {Name = 'PlayerContext', Parent = ScreenGui, BackgroundColor3 = self.BackgroundColor, BorderColor3 = self.OutlineColor, BorderSizePixel = 0, Size = UDim2.fromOffset(208, 0), ZIndex = 90})
+    self:AddToRegistry(menu, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
+    self:StyleControl(menu, menu, 1)
+    self:ApplyScaleTo(menu)
+    local connection
+    local function close() if menu.Parent then menu:Destroy() end end
+    menu.Destroying:Connect(function()
+        if connection then connection:Disconnect(); connection = nil end
+        if self.PlayerContextMenu == menu then self.PlayerContextMenu = nil end
+        self.OpenedFrames[menu] = nil
+        if self.PopupClosers then self.PopupClosers[menu] = nil end
+    end)
+    local title = self:CreateLabel({Parent = menu, Text = self:PlayerDisplayName(target), TextSize = 12, TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Left, Position = UDim2.fromOffset(8, 4), Size = UDim2.new(1, -16, 0, 20), ZIndex = 92})
+    title.TextTransparency = 0.3
+    local count = 0
+    local function action(name, callback)
+        count = count + 1
+        local button = self:Create('TextButton', {Name = name, Parent = menu, Text = name, Font = self.Font, TextSize = 12, TextColor3 = self.FontColor, TextXAlignment = Enum.TextXAlignment.Left, BackgroundColor3 = self.MainColor, BorderColor3 = self.OutlineColor, BorderSizePixel = 0, AutoButtonColor = false, Position = UDim2.fromOffset(4, 26 + (count - 1) * 28), Size = UDim2.new(1, -8, 0, 26), ZIndex = 92})
+        self:Create('UIPadding', {Parent = button, PaddingLeft = UDim.new(0, 7)})
+        self:AddToRegistry(button, {BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor', TextColor3 = 'FontColor'})
+        self:StyleControl(button, button, 1)
+        button.Activated:Connect(function() close(); self:SafeCallback(callback) end)
     end
-    local layout = Instance.new("UIListLayout")
-    layout.Padding = UDim.new(0,2)
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Parent = menu
-    local pad = Instance.new("UIPadding")
-    pad.PaddingTop = UDim.new(0,2)
-    pad.PaddingLeft = UDim.new(0,2)
-    pad.PaddingRight = UDim.new(0,2)
-    pad.PaddingBottom = UDim.new(0,2)
-    pad.Parent = menu
-    addBtn("Teleport", function() Library:TeleportToPlayer(target) end)
-    addBtn("Copy Name", function() pcall(setclipboard, target.Name) Library:Notify("Copied @"..target.Name,2) end)
-    addBtn("Copy Username", function() pcall(setclipboard, target.DisplayName) Library:Notify("Copied "..target.DisplayName,2) end)
-    local wlNow = Library:IsFullyWhitelisted(target)
-    if not wlNow and Library.PhongData and Library.PhongData.WhitelistedCrews and Library:GetCrewName(target) then
-        wlNow = Library.PhongData.WhitelistedCrews[tostring(Library:GetCrewName(target))] == true
-    end
-    if wlNow then
-        addBtn("unwhitelist", function() Library:UnwhitelistFully(target) end)
-        addBtn("unwhitelist crew", function() Library:UnwhitelistCrew(target) end)
+    action('Teleport', function() self:TeleportToPlayer(target) end)
+    action('Copy username', function() pcall(setclipboard, target.Name); self:Notify('Copied @' .. target.Name, 2) end)
+    action('Copy display name', function() pcall(setclipboard, target.DisplayName); self:Notify('Copied ' .. target.DisplayName, 2) end)
+    local whitelisted = self:IsFullyWhitelisted(target)
+    local crew = self:GetCrewName(target)
+    if not whitelisted and crew and self.PhongData and self.PhongData.WhitelistedCrews then whitelisted = self.PhongData.WhitelistedCrews[tostring(crew)] == true end
+    if whitelisted then
+        action('Unwhitelist player', function() self:UnwhitelistFully(target) end)
+        action('Unwhitelist crew', function() self:UnwhitelistCrew(target) end)
     else
-        addBtn("whitelist fully", function() Library:WhitelistFully(target) end)
-        addBtn("whitelist crew", function() Library:WhitelistCrew(target) end)
+        action('Whitelist player', function() self:WhitelistFully(target) end)
+        action('Whitelist crew', function() self:WhitelistCrew(target) end)
     end
-    menu.Size = UDim2.fromOffset(192, 8 + btnCount * 22 + (btnCount - 1) * 2)
-    Library.PlayerContextMenu = menu
-    Library.OpenedFrames[menu]=true
-    task.delay(5, function() if Library.PlayerContextMenu==menu then menu:Destroy() Library.PlayerContextMenu=nil Library.OpenedFrames[menu]=nil end end)
-    local conn
-    conn = InputService.InputBegan:Connect(function(inp)
-        if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.MouseButton2 then
-            if Library.PlayerContextMenu==menu and not Library:IsMouseOverFrame(menu) then
-                menu:Destroy() Library.PlayerContextMenu=nil Library.OpenedFrames[menu]=nil conn:Disconnect()
-            end
-        end
+    menu.Size = UDim2.fromOffset(208, 30 + count * 28)
+    local scale, viewport = math.max(self.UIScale or 1, 0.01), ScreenGui.AbsoluteSize
+    menu.Position = UDim2.fromOffset(math.clamp(position.X, 8, math.max(8, viewport.X - 208 * scale - 8)), math.clamp(position.Y, 8, math.max(8, viewport.Y - menu.Size.Y.Offset * scale - 8)))
+    self.PlayerContextMenu, self.OpenedFrames[menu] = menu, true
+    self.PopupClosers = self.PopupClosers or {}
+    self.PopupClosers[menu] = close
+    connection = InputService.InputBegan:Connect(function(input)
+        if not self:IsClickInput(input) and input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
+        local point, origin, size = input.Position, menu.AbsolutePosition, menu.AbsoluteSize
+        if point.X < origin.X or point.X > origin.X + size.X or point.Y < origin.Y or point.Y > origin.Y + size.Y then close() end
     end)
+    task.delay(5, function() if self.PlayerContextMenu == menu then close() end end)
 end
+
 function Library:BuildCustomPanels(Window, TabContainer)
-    Window.CustomPanels = {}
-    Window.RefreshCustom = {}
-    Window.CustomPanel = nil
-    local TeleportService = game:GetService('TeleportService')
-    local HttpServ = game:GetService('HttpService')
-    local function HideCustom()
-        for _, P in next, Window.CustomPanels do P.Visible = false end
-        Window.CustomPanel = nil
+    Window.CustomPanels, Window.RefreshCustom = {}, {}
+    local teleport, http = game:GetService('TeleportService'), game:GetService('HttpService')
+    local function panel(name)
+        local object = self:Create('Frame', {Name = 'Classic' .. name, Parent = TabContainer, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false, ZIndex = 4})
+        Window.CustomPanels[name] = object
+        return object
     end
-    Window.HideCustomPanels = HideCustom
-    local function SmallButton(Text, Parent, Pos, Size, Callback)
-        local Outer = Library:Create('Frame', {
-            BackgroundColor3 = Color3.new(0, 0, 0);
-            BorderColor3 = Color3.new(0, 0, 0);
-            Position = Pos;
-            Size = Size;
-            ZIndex = 4;
-            Parent = Parent;
-        })
-        local Inner = Library:Create('Frame', {
-            BackgroundColor3 = Library.MainColor;
-            BorderColor3 = Library.OutlineColor;
-            BorderMode = Enum.BorderMode.Inset;
-            Size = UDim2.new(1, 0, 1, 0);
-            ZIndex = 5;
-            Parent = Outer;
-        })
-        Library:AddToRegistry(Inner, {
-            BackgroundColor3 = 'MainColor';
-            BorderColor3 = 'OutlineColor';
-        })
-        local BtnLabel = Library:CreateLabel({
-            Size = UDim2.new(1, 0, 1, 0);
-            TextSize = 13;
-            Text = Text;
-            ZIndex = 6;
-            Parent = Inner;
-        })
-        Library:OnHighlight(Outer, Outer,
-            { BorderColor3 = 'AccentColor' },
-            { BorderColor3 = 'Black' }
-        )
-        Outer.InputBegan:Connect(function(Input)
-            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
-                Library:SafeCallback(Callback)
-            end
+    local function text(parent, name, value, position, size)
+        return self:CreateLabel({Name = name, Parent = parent, Text = value, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Position = position, Size = size, ZIndex = 7})
+    end
+    local function button(parent, name, value, position, size, callback)
+        local object = self:Create('TextButton', {Name = name, Parent = parent, Text = value, Font = self.Font, TextSize = 12, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BorderColor3 = self.OutlineColor, BorderSizePixel = 0, AutoButtonColor = false, Position = position, Size = size, ZIndex = 8})
+        self:AddToRegistry(object, {TextColor3 = 'FontColor', BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor'})
+        self:StyleControl(object, object, 1)
+        object.Activated:Connect(function() if not self.Unloaded and not self:MouseIsOverOpenedFrame(object) then self:SafeCallback(callback) end end)
+        return object
+    end
+    local function input(parent, name, placeholder, position, size)
+        local object = self:Create('TextBox', {Name = name, Parent = parent, Text = '', PlaceholderText = placeholder, ClearTextOnFocus = false, Font = self.Font, TextSize = 13, TextColor3 = self.FontColor, PlaceholderColor3 = self.FontColor, TextXAlignment = Enum.TextXAlignment.Left, BackgroundColor3 = self.MainColor, BorderColor3 = self.OutlineColor, BorderSizePixel = 0, Position = position, Size = size, ZIndex = 8})
+        self:AddToRegistry(object, {TextColor3 = 'FontColor', BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor', PlaceholderColor3 = 'FontColor'})
+        self:Create('UIPadding', {Parent = object, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8)})
+        self:StyleControl(object, object, 1)
+        return object
+    end
+    local function list(parent, name, top, bottom, gap)
+        local object = self:Create('ScrollingFrame', {Name = name, Parent = parent, Position = UDim2.fromOffset(0, top), Size = UDim2.new(1, 0, 1, -top-bottom), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = self.OutlineColor, CanvasSize = UDim2.fromOffset(0, 0), ZIndex = 5})
+        self:AddToRegistry(object, {ScrollBarImageColor3 = 'OutlineColor'})
+        local layout = self:Create('UIListLayout', {Parent = object, Padding = UDim.new(0, gap or 4), SortOrder = Enum.SortOrder.LayoutOrder})
+        local function resize() object.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y / math.max(self.UIScale or 1, 0.01) + 4) end
+        layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(resize)
+        return object, resize
+    end
+    local function clear(object)
+        for _, child in ipairs(object:GetChildren()) do if child:IsA('GuiObject') then child:Destroy() end end
+    end
+    local function doTeleport(id)
+        local ok, problem = pcall(function()
+            if id then teleport:TeleportToPlaceInstance(game.PlaceId, id, LocalPlayer) else teleport:Teleport(game.PlaceId, LocalPlayer) end
         end)
-        return Outer, BtnLabel
+        if not ok then self:Notify('Teleport failed: ' .. tostring(problem), 4) end
     end
-    local function InfoRow(Text, Parent, Y)
-        return Library:CreateLabel({
-            Position = UDim2.new(0, 6, 0, Y);
-            Size = UDim2.new(1, -12, 0, 16);
-            TextSize = 13;
-            Text = Text;
-            TextXAlignment = Enum.TextXAlignment.Left;
-            TextTruncate = Enum.TextTruncate.AtEnd;
-            ZIndex = 4;
-            Parent = Parent;
-        })
-    end
-    local PlayersPanel = Library:Create('Frame', {
-        BackgroundTransparency = 1;
-        Size = UDim2.new(1, 0, 1, 0);
-        Visible = false;
-        ZIndex = 3;
-        Parent = TabContainer;
-    })
-    Window.CustomPanels['Players'] = PlayersPanel
-    local PSearchOuter = Library:Create('Frame', {
-        BackgroundColor3 = Color3.new(0, 0, 0);
-        BorderColor3 = Color3.new(0, 0, 0);
-        Position = UDim2.new(0, 4, 0, 4);
-        Size = UDim2.new(1, -8, 0, 22);
-        ZIndex = 4;
-        Parent = PlayersPanel;
-    })
-    local PSearchInner = Library:Create('Frame', {
-        BackgroundColor3 = Library.MainColor;
-        BorderColor3 = Library.OutlineColor;
-        BorderMode = Enum.BorderMode.Inset;
-        Size = UDim2.new(1, 0, 1, 0);
-        ZIndex = 5;
-        Parent = PSearchOuter;
-    })
-    Library:AddToRegistry(PSearchInner, {
-        BackgroundColor3 = 'MainColor';
-        BorderColor3 = 'OutlineColor';
-    })
-    local PSearchBox = Library:Create('TextBox', {
-        BackgroundTransparency = 1;
-        Position = UDim2.new(0, 6, 0, 0);
-        Size = UDim2.new(1, -12, 1, 0);
-        Font = Library.Font;
-        TextSize = 13;
-        TextColor3 = Library.FontColor;
-        PlaceholderText = 'Search players...';
-        PlaceholderColor3 = Color3.fromRGB(150, 150, 150);
-        Text = '';
-        TextXAlignment = Enum.TextXAlignment.Left;
-        ClearTextOnFocus = false;
-        ZIndex = 6;
-        Parent = PSearchInner;
-    })
-    Library:AddToRegistry(PSearchBox, {
-        TextColor3 = 'FontColor';
-    })
-    Library:ApplyTextStroke(PSearchBox)
-    local PScroll = Library:Create('ScrollingFrame', {
-        BackgroundTransparency = 1;
-        BorderSizePixel = 0;
-        Position = UDim2.new(0, 4, 0, 30);
-        Size = UDim2.new(1, -8, 1, -52);
-        CanvasSize = UDim2.new(0, 0, 0, 0);
-        ScrollBarThickness = 3;
-        ScrollBarImageColor3 = Library.AccentColor;
-        ZIndex = 4;
-        Parent = PlayersPanel;
-    })
-    Library:AddToRegistry(PScroll, {
-        ScrollBarImageColor3 = 'AccentColor';
-    })
-    local PLayout = Library:Create('UIListLayout', {
-        FillDirection = Enum.FillDirection.Vertical;
-        SortOrder = Enum.SortOrder.LayoutOrder;
-        Padding = UDim.new(0, 6);
-        HorizontalAlignment = Enum.HorizontalAlignment.Center;
-        Parent = PScroll;
-    })
-    PLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-        PScroll.CanvasSize = UDim2.fromOffset(0, PLayout.AbsoluteContentSize.Y)
-    end)
-    local PBottom = Library:Create('Frame', {
-        BackgroundColor3 = Library.BackgroundColor;
-        BorderColor3 = Library.OutlineColor;
-        BorderMode = Enum.BorderMode.Inset;
-        Position = UDim2.new(0, 4, 1, -20);
-        Size = UDim2.new(1, -8, 0, 16);
-        ZIndex = 4;
-        Parent = PlayersPanel;
-    })
-    Library:AddToRegistry(PBottom, {
-        BackgroundColor3 = 'BackgroundColor';
-        BorderColor3 = 'OutlineColor';
-    })
-    local PCount = Library:CreateLabel({
-        Size = UDim2.new(1, 0, 1, 0);
-        TextSize = 12;
-        Text = 'players';
-        ZIndex = 5;
-        Parent = PBottom;
-    })
-    local LastPlayerKey = nil
-    local TimeRows = {}
-    local function RefreshPlayers()
-        local query = ''
-        if PSearchBox and PSearchBox.Text then query = PSearchBox.Text:lower() end
-        local list = Players:GetPlayers()
-        table.sort(list, function(a, b) return a.Name:lower() < b.Name:lower() end)
-        local keyparts = {query, #list}
-        for _, plr in next, list do table.insert(keyparts, plr.UserId) end
-        local key = table.concat(keyparts, ",")
-        if key == LastPlayerKey then return end
-        LastPlayerKey = key
-        for _, c in next, PScroll:GetChildren() do
-            if not c:IsA('UIListLayout') then c:Destroy() end
-        end
-        table.clear(TimeRows)
-        local crewOf = {}
-        local crewCount = {}
-        for _, plr in next, list do
-            local cid = Library:GetCrewName(plr)
-            crewOf[plr] = cid
-            if cid then crewCount[cid] = (crewCount[cid] or 0) + 1 end
+    local playersPanel = panel('Players')
+    local search = input(playersPanel, 'PlayerSearch', 'Search name or display name...', UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 30))
+    local count = text(playersPanel, 'PlayerCount', 'Players', UDim2.fromOffset(0, 36), UDim2.new(1, 0, 0, 22))
+    local playerList, resizePlayers = list(playersPanel, 'PlayerList', 64, 0, 4)
+    local function refreshPlayers()
+        if self.Unloaded then return end
+        clear(playerList)
+        local query = search.Text:lower():match('^%s*(.-)%s*$')
+        local rows, members = Players:GetPlayers(), {}
+        table.sort(rows, function(a, b) return a.Name:lower() < b.Name:lower() end)
+        self.StreamerNames = {}
+        for i, player in ipairs(rows) do
+            self.StreamerNames[player.UserId] = 'Player' .. i
+            local crew = self:GetCrewName(player)
+            if crew then members[crew] = (members[crew] or 0) + 1 end
         end
         local shown = 0
-        for _, plr in next, list do
-            if query == '' or plr.Name:lower():find(query, 1, true) or plr.DisplayName:lower():find(query, 1, true) then
+        for _, player in ipairs(rows) do
+            if query == '' or player.Name:lower():find(query, 1, true) or player.DisplayName:lower():find(query, 1, true) then
                 shown = shown + 1
-                local row = Library:Create('Frame', {
-                    BackgroundTransparency = 1;
-                    Size = UDim2.new(1, -2, 0, 40);
-                    ZIndex = 4;
-                    Parent = PScroll;
-                })
-                local avatar = Library:Create('ImageLabel', {
-                    BackgroundColor3 = Library.MainColor;
-                    BorderColor3 = Library.OutlineColor;
-                    BorderMode = Enum.BorderMode.Inset;
-                    Position = UDim2.new(0, 0, 0, 0);
-                    Size = UDim2.new(0, 40, 0, 40);
-                    ZIndex = 5;
-                    Parent = row;
-                })
-                Library:FetchThumbnail(plr.UserId, avatar)
-                local info = Library:Create('Frame', {
-                    BackgroundColor3 = Library.MainColor;
-                    BorderColor3 = Library.OutlineColor;
-                    BorderMode = Enum.BorderMode.Inset;
-                    Position = UDim2.new(0, 46, 0, 0);
-                    Size = UDim2.new(1, -46, 1, 0);
-                    ZIndex = 5;
-                    Parent = row;
-                })
-                Library:AddToRegistry(info, {
-                    BackgroundColor3 = 'MainColor';
-                    BorderColor3 = 'OutlineColor';
-                })
-                Library:AddToRegistry(avatar, {
-                    BorderColor3 = 'OutlineColor';
-                })
-                Library:CreateLabel({
-                    Position = UDim2.new(0, 6, 0, 4);
-                    Size = UDim2.new(1, -12, 0, 16);
-                    TextSize = 13;
-                    Text = plr.DisplayName .. ' @' .. plr.Name;
-                    TextXAlignment = Enum.TextXAlignment.Left;
-                    TextTruncate = Enum.TextTruncate.AtEnd;
-                    ZIndex = 6;
-                    Parent = info;
-                })
-                local crewId = crewOf[plr]
-                local crewText = "No Crew"
-                if crewId then crewText = Library:GetCrewGroupName(crewId) .. " (" .. tostring(crewCount[crewId] or 0) .. ")" end
-                local crew = Library:CreateLabel({
-                    Position = UDim2.new(0, 6, 0, 20);
-                    Size = UDim2.new(1, -12, 0, 12);
-                    TextSize = 11;
-                    Text = crewText .. ' | ' .. Library:FormatJoinedTime(plr);
-                    TextXAlignment = Enum.TextXAlignment.Left;
-                    TextTruncate = Enum.TextTruncate.AtEnd;
-                    ZIndex = 6;
-                    Parent = info;
-                })
-                Library:RemoveFromRegistry(crew)
-                crew.TextColor3 = Color3.fromRGB(170, 170, 170)
-                table.insert(TimeRows, {crew, plr})
-                local btn = Library:Create('TextButton', {
-                    BackgroundTransparency = 1;
-                    Size = UDim2.new(1, 0, 1, 0);
-                    Text = '';
-                    ZIndex = 7;
-                    Parent = row;
-                })
-                btn.InputBegan:Connect(function(inp)
-                    if inp.UserInputType == Enum.UserInputType.MouseButton2 then
-                        Library:ShowPlayerContextMenu(plr, Vector2.new(Mouse.X, Mouse.Y))
-                    elseif Library:IsClickInput(inp) then
-                        Library:TeleportToPlayer(plr)
-                    end
+                local row = self:Create('Frame', {Name = 'Player_' .. player.UserId, Parent = playerList, Size = UDim2.new(1, -6, 0, 52), BackgroundColor3 = self.MainColor, BorderColor3 = self.OutlineColor, BorderSizePixel = 0, ZIndex = 6})
+                self:AddToRegistry(row, {BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor'})
+                self:StyleControl(row, row, 1)
+                local avatar = self:Create('ImageLabel', {Parent = row, BackgroundTransparency = 1, Position = UDim2.fromOffset(5, 5), Size = UDim2.fromOffset(42, 42), ZIndex = 7})
+                self:FetchThumbnail(player.UserId, avatar)
+                local display = self:PlayerDisplayName(player)
+                if self.StreamerMode == 'Off' then display = player.DisplayName .. ' @' .. player.Name end
+                text(row, 'Name', display, UDim2.fromOffset(57, 6), UDim2.new(1, -68, 0, 20))
+                local crew = self:GetCrewName(player)
+                local crewName = crew and self:GetCrewGroupName(crew) .. ' (' .. tostring(members[crew]) .. ')' or 'No crew'
+                text(row, 'Details', crewName .. ' | ' .. self:FormatJoinedTime(player), UDim2.fromOffset(57, 28), UDim2.new(1, -68, 0, 16)).TextTransparency = 0.3
+                local hit = self:Create('TextButton', {Parent = row, BackgroundTransparency = 1, Text = '', Size = UDim2.fromScale(1, 1), ZIndex = 9})
+                hit.InputBegan:Connect(function(event)
+                    if self:MouseIsOverOpenedFrame(row) then return end
+                    if event.UserInputType == Enum.UserInputType.MouseButton2 then self:ShowPlayerContextMenu(player, Vector2.new(event.Position.X, event.Position.Y))
+                    elseif self:IsClickInput(event) then self:TeleportToPlayer(player) end
                 end)
             end
         end
-        PCount.Text = 'players - ' .. tostring(shown) .. '/' .. tostring(#list)
+        count.Text = 'Players: ' .. shown .. ' / ' .. #rows
+        if shown == 0 then text(playerList, 'EmptyPlayers', 'No matching players', UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 28)) end
+        resizePlayers()
     end
-    for _, plr in next, Players:GetPlayers() do
-        if not Library.PlayerJoinTimes[plr] then Library.PlayerJoinTimes[plr] = tick() end
-        if not Library.PlayerJoinTimes[plr.UserId] then Library.PlayerJoinTimes[plr.UserId] = tick() end
+    for _, player in ipairs(Players:GetPlayers()) do
+        self.PlayerJoinTimes[player] = self.PlayerJoinTimes[player] or tick()
+        self.PlayerJoinTimes[player.UserId] = self.PlayerJoinTimes[player.UserId] or self.PlayerJoinTimes[player]
     end
-    Window.RefreshCustom['Players'] = RefreshPlayers
-    Library.PlayerRefreshFns = Library.PlayerRefreshFns or {}
-    table.insert(Library.PlayerRefreshFns, function()
-        if PlayersPanel.Visible then RefreshPlayers() end
-    end)
-    local SearchDue = false
-    PSearchBox:GetPropertyChangedSignal('Text'):Connect(function()
-        if SearchDue then return end
-        SearchDue = true
-        task.delay(0.15, function()
-            SearchDue = false
-            RefreshPlayers()
-        end)
-    end)
-    task.spawn(function()
-        while ScreenGui.Parent do
-            task.wait(1)
-            if PlayersPanel.Visible and #TimeRows > 0 then
-                local cmap = {}
-                local ccnt = {}
-                for _, plr in next, Players:GetPlayers() do
-                    local cid = Library:GetCrewName(plr)
-                    if cid then cmap[plr] = cid ccnt[cid] = (ccnt[cid] or 0) + 1 end
-                end
-                for _, e in next, TimeRows do
-                    local cid = cmap[e[2]]
-                    local ct = "No Crew"
-                    if cid then ct = Library:GetCrewGroupName(cid) .. " (" .. tostring(ccnt[cid] or 0) .. ")" end
-                    e[1].Text = ct .. ' | ' .. Library:FormatJoinedTime(e[2])
-                end
-            end
-        end
-    end)
-    Library:GiveSignal(Players.PlayerAdded:Connect(function(plr)
-        Library.PlayerJoinTimes[plr] = tick()
-        Library.PlayerJoinTimes[plr.UserId] = tick()
-        if PlayersPanel.Visible then RefreshPlayers() end
+    self:AddToolTip('Click a player to teleport. Right-click for player actions.', playerList)
+    Window.RefreshCustom.Players = refreshPlayers
+    local pending = false
+    local function queuePlayers()
+        if pending or self.Unloaded then return end
+        pending = true
+        task.delay(0.1, function() pending = false; if playersPanel.Visible and not self.Unloaded then refreshPlayers() end end)
+    end
+    search:GetPropertyChangedSignal('Text'):Connect(queuePlayers)
+    self.PlayerRefreshFns = self.PlayerRefreshFns or {}
+    table.insert(self.PlayerRefreshFns, queuePlayers)
+    self:GiveSignal(Players.PlayerAdded:Connect(function(player)
+        self.PlayerJoinTimes[player], self.PlayerJoinTimes[player.UserId] = tick(), tick()
+        queuePlayers()
     end))
-    Library:GiveSignal(Players.PlayerRemoving:Connect(function()
-        if PlayersPanel.Visible then RefreshPlayers() end
+    self:GiveSignal(Players.PlayerRemoving:Connect(function(player)
+        if self.Spectating == player then
+            self.Spectating = nil
+            local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass('Humanoid')
+            if workspace.CurrentCamera and humanoid then workspace.CurrentCamera.CameraSubject = humanoid end
+        end
+        queuePlayers()
     end))
-    local ServersPanel = Library:Create('Frame', {
-        BackgroundTransparency = 1;
-        Size = UDim2.new(1, 0, 1, 0);
-        Visible = false;
-        ZIndex = 3;
-        Parent = TabContainer;
-    })
-    Window.CustomPanels['Servers'] = ServersPanel
-    local SCount = InfoRow('Players: ...', ServersPanel, 4)
-    SmallButton('Rejoin Current Server', ServersPanel, UDim2.new(0, 4, 0, 22), UDim2.new(1, -8, 0, 20), function()
-        pcall(function()
-            TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+    local serversPanel = panel('Servers')
+    local serverCount = text(serversPanel, 'ServerCount', 'Public server browser', UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 24))
+    local state = {Rows = {}, Seen = {}, Token = 0, Requesting = false, Cursor = nil, Loaded = false}
+    Window.ServerBrowser = state
+    local serverList, resizeServers = list(serversPanel, 'ServerList', 118, 0, 4)
+    local status = text(serversPanel, 'ScanStatus', 'Select Scan to load public servers', UDim2.fromOffset(0, 90), UDim2.new(1, -98, 0, 22))
+    local scan, more, render, start
+    button(serversPanel, 'Rejoin', 'Rejoin', UDim2.fromOffset(0, 30), UDim2.new(0.32, -4, 0, 28), function() doTeleport(game.JobId) end)
+    button(serversPanel, 'Hop', 'Server hop', UDim2.new(0.32, 2, 0, 30), UDim2.new(0.34, -4, 0, 28), function() doTeleport() end)
+    scan = button(serversPanel, 'Scan', 'Scan', UDim2.new(0.66, 2, 0, 30), UDim2.new(0.34, -2, 0, 28), function()
+        if state.Requesting then state.Token = state.Token + 1; state.Requesting = false; scan.Text = 'Scan'; status.Text = 'Scan cancelled'; return end
+        start(false)
+    end)
+    local sortMode, sortDirection
+    sortMode = button(serversPanel, 'SortMode', 'Sort: Players', UDim2.fromOffset(0, 64), UDim2.new(0.5, -3, 0, 22), function()
+        self.ServerSortMode = self.ServerSortMode == 'Players' and 'Ping' or 'Players'; render()
+    end)
+    sortDirection = button(serversPanel, 'SortDirection', 'Descending', UDim2.new(0.5, 3, 0, 64), UDim2.new(0.5, -3, 0, 22), function()
+        self.ServerSortDesc = not self.ServerSortDesc; render()
+    end)
+    more = button(serversPanel, 'LoadMore', 'Load more', UDim2.new(1, -92, 0, 90), UDim2.fromOffset(92, 22), function() if not state.Requesting and state.Cursor then start(true) end end)
+    more.Visible = false
+    render = function()
+        if self.Unloaded then return end
+        clear(serverList)
+        sortMode.Text = 'Sort: ' .. self.ServerSortMode
+        sortDirection.Text = self.ServerSortDesc and 'Descending' or 'Ascending'
+        local rows = table.clone(state.Rows)
+        table.sort(rows, function(a, b)
+            if self.ServerSortMode == 'Ping' and (a.ping == nil) ~= (b.ping == nil) then return a.ping ~= nil end
+            local av = self.ServerSortMode == 'Ping' and (a.ping or math.huge) or a.playing
+            local bv = self.ServerSortMode == 'Ping' and (b.ping or math.huge) or b.playing
+            if av == bv then return a.id < b.id end
+            return self.ServerSortDesc and av > bv or not self.ServerSortDesc and av < bv
         end)
-    end)
-    SmallButton('Server Hop', ServersPanel, UDim2.new(0, 4, 0, 46), UDim2.new(1, -8, 0, 20), function()
-        pcall(function()
-            TeleportService:Teleport(game.PlaceId, LocalPlayer)
-        end)
-    end)
-    local RenderServers
-    local ScanServers
-    SmallButton('Scan', ServersPanel, UDim2.new(1, -70, 0, 68), UDim2.new(0, 62, 0, 20), function()
-        ScanServers()
-    end)
-    local SSortModeLabel, SSortDirLabel
-    local _SSortMode, _SSortModeInner
-    _SSortMode, _SSortModeInner, SSortModeLabel = SmallButton('Sort: Players', ServersPanel, UDim2.new(0, 4, 0, 92), UDim2.new(0.5, -6, 0, 18), function()
-        Library.ServerSortMode = Library.ServerSortMode == 'Players' and 'Ping' or 'Players'
-        SSortModeLabel.Text = 'Sort: ' .. (Library.ServerSortMode or 'Players')
-        RenderServers()
-    end)
-    local _SSortDir, _SSortDirInner
-    _SSortDir, _SSortDirInner, SSortDirLabel = SmallButton('Desc', ServersPanel, UDim2.new(0.5, 2, 0, 92), UDim2.new(0.5, -6, 0, 18), function()
-        Library.ServerSortDesc = not Library.ServerSortDesc
-        SSortDirLabel.Text = Library.ServerSortDesc and 'Desc' or 'Asc'
-        RenderServers()
-    end)
-    local SList = Library:Create('ScrollingFrame', {
-        BackgroundTransparency = 1;
-        BorderSizePixel = 0;
-        Position = UDim2.new(0, 4, 0, 114);
-        Size = UDim2.new(1, -8, 1, -118);
-        CanvasSize = UDim2.new(0, 0, 0, 0);
-        ScrollBarThickness = 3;
-        ScrollBarImageColor3 = Library.AccentColor;
-        ZIndex = 4;
-        Parent = ServersPanel;
-    })
-    Library:AddToRegistry(SList, {
-        ScrollBarImageColor3 = 'AccentColor';
-    })
-    local SLayout = Library:Create('UIListLayout', {
-        FillDirection = Enum.FillDirection.Vertical;
-        SortOrder = Enum.SortOrder.LayoutOrder;
-        Padding = UDim.new(0, 2);
-        Parent = SList;
-    })
-    SLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-        SList.CanvasSize = UDim2.fromOffset(0, SLayout.AbsoluteContentSize.Y)
-    end)
-    local LastServers = {}
-    local SStatus = nil
-    RenderServers = function()
-        for _, c in next, SList:GetChildren() do
-            if not c:IsA('UIListLayout') then c:Destroy() end
+        for _, server in ipairs(rows) do
+            local row = self:Create('Frame', {Name = 'Server_' .. server.id, Parent = serverList, Size = UDim2.new(1, -6, 0, 40), BackgroundColor3 = self.MainColor, BorderColor3 = self.OutlineColor, BorderSizePixel = 0, ZIndex = 6})
+            self:AddToRegistry(row, {BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor'}); self:StyleControl(row, row, 1)
+            local current = server.id == game.JobId
+            local details = server.playing .. '/' .. server.maxPlayers .. ' players | ' .. (server.ping and math.floor(server.ping) .. ' ms' or 'Ping unavailable') .. (server.fps and ' | ' .. math.floor(server.fps) .. ' FPS' or '') .. (current and ' | Current' or '')
+            text(row, 'Details', details, UDim2.fromOffset(8, 0), UDim2.new(1, -116, 1, 0))
+            button(row, 'CopyId', 'ID', UDim2.new(1, -102, 0, 7), UDim2.fromOffset(40, 26), function() pcall(setclipboard, server.id); self:Notify('Copied JobId', 2) end)
+            if not current then button(row, 'Join', 'Join', UDim2.new(1, -56, 0, 7), UDim2.fromOffset(48, 26), function() doTeleport(server.id) end) end
         end
-        table.sort(LastServers, function(A, B)
-            local AV = Library.ServerSortMode == 'Ping' and (A.ping or 0) or (A.playing or 0)
-            local BV = Library.ServerSortMode == 'Ping' and (B.ping or 0) or (B.playing or 0)
-            if Library.ServerSortDesc then return AV > BV end
-            return AV < BV
-        end)
-        local shown = 0
-        for _, S in next, LastServers do
-            if shown >= 50 then break end
-            if S.id and S.playing and S.maxPlayers then
-                shown = shown + 1
-                local current = S.id == game.JobId
-                local txt = S.playing .. '/' .. S.maxPlayers .. '  ' .. math.floor(S.fps or 0) .. 'fps'
-                if S.ping then txt = txt .. '  ' .. tostring(S.ping) .. 'ms' end
-                if current then txt = txt .. ' (you)' end
-                local row = Library:Create('Frame', {
-                    BackgroundTransparency = 1;
-                    Size = UDim2.new(1, 0, 0, 18);
-                    ZIndex = 4;
-                    Parent = SList;
-                })
-                Library:CreateLabel({
-                    Position = UDim2.new(0, 0, 0, 0);
-                    Size = UDim2.new(1, -84, 0, 18);
-                    TextSize = 13;
-                    Text = txt;
-                    TextXAlignment = Enum.TextXAlignment.Left;
-                    TextTruncate = Enum.TextTruncate.AtEnd;
-                    ZIndex = 5;
-                    Parent = row;
-                })
-                SmallButton('ID', row, UDim2.new(1, -78, 0, 1), UDim2.new(0, 36, 0, 16), function()
-                    pcall(setclipboard, tostring(S.id))
-                    Library:Notify('Copied JobId', 2)
-                end)
-                if not current then
-                    SmallButton('Join', row, UDim2.new(1, -38, 0, 1), UDim2.new(0, 36, 0, 16), function()
-                        pcall(function()
-                            TeleportService:TeleportToPlaceInstance(game.PlaceId, S.id, LocalPlayer)
-                        end)
-                    end)
-                end
-            end
-        end
-        if SStatus then SStatus.Text = 'Servers (' .. tostring(shown) .. ')' end
+        if #rows == 0 then text(serverList, 'EmptyServers', state.Loaded and 'No public servers returned' or 'No server results yet', UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 28)) end
+        more.Visible = state.Cursor ~= nil and not state.Requesting
+        resizeServers()
     end
-    SStatus = InfoRow('Servers', ServersPanel, 70)
-    SStatus.Position = UDim2.new(0, 6, 0, 70)
-    SStatus.Size = UDim2.new(1, -82, 0, 16)
-    ScanServers = function()
-        for _, c in next, SList:GetChildren() do
-            if not c:IsA('UIListLayout') then c:Destroy() end
-        end
-        SStatus.Text = 'Loading...'
+    start = function(append)
+        if state.Requesting or self.Unloaded then return end
+        state.Token = state.Token + 1
+        local token, cursor = state.Token, append and state.Cursor or nil
+        state.Requesting, state.Error = true, nil
+        scan.Text, status.Text, more.Visible = 'Cancel', 'Scanning public servers...', false
         task.spawn(function()
-            local Url = 'https://games.roblox.com/v1/games/' .. tostring(game.PlaceId) .. '/servers/Public?sortOrder=Desc&limit=100'
-            local Ok, Result = pcall(function()
-                return game:HttpGet(Url)
-            end)
-            local Data = nil
-            if Ok and Result then
-                pcall(function()
-                    Data = HttpServ:JSONDecode(Result)
-                end)
+            local rows, seen, cursors = append and table.clone(state.Rows) or {}, append and table.clone(state.Seen) or {}, {}
+            if cursor then cursors[cursor] = true end
+            for page = 1, 5 do
+                if token ~= state.Token or self.Unloaded then return end
+                local url = 'https://games.roblox.com/v1/games/' .. game.PlaceId .. '/servers/Public?sortOrder=Desc&limit=100'
+                if cursor then url = url .. '&cursor=' .. http:UrlEncode(cursor) end
+                local data, problem
+                for attempt = 1, 3 do
+                    if token ~= state.Token or self.Unloaded then return end
+                    local ok, result = pcall(function()
+                        local response = game:HttpGet(url)
+                        local decoded = http:JSONDecode(response)
+                        assert(type(decoded) == 'table' and type(decoded.data) == 'table', 'Invalid server response')
+                        return decoded
+                    end)
+                    if ok then data = result; break end
+                    problem = tostring(result)
+                    if attempt < 3 then task.wait(attempt * 0.5) end
+                end
+                if token ~= state.Token or self.Unloaded then return end
+                if not data then
+                    state.Requesting, state.Error = false, problem
+                    scan.Text = 'Retry'
+                    status.Text = 'Scan failed; select Retry' .. (#state.Rows > 0 and ' | Previous results kept' or '')
+                    more.Visible = state.Cursor ~= nil
+                    return
+                end
+                for _, server in ipairs(data.data) do
+                    if type(server) == 'table' and type(server.id) == 'string' and server.id ~= '' and type(server.playing) == 'number' and type(server.maxPlayers) == 'number' and server.playing >= 0 and server.maxPlayers > 0 and not seen[server.id] then
+                        seen[server.id] = true
+                        rows[#rows + 1] = {id = server.id, playing = server.playing, maxPlayers = server.maxPlayers, ping = type(server.ping) == 'number' and server.ping >= 0 and server.ping or nil, fps = type(server.fps) == 'number' and server.fps >= 0 and server.fps or nil}
+                    end
+                end
+                cursor = type(data.nextPageCursor) == 'string' and data.nextPageCursor ~= '' and data.nextPageCursor or nil
+                if cursor and cursors[cursor] then cursor = nil end
+                if cursor then cursors[cursor] = true end
+                state.Rows, state.Seen, state.Cursor, state.Loaded = rows, seen, cursor, true
+                render()
+                status.Text = 'Scanning... ' .. #rows .. ' servers'
+                if not cursor then break end
             end
-            if not Data or not Data.data then
-                SStatus.Text = 'Failed to load'
-                return
-            end
-            LastServers = Data.data
-            RenderServers()
+            if token ~= state.Token or self.Unloaded then return end
+            state.Requesting = false
+            scan.Text, status.Text = 'Scan', #state.Rows .. ' servers' .. (state.Cursor and ' | More available' or ' | Scan complete')
+            render()
         end)
     end
-    Window.RefreshCustom['Servers'] = function()
-        SCount.Text = 'Players: ' .. #Players:GetPlayers() .. '/' .. tostring(Players.MaxPlayers)
-        SSortModeLabel.Text = 'Sort: ' .. (Library.ServerSortMode or 'Players')
-        SSortDirLabel.Text = Library.ServerSortDesc and 'Desc' or 'Asc'
-        ScanServers()
+    Window.ScanServers, Window.RenderServers = start, render
+    Window.RefreshCustom.Servers = function()
+        serverCount.Text = 'Current server: ' .. #Players:GetPlayers() .. '/' .. tostring(Players.MaxPlayers or '?') .. ' players'
+        render()
+        if not state.Loaded and not state.Requesting then start(false) end
     end
-    local ExecPanel = Library:Create('Frame', {
-        BackgroundTransparency = 1;
-        Size = UDim2.new(1, 0, 1, 0);
-        Visible = false;
-        ZIndex = 3;
-        Parent = TabContainer;
-    })
-    Window.CustomPanels['Executor'] = ExecPanel
-    local InfoGame = game.Name
-    pcall(function()
-        InfoGame = game:GetService('MarketplaceService'):GetProductInfo(game.PlaceId).Name
+    local executor = panel('Executor')
+    local info, resizeInfo = list(executor, 'ExecutorInfo', 0, 0, 5)
+    local gameName = game.Name
+    pcall(function() gameName = game:GetService('MarketplaceService'):GetProductInfo(game.PlaceId).Name end)
+    local function infoRow(name, value)
+        local label = text(info, name, value, UDim2.fromOffset(0, 0), UDim2.new(1, -6, 0, 26))
+        label.TextWrapped = true
+        return label
+    end
+    infoRow('Game', 'Game: ' .. gameName)
+    infoRow('PlaceId', 'Place ID: ' .. game.PlaceId)
+    local job = infoRow('JobId', 'Job ID: ' .. tostring(game.JobId)); job.Size = UDim2.new(1, -6, 0, 42)
+    local playerCount = infoRow('PlayerCount', 'Players: ...')
+    local executorName = 'Unknown'
+    pcall(function() if identifyexecutor then executorName = tostring(identifyexecutor()) end end)
+    infoRow('ExecutorName', 'Executor: ' .. executorName)
+    local fps, ping = infoRow('FPS', 'FPS: ...'), infoRow('Ping', 'Ping: ...')
+    button(info, 'CopyPlaceId', 'Copy Place ID', UDim2.fromOffset(0, 0), UDim2.new(1, -6, 0, 28), function() pcall(setclipboard, tostring(game.PlaceId)); self:Notify('Copied PlaceId', 2) end)
+    button(info, 'CopyJobId', 'Copy Job ID', UDim2.fromOffset(0, 0), UDim2.new(1, -6, 0, 28), function() pcall(setclipboard, tostring(game.JobId)); self:Notify('Copied JobId', 2) end)
+    local join = input(info, 'JoinJobId', 'Paste Job ID...', UDim2.fromOffset(0, 0), UDim2.new(1, -6, 0, 30))
+    button(info, 'JoinJobIdButton', 'Join Job ID', UDim2.fromOffset(0, 0), UDim2.new(1, -6, 0, 28), function()
+        local id = join.Text:match('^%s*(.-)%s*$')
+        if id == '' then self:Notify('Paste a JobId first', 2) else doTeleport(id) end
     end)
-    InfoRow('Game: ' .. InfoGame, ExecPanel, 4)
-    InfoRow('PlaceId: ' .. tostring(game.PlaceId), ExecPanel, 22)
-    local EJob = InfoRow('JobId: ...', ExecPanel, 40)
-    local ECount = InfoRow('Players: ...', ExecPanel, 58)
-    local ExecName = 'Unknown'
-    local GetExec = rawget(getgenv(), 'identifyexecutor')
-    if type(GetExec) == 'function' then
-        pcall(function()
-            ExecName = tostring(GetExec())
+    Window.RefreshCustom.Executor = function() playerCount.Text = 'Players: ' .. #Players:GetPlayers() .. '/' .. tostring(Players.MaxPlayers or '?'); resizeInfo() end
+    local statsConnection, elapsed, frames = nil, 0, 0
+    executor:GetPropertyChangedSignal('Visible'):Connect(function()
+        if statsConnection then statsConnection:Disconnect(); statsConnection = nil end
+        elapsed, frames = 0, 0
+        if not executor.Visible or self.Unloaded then return end
+        statsConnection = RunService.RenderStepped:Connect(function(delta)
+            elapsed, frames = elapsed + delta, frames + 1
+            if elapsed < 0.5 then return end
+            fps.Text = 'FPS: ' .. math.floor(frames / elapsed)
+            local value
+            pcall(function() value = game:GetService('Stats').Network.ServerStatsItem['Data Ping']:GetValue() end)
+            ping.Text = value and 'Ping: ' .. math.floor(value) .. ' ms' or 'Ping: unavailable'
+            elapsed, frames = 0, 0
         end)
+    end)
+    executor.Destroying:Connect(function() if statsConnection then statsConnection:Disconnect(); statsConnection = nil end end)
+    function Window.HideCustomPanels()
+        for _, object in pairs(Window.CustomPanels) do object.Visible = false end
+        Window.CustomPanel, Library.OpenToolbarPanel = nil, nil
     end
-    InfoRow('Executor: ' .. ExecName, ExecPanel, 76)
-    local EFps = InfoRow('FPS: ...', ExecPanel, 94)
-    local EPing = InfoRow('Ping: ...', ExecPanel, 112)
-    SmallButton('Copy PlaceId', ExecPanel, UDim2.new(0, 4, 0, 132), UDim2.new(1, -8, 0, 20), function()
-        pcall(setclipboard, tostring(game.PlaceId))
-        Library:Notify('Copied PlaceId', 2)
-    end)
-    SmallButton('Copy JobId', ExecPanel, UDim2.new(0, 4, 0, 156), UDim2.new(1, -8, 0, 20), function()
-        pcall(setclipboard, tostring(game.JobId))
-        Library:Notify('Copied JobId', 2)
-    end)
-    local EJoinOuter = Library:Create('Frame', {
-        BackgroundColor3 = Color3.new(0, 0, 0);
-        BorderColor3 = Color3.new(0, 0, 0);
-        Position = UDim2.new(0, 4, 0, 180);
-        Size = UDim2.new(1, -8, 0, 20);
-        ZIndex = 4;
-        Parent = ExecPanel;
-    })
-    local EJoinInner = Library:Create('Frame', {
-        BackgroundColor3 = Library.MainColor;
-        BorderColor3 = Library.OutlineColor;
-        BorderMode = Enum.BorderMode.Inset;
-        Size = UDim2.new(1, 0, 1, 0);
-        ZIndex = 5;
-        Parent = EJoinOuter;
-    })
-    Library:AddToRegistry(EJoinInner, {
-        BackgroundColor3 = 'MainColor';
-        BorderColor3 = 'OutlineColor';
-    })
-    Library:OnHighlight(EJoinOuter, EJoinOuter,
-        { BorderColor3 = 'AccentColor' },
-        { BorderColor3 = 'Black' }
-    )
-    local EJoinBox = Library:Create('TextBox', {
-        BackgroundTransparency = 1;
-        ClearTextOnFocus = false;
-        Position = UDim2.new(0, 5, 0, 0);
-        Size = UDim2.new(1, -10, 1, 0);
-        Font = Library.Font;
-        PlaceholderColor3 = Color3.fromRGB(190, 190, 190);
-        PlaceholderText = 'Paste JobId...';
-        Text = '';
-        TextColor3 = Library.FontColor;
-        TextSize = 13;
-        TextXAlignment = Enum.TextXAlignment.Left;
-        ZIndex = 6;
-        Parent = EJoinInner;
-    })
-    Library:ApplyTextStroke(EJoinBox)
-    Library:AddToRegistry(EJoinBox, {
-        TextColor3 = 'FontColor';
-    })
-    SmallButton('Join JobId', ExecPanel, UDim2.new(0, 4, 0, 204), UDim2.new(1, -8, 0, 20), function()
-        if EJoinBox.Text ~= '' then
-            pcall(function()
-                TeleportService:TeleportToPlaceInstance(game.PlaceId, EJoinBox.Text, LocalPlayer)
-            end)
-        else
-            Library:Notify('Paste a JobId first', 2)
-        end
-    end)
-    Window.RefreshCustom['Executor'] = function()
-        local Short = tostring(game.JobId)
-        if #Short > 24 then Short = Short:sub(1, 21) .. '...' end
-        EJob.Text = 'JobId: ' .. Short
-        ECount.Text = 'Players: ' .. #Players:GetPlayers() .. '/' .. tostring(Players.MaxPlayers)
-    end
-    task.spawn(function()
-        while ScreenGui.Parent do
-            if not ExecPanel.Visible then task.wait(0.5); continue end
-            local Start = os.clock()
-            local Frames = 0
-            while os.clock() - Start < 0.5 do
-                RunService.RenderStepped:Wait()
-                Frames = Frames + 1
-            end
-            if ExecPanel.Visible then
-                EFps.Text = 'FPS: ' .. math.floor(Frames / (os.clock() - Start))
-                local Ping = 'N/A'
-                pcall(function()
-                    Ping = tostring(math.floor(game:GetService('Stats').Network.ServerStatsItem['Data Ping']:GetValue()))
-                end)
-                EPing.Text = 'Ping: ' .. Ping .. ' ms'
-            end
-        end
-    end)
+    self.ToolbarPanels = Window.CustomPanels
+    function self:RenderServerList() render() end
+    function self:UpdateSortButtons() render() end
+    function self.RefreshToolbarPanel(name) local callback = Window.RefreshCustom[name]; if callback then callback() end end
 end
+
 function Library:GetDropdownLayout(Position, ControlSize, RequestedHeight, Viewport)
     local Width = math.min(math.max(0, ControlSize.X), math.max(0, Viewport.X - 16));
     local Height = math.min(math.max(1, RequestedHeight), math.max(1, Viewport.Y - 16));
@@ -8152,10 +6489,11 @@ function Library:FormatWorkspaceControl(control, owner, text, anchor)
     end
     local separator = self:Create('Frame', {Parent = row, Position = UDim2.new(0, 0, 1, -1), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = self.OutlineColor, BackgroundTransparency = 0.55, BorderSizePixel = 0, ZIndex = 4})
     self:AddToRegistry(separator, {BackgroundColor3 = 'OutlineColor'})
+    separator.Visible = not Library.ClassicEnabled
     self.WorkspaceRows = self.WorkspaceRows or setmetatable({}, {__mode = 'k'})
     local function reflow()
         local scale = math.max(Library.UIScale or 1, 0.01)
-        local compact = row.AbsoluteSize.X / scale < 360
+        local compact = row.AbsoluteSize.X / scale < (Library.ClassicEnabled and 270 or 360)
         row.Size = UDim2.new(1, 0, 0, compact and (searchList and 96 or control.Type == 'Slider' and 76 or 66) or (searchList and 78 or control.Type == 'Slider' and 54 or 44))
         caption.Size = compact and UDim2.new(1, 0, 0, 22) or UDim2.new(0.43, -12, 1, -1)
         field.Position = compact and UDim2.fromOffset(0, 26) or UDim2.new(0.43, 0, 0, 6)
@@ -8163,6 +6501,13 @@ function Library:FormatWorkspaceControl(control, owner, text, anchor)
         if owner.Resize then owner:Resize() end
     end
     self.WorkspaceRows[row] = reflow
+    local lastWidth
+    row:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
+        local width = row.AbsoluteSize.X
+        if lastWidth == width then return end
+        lastWidth = width
+        reflow()
+    end)
     reflow()
     if owner.Resize then owner:Resize() end
     return row
@@ -8173,11 +6518,11 @@ do
     function BaseGroupbox.__index:AddButton(...)
         local result = originalButton(self, ...)
         if Library.WorkspaceEnabled then
-            result.Outer.Size = UDim2.new(result.Outer.Size.X.Scale, result.Outer.Size.X.Offset, 0, 32)
+            result.Outer.Size = UDim2.new(result.Outer.Size.X.Scale, result.Outer.Size.X.Offset, 0, 28)
             local add = result.AddButton
             result.AddButton = function(item, ...)
                 local second = add(item, ...)
-                item.Outer.Size = UDim2.new(0.5, -4, 0, 32)
+                item.Outer.Size = UDim2.new(0.5, -4, 0, 28)
                 second.Outer.Size = UDim2.new(1, 0, 1, 0)
                 self:Resize()
                 return second
@@ -8205,7 +6550,7 @@ end
 function Library:CreateWindow(...)
     local args = {...}
     local config = type(args[1]) == 'table' and table.clone(args[1]) or {Title = args[1], AutoShow = args[2]}
-    local window = {Tabs = {}, TabSequence = 0, Title = tostring(config.Title or 'Phowg'), Workspace = true}
+    local window = {Tabs = {}, TabSequence = 0, Title = tostring(config.Title or 'Phowg'), Workspace = true, Classic = true}
     Library.WorkspaceWindow = window
     local function frame(class, properties, colors)
         local object = Library:Create(class, properties)
@@ -8222,67 +6567,160 @@ function Library:CreateWindow(...)
         return object
     end
     local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
-    local requested = typeof(config.Size) == 'UDim2' and config.Size or UDim2.fromOffset(940, 680)
-    local outer = frame('CanvasGroup', {Name = 'WorkspaceWindow', Parent = ScreenGui, BackgroundColor3 = Library.BackgroundColor, BorderSizePixel = 0, Size = UDim2.fromOffset(math.min(requested.X.Offset, viewport.X - 24), math.min(requested.Y.Offset, viewport.Y - 24)), Position = typeof(config.Position) == 'UDim2' and config.Position or UDim2.fromOffset(24, 24), Visible = false, GroupTransparency = 0, ZIndex = 1}, {BackgroundColor3 = 'BackgroundColor'})
-    Library:StyleControl(outer, outer, 10)
+    local requested = typeof(config.Size) == 'UDim2' and config.Size or UDim2.fromOffset(1100, 740)
+    local outer = frame('CanvasGroup', {Name = 'ClassicWindow', Parent = ScreenGui, BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, Size = UDim2.fromOffset(math.min(requested.X.Offset, viewport.X - 24), math.min(requested.Y.Offset, viewport.Y - 24)), Position = typeof(config.Position) == 'UDim2' and config.Position or UDim2.fromOffset(24, 24), Visible = false, GroupTransparency = 0, ZIndex = 1}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
+    Library:StyleControl(outer, outer, 1)
     window.Holder, window.ScaleObject = outer, Library:ApplyScaleTo(outer)
     if config.Center then outer.Position = UDim2.fromOffset((viewport.X - outer.Size.X.Offset) / 2, (viewport.Y - outer.Size.Y.Offset) / 2) end
-    local header = frame('Frame', {Name = 'WorkspaceHeader', Parent = outer, Size = UDim2.new(1, 0, 0, 60), BackgroundColor3 = Library.MainColor, BorderSizePixel = 0, Active = true, ZIndex = 3}, {BackgroundColor3 = 'MainColor'})
-    local title = label(header, window.Title, UDim2.fromOffset(22, 9), UDim2.new(1, -340, 0, 24), 17)
-    local subtitle = label(header, 'WORKSPACE', UDim2.fromOffset(22, 33), UDim2.new(1, -340, 0, 16), 10)
-    subtitle.TextTransparency = 0.35
-    local searchOuter = frame('Frame', {Name = 'WorkspaceSearch', Parent = header, Position = UDim2.new(1, -300, 0, 14), Size = UDim2.fromOffset(244, 32), BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 5}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
-    Library:StyleControl(searchOuter, searchOuter, 7)
-    local search = frame('TextBox', {Parent = searchOuter, BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -20, 1, 0), Text = '', PlaceholderText = 'Search all settings...', ClearTextOnFocus = false, Font = Library.Font, TextSize = 13, TextColor3 = Library.FontColor, PlaceholderColor3 = Library.FontColor, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6}, {TextColor3 = 'FontColor', PlaceholderColor3 = 'FontColor'})
-    local close = button(header, utf8.char(215), UDim2.fromOffset(30, 30), function() Library:Toggle() end)
-    close.Position = UDim2.new(1, -42, 0, 15)
-    local footer = frame('Frame', {Parent = outer, Position = UDim2.new(0, 0, 1, -44), Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = Library.MainColor, BorderSizePixel = 0, ZIndex = 3}, {BackgroundColor3 = 'MainColor'})
-    window.FooterBar, Library.WindowFooterBar = footer, footer
-    local footerRow = frame('Frame', {Parent = footer, Position = UDim2.fromOffset(12, 8), Size = UDim2.new(1, -142, 0, 28), BackgroundTransparency = 1, ZIndex = 4})
-    frame('UIListLayout', {Parent = footerRow, FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder})
-    local status = label(footer, 'Workspace', UDim2.new(1, -118, 0, 0), UDim2.fromOffset(104, 44), 11)
-    status.TextXAlignment, status.TextTransparency = Enum.TextXAlignment.Right, 0.25
-    local body = frame('Frame', {Parent = outer, Position = UDim2.fromOffset(0, 60), Size = UDim2.new(1, 0, 1, -104), BackgroundTransparency = 1, ZIndex = 2})
-    local nav = frame('ScrollingFrame', {Name = 'WorkspaceSidebar', Parent = body, Position = UDim2.fromOffset(10, 14), Size = UDim2.new(0, 154, 1, -28), BackgroundTransparency = 1, BorderSizePixel = 0, CanvasSize = UDim2.fromOffset(0, 0), ScrollBarThickness = 2, ScrollBarImageColor3 = Library.OutlineColor, ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 3}, {ScrollBarImageColor3 = 'OutlineColor'})
-    local navLayout = frame('UIListLayout', {Parent = nav, FillDirection = Enum.FillDirection.Vertical, Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder})
-    local divider = frame('Frame', {Parent = body, Position = UDim2.fromOffset(174, 0), Size = UDim2.new(0, 1, 1, 0), BackgroundColor3 = Library.OutlineColor, BackgroundTransparency = 0.45, BorderSizePixel = 0, ZIndex = 3}, {BackgroundColor3 = 'OutlineColor'})
-    local content = frame('Frame', {Name = 'WorkspaceContent', Parent = body, Position = UDim2.fromOffset(190, 0), Size = UDim2.new(1, -210, 1, 0), BackgroundTransparency = 1, ZIndex = 3})
-    local heading = label(content, '', UDim2.fromOffset(0, 15), UDim2.new(1, 0, 0, 28), 23)
-    local pageHost = frame('Frame', {Parent = content, Position = UDim2.fromOffset(0, 56), Size = UDim2.new(1, 0, 1, -56), BackgroundTransparency = 1, ZIndex = 3})
-    Library:BuildCustomPanels(window, pageHost)
-    window.FooterButtons = {}
-    function window.FooterSetActive(kind)
-        for name, item in pairs(window.FooterButtons) do
-            item.Inner.TextTransparency = name == kind and 0 or 0.25
+    local rainbow = frame('Frame', {Parent = outer, Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, ZIndex = 10})
+    frame('UIGradient', {Parent = rainbow, Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.fromRGB(207, 91, 222)), ColorSequenceKeypoint.new(0.25, Color3.fromRGB(226, 204, 106)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(92, 215, 143)), ColorSequenceKeypoint.new(0.75, Color3.fromRGB(75, 183, 220)), ColorSequenceKeypoint.new(1, Color3.fromRGB(125, 94, 224))})})
+    local header = frame('Frame', {Name = 'ClassicHeader', Parent = outer, Position = UDim2.fromOffset(0, 1), Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = Library.MainColor, BorderSizePixel = 0, Active = true, ZIndex = 3}, {BackgroundColor3 = 'MainColor'})
+    local title = label(header, window.Title, UDim2.fromOffset(12, 0), UDim2.new(1, -330, 1, 0), 14)
+    local searchOuter = frame('Frame', {Name = 'ClassicSearch', Parent = header, Position = UDim2.new(1, -274, 0, 6), Size = UDim2.fromOffset(230, 22), BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 5}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
+    Library:StyleControl(searchOuter, searchOuter, 1)
+    local search = frame('TextBox', {Parent = searchOuter, BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 1, 0), Text = '', PlaceholderText = 'Search settings...', ClearTextOnFocus = false, Font = Library.Font, TextSize = 12, TextColor3 = Library.FontColor, PlaceholderColor3 = Library.FontColor, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6}, {TextColor3 = 'FontColor', PlaceholderColor3 = 'FontColor'})
+    local close = button(header, utf8.char(215), UDim2.fromOffset(22, 22), function() Library:Toggle() end)
+    close.Position = UDim2.new(1, -32, 0, 6)
+    local nav = frame('ScrollingFrame', {Name = 'ClassicNavigation', Parent = outer, Position = UDim2.fromOffset(8, 38), Size = UDim2.new(1, -16, 0, 76), BackgroundTransparency = 1, BorderSizePixel = 0, CanvasSize = UDim2.fromOffset(0, 0), ScrollBarThickness = 2, ScrollBarImageColor3 = Library.OutlineColor, ScrollingDirection = Enum.ScrollingDirection.X, ZIndex = 3}, {ScrollBarImageColor3 = 'OutlineColor'})
+    local navLayout = frame('UIListLayout', {Parent = nav, FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder})
+    local function drawIcon(parent, kind)
+        local icon = frame('Frame', {Name = 'NavigationIcon', Parent = parent, Position = UDim2.new(0.5, -13, 0, 10), Size = UDim2.fromOffset(26, 26), BackgroundTransparency = 1, ZIndex = 6})
+        local function bar(x, y, w, h, rotation)
+            return frame('Frame', {Parent = icon, Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(w, h), Rotation = rotation or 0, BackgroundColor3 = Library.FontColor, BorderSizePixel = 0, ZIndex = 7}, {BackgroundColor3 = 'FontColor'})
+        end
+        local function ring(x, y, w, h)
+            local object = frame('Frame', {Parent = icon, Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(w, h), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 7})
+            frame('UICorner', {Parent = object, CornerRadius = UDim.new(1, 0)})
+            frame('UIStroke', {Parent = object, Thickness = 2, Color = Library.FontColor}, {Color = 'FontColor'})
+            return object
+        end
+        kind = tostring(kind):lower()
+        if kind == 'main' or kind == 'ragebot' then ring(4, 4, 18, 18); bar(12, 0, 2, 8); bar(12, 18, 2, 8); bar(0, 12, 8, 2); bar(18, 12, 8, 2)
+        elseif kind == 'visuals' then ring(1, 6, 24, 14); ring(9, 9, 8, 8)
+        elseif kind == 'character' then ring(15, 0, 5, 5); bar(9, 8, 12, 3, -25); bar(7, 13, 13, 3, -40); bar(14, 17, 11, 3, 55); bar(0, 21, 12, 3, -35)
+        elseif kind == 'world' then ring(1, 1, 24, 24); bar(12, 2, 2, 22); bar(2, 12, 22, 2)
+        elseif kind == 'items' then bar(2, 8, 23, 4, -30); bar(9, 10, 3, 10, 35); bar(2, 12, 8, 3, -30)
+        elseif kind == 'players' then ring(9, 1, 8, 8); bar(5, 13, 16, 10); ring(0, 7, 5, 5); ring(21, 7, 5, 5)
+        elseif kind == 'servers' then for y = 1, 19, 9 do bar(2, y, 22, 5) end
+        elseif kind == 'executor' then bar(3, 7, 9, 2, 35); bar(3, 15, 9, 2, -35); bar(14, 19, 10, 2)
+        elseif kind == 'protection' then bar(5, 2, 16, 14); bar(9, 13, 9, 9, 45)
+        elseif kind == 'ui settings' then bar(4, 1, 18, 24); bar(9, 5, 8, 2); bar(9, 11, 8, 2); bar(9, 17, 8, 2)
+        else ring(4, 4, 18, 18); ring(10, 10, 6, 6); bar(12, 0, 2, 4); bar(12, 22, 2, 4); bar(0, 12, 4, 2); bar(22, 12, 4, 2) end
+        return icon
+    end
+    local function selectNav(object, selected)
+        if selected then
+            local scale = math.max(Library.UIScale or 1, 0.01)
+            local x = (object.AbsolutePosition.X - nav.AbsolutePosition.X) / scale + nav.CanvasPosition.X
+            local width, visibleWidth = object.AbsoluteSize.X / scale, nav.AbsoluteSize.X / scale
+            if x < nav.CanvasPosition.X then nav.CanvasPosition = Vector2.new(math.max(0, x - 4), 0)
+            elseif x + width > nav.CanvasPosition.X + visibleWidth then nav.CanvasPosition = Vector2.new(math.max(0, x + width - visibleWidth + 4), 0) end
+        end
+        local key = selected and 'AccentColor' or 'FontColor'
+        local caption = object:FindFirstChild('NavigationLabel')
+        if caption then caption.TextColor3 = Library[key]; Library.RegistryMap[caption].Properties.TextColor3 = key end
+        local icon = object:FindFirstChild('NavigationIcon')
+        if icon then
+            for _, child in ipairs(icon:GetDescendants()) do
+                local property = child:IsA('UIStroke') and 'Color' or child:IsA('Frame') and child.BackgroundTransparency == 0 and 'BackgroundColor3'
+                if property and Library.RegistryMap[child] then child[property] = Library[key]; Library.RegistryMap[child].Properties[property] = key end
+            end
         end
     end
-    for order, kind in ipairs({'Players', 'Servers', 'Executor', 'Protection'}) do
-        local item = button(footerRow, kind, UDim2.fromOffset(kind == 'Protection' and 86 or 70, 28), function()
-            Library:ClosePopups()
-            Library:HideToolbarPanels()
-            if kind == 'Protection' then
-                local tab = window.ProtectionTab
-                if tab then tab:ShowTab() end
-                return
-            end
-            if window.CustomPanel == kind then
-                window.HideCustomPanels()
-                if window.LastTab then window.LastTab:ShowTab() end
-                return
-            end
-            for _, tab in pairs(window.Tabs) do tab:HideTab() end
-            window.HideCustomPanels()
-            local panel = window.CustomPanels[kind]
-            if panel then panel.Visible = true end
-            window.CustomPanel = kind
-            heading.Text = kind
-            local refresh = window.RefreshCustom[kind]
-            if refresh then refresh() end
-            window.FooterSetActive(kind)
-        end)
-        item.LayoutOrder = order
-        window.FooterButtons[kind] = {Outer = item, Inner = item}
+    local function makeNav(name, callback, order)
+        local object = button(nav, '', UDim2.fromOffset(84, 70), callback)
+        object.BackgroundTransparency, object.LayoutOrder = 1, order
+        drawIcon(object, name)
+        local caption = label(object, tostring(name), UDim2.fromOffset(0, 42), UDim2.new(1, 0, 0, 22), 11)
+        caption.Name, caption.TextXAlignment = 'NavigationLabel', Enum.TextXAlignment.Center
+        local marker = Library:CreateSelectionMarker(object)
+        marker.Position, marker.Size, marker.Visible = UDim2.new(0, 4, 1, -3), UDim2.new(1, -8, 0, 2), false
+        return object, marker
     end
+    local footer = frame('Frame', {Name = 'ClassicFooter', Parent = outer, Position = UDim2.new(0, 0, 1, -32), Size = UDim2.new(1, 0, 0, 32), BackgroundColor3 = Library.MainColor, BorderSizePixel = 0, ZIndex = 3}, {BackgroundColor3 = 'MainColor'})
+    window.FooterBar, Library.WindowFooterBar = footer, footer
+    local status = label(footer, 'Classic | Ready', UDim2.fromOffset(12, 0), UDim2.new(1, -180, 1, 0), 11)
+    local profileStatus = label(footer, '', UDim2.new(1, -180, 0, 0), UDim2.fromOffset(164, 32), 11)
+    profileStatus.TextXAlignment = Enum.TextXAlignment.Right
+    local body = frame('Frame', {Name = 'ClassicBody', Parent = outer, Position = UDim2.fromOffset(10, 126), Size = UDim2.new(1, -20, 1, -168), BackgroundTransparency = 1, ZIndex = 2})
+    local rail = frame('Frame', {Name = 'ClassicWeaponRail', Parent = body, Size = UDim2.new(0, 160, 1, 0), BackgroundTransparency = 1, ZIndex = 3})
+    local railTitle = label(rail, 'WEAPON PROFILES', UDim2.fromOffset(2, 0), UDim2.new(1, -30, 0, 22), 10)
+    local weaponList = frame('ScrollingFrame', {Name = 'WeaponProfiles', Parent = rail, Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, 0, 1, -28), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 2, ScrollBarImageColor3 = Library.OutlineColor, CanvasSize = UDim2.fromOffset(0, 0), ZIndex = 4}, {ScrollBarImageColor3 = 'OutlineColor'})
+    local weaponLayout = frame('UIListLayout', {Parent = weaponList, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder})
+    local divider = frame('Frame', {Parent = body, Position = UDim2.fromOffset(172, 0), Size = UDim2.new(0, 1, 1, 0), BackgroundColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 3}, {BackgroundColor3 = 'OutlineColor'})
+    local content = frame('Frame', {Name = 'ClassicContent', Parent = body, Position = UDim2.fromOffset(184, 4), Size = UDim2.new(1, -184, 1, -4), BackgroundTransparency = 1, ZIndex = 3})
+    local pageHost = frame('Frame', {Parent = content, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 3})
+    Library:BuildCustomPanels(window, pageHost)
+    window.FooterButtons, window.UtilityMarkers = {}, {}
+    function window.FooterSetActive(kind)
+        for name, marker in pairs(window.UtilityMarkers) do marker.Visible = name == kind; selectNav(window.FooterButtons[name].Outer, name == kind) end
+        status.Text = kind and 'Classic | ' .. kind or 'Classic | Ready'
+    end
+    function window:ShowUtility(kind)
+        Library:ClosePopups()
+        if kind == 'Settings' then if self.UITab then self.UITab:ShowTab() end; return end
+        if kind == 'Protection' then if self.ProtectionTab then self.ProtectionTab:ShowTab() end; return end
+        if self.CustomPanel == kind then self.HideCustomPanels(); if self.LastTab then self.LastTab:ShowTab() end; return end
+        local panel = self.CustomPanels[kind]
+        if not panel then return end
+        for _, tab in pairs(self.Tabs) do tab:HideTab() end
+        self.HideCustomPanels()
+        panel.Visible, self.CustomPanel, Library.OpenToolbarPanel = true, kind, kind
+        self.FooterSetActive(kind)
+        local refresh = self.RefreshCustom[kind]
+        if refresh then refresh() end
+    end
+    for i, kind in ipairs({'Players', 'Servers', 'Executor'}) do
+        local object, marker = makeNav(kind, function() window:ShowUtility(kind) end, 100 + i)
+        window.FooterButtons[kind], window.UtilityMarkers[kind] = {Outer = object, Inner = object}, marker
+    end
+    function Library:ShowToolbarPanel(kind)
+        if not self.MainVisible then self:Toggle() end
+        window:ShowUtility(kind)
+    end
+    window.WeaponRows = {}
+    function window:UpdateSelectedWeapon(value)
+        self.SelectedWeapon = value
+        profileStatus.Text = tostring(value or ''):gsub('[%[%]]', '')
+        for weapon, row in pairs(self.WeaponRows) do
+            local selected = weapon == value
+            row.Marker.Visible = selected
+            Library:AnimateControl(row.Button, {BackgroundTransparency = selected and 0 or 0.6})
+            if self.WeaponDescription then row.Description.Text = tostring(self.WeaponDescription(weapon) or 'Default') end
+        end
+    end
+    function window:RefreshWeaponIcons()
+        for weapon, row in pairs(self.WeaponRows) do
+            local asset = self.WeaponIconProvider and self.WeaponIconProvider(weapon)
+            row.Image.Image, row.Image.Visible, row.Fallback.Visible = asset or '', asset ~= nil, asset == nil
+        end
+    end
+    function window:SetWeaponProfiles(values, iconProvider, onSelect, selected, description)
+        for _, child in ipairs(weaponList:GetChildren()) do if child:IsA('GuiObject') then child:Destroy() end end
+        self.WeaponRows, self.WeaponIconProvider, self.WeaponDescription = {}, iconProvider, description
+        for i, weapon in ipairs(values) do
+            if type(weapon) == 'string' and not self.WeaponRows[weapon] then
+                local row = button(weaponList, '', UDim2.new(1, -4, 0, 46), function() if self.SelectedWeapon ~= weapon then onSelect(weapon) end end)
+                row.Name, row.LayoutOrder = 'Weapon_' .. weapon, i
+                Library:AddToolTip(weapon:gsub('[%[%]]', ''), row)
+                local image = frame('ImageLabel', {Parent = row, BackgroundTransparency = 1, Position = UDim2.fromOffset(7, 8), Size = UDim2.fromOffset(40, 25), ScaleType = Enum.ScaleType.Fit, ImageColor3 = Library.FontColor, ZIndex = 7}, {ImageColor3 = 'FontColor'})
+                local fallback = frame('Frame', {Parent = row, Position = UDim2.fromOffset(7, 8), Size = UDim2.fromOffset(40, 25), BackgroundTransparency = 1, ZIndex = 7})
+                local f = drawIcon(fallback, 'items'); f.Position = UDim2.fromOffset(6, 0)
+                local caption = label(row, weapon:gsub('[%[%]]', ''), UDim2.fromOffset(53, 5), UDim2.new(1, -58, 0, 20), 11)
+                local descriptionLabel = label(row, '', UDim2.fromOffset(53, 26), UDim2.new(1, -58, 0, 14), 10)
+                descriptionLabel.TextTransparency = 0.3
+                local marker = Library:CreateSelectionMarker(row)
+                self.WeaponRows[weapon] = {Button = row, Image = image, Fallback = fallback, Caption = caption, Description = descriptionLabel, Marker = marker}
+            end
+        end
+        weaponList.CanvasSize = UDim2.fromOffset(0, weaponLayout.AbsoluteContentSize.Y / math.max(Library.UIScale or 1, 0.01) + 4)
+        self:UpdateSelectedWeapon(selected)
+        self:RefreshWeaponIcons()
+    end
+    local iconRefresh = button(rail, utf8.char(8635), UDim2.fromOffset(22, 20), function() window:RefreshWeaponIcons() end)
+    iconRefresh.Position = UDim2.new(1, -24, 0, 0)
+    Library:AddToolTip('Refresh weapon icons', iconRefresh)
+
     local results = frame('ScrollingFrame', {Name = 'WorkspaceSearchResults', Parent = ScreenGui, Visible = false, BackgroundColor3 = Library.MainColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, Size = UDim2.fromOffset(380, 100), CanvasSize = UDim2.fromOffset(0, 0), ScrollBarThickness = 3, ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 300, Active = true}, {BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor'})
     Library:StyleControl(results, results, 8)
     Library:ApplyScaleTo(results)
@@ -8339,135 +6777,146 @@ function Library:CreateWindow(...)
     end
     local function updateCanvas(scroll, layout)
         local scale = math.max(Library.UIScale or 1, 0.01)
-        scroll.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y / scale + 12)
+        scroll.CanvasSize = UDim2.fromOffset(layout.AbsoluteContentSize.X / scale + 4, 0)
     end
     navLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function() updateCanvas(nav, navLayout) end)
     function window:AddTab(name)
-        local tab = {Name = name, Groupboxes = {}, Tabboxes = {}, Sections = {}, SectionSequence = 0}
-        self.TabSequence = self.TabSequence + 1
-        tab.Sequence = self.TabSequence
-        local navButton = button(nav, tostring(name), UDim2.new(1, -4, 0, 38), function() tab:ShowTab() end)
-        navButton.TextXAlignment, navButton.LayoutOrder = Enum.TextXAlignment.Left, tab.Sequence
-        frame('UIPadding', {Parent = navButton, PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 8)})
-        local marker = Library:CreateSelectionMarker(navButton)
-        tab.TabButton, tab.TextLabel, tab.Blocker = navButton, navButton, marker
-        local page = frame('CanvasGroup', {Name = 'WorkspacePage', Parent = pageHost, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false, GroupTransparency = 0, ZIndex = 3})
-        local sections = frame('ScrollingFrame', {Parent = page, Size = UDim2.new(1, 0, 0, 38), BackgroundTransparency = 1, BorderSizePixel = 0, CanvasSize = UDim2.fromOffset(0, 0), ScrollBarThickness = 2, ScrollBarImageColor3 = Library.OutlineColor, ScrollingDirection = Enum.ScrollingDirection.X, ZIndex = 5}, {ScrollBarImageColor3 = 'OutlineColor'})
-        local sectionsLayout = frame('UIListLayout', {Parent = sections, FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder})
-        sectionsLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-            sections.CanvasSize = UDim2.fromOffset(sectionsLayout.AbsoluteContentSize.X / math.max(Library.UIScale or 1, 0.01), 0)
-        end)
-        local scroll = frame('ScrollingFrame', {Name = 'WorkspaceSettings', Parent = page, Position = UDim2.fromOffset(0, 50), Size = UDim2.new(1, 0, 1, -50), BackgroundTransparency = 1, BorderSizePixel = 0, CanvasSize = UDim2.fromOffset(0, 0), ScrollBarThickness = 3, ScrollBarImageColor3 = Library.OutlineColor, ScrollingDirection = Enum.ScrollingDirection.Y, Active = true, ZIndex = 4}, {ScrollBarImageColor3 = 'OutlineColor'})
-        local scrollLayout = frame('UIListLayout', {Parent = scroll, SortOrder = Enum.SortOrder.LayoutOrder})
-        scrollLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function() updateCanvas(scroll, scrollLayout) end)
-        scroll:GetPropertyChangedSignal('CanvasPosition'):Connect(function() if Library.PrunePopups then Library:PrunePopups() end end)
-        tab.TabFrame, tab.LeftSide, tab.RightSide, tab.SectionBar = page, scroll, scroll, sections
-        function tab:ShowSection(section)
-            if not section then return end
-            Library:ClosePopups()
-            if self.ActiveSection then self.ActiveSection.CanvasPosition = scroll.CanvasPosition end
-            local changed = self.ActiveSection ~= section
-            for _, item in ipairs(self.Sections) do
-                item.Holder.Visible = item == section
-                Library:AnimateControl(item.Button, {TextTransparency = item == section and 0 or 0.25, BackgroundTransparency = item == section and 0 or 1})
-                item.Marker.Visible = item == section
+        local tab = {Name = name, Groupboxes = {}, Tabboxes = {}, Sections = {}, Boxes = {}, Sequence = self.TabSequence + 1}
+        self.TabSequence = tab.Sequence
+        local page = frame('CanvasGroup', {Name = 'ClassicPage', Parent = pageHost, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false, GroupTransparency = 0, ZIndex = 3})
+        local scroll = frame('ScrollingFrame', {Name = 'ClassicSettings', Parent = page, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, CanvasSize = UDim2.fromOffset(0, 0), ScrollBarThickness = 3, ScrollBarImageColor3 = Library.OutlineColor, ScrollingDirection = Enum.ScrollingDirection.Y, Active = true, ZIndex = 4}, {ScrollBarImageColor3 = 'OutlineColor'})
+        local left = frame('Frame', {Name = 'LeftColumn', Parent = scroll, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(0.5, -8, 0, 0), BackgroundTransparency = 1, ZIndex = 4})
+        local right = frame('Frame', {Name = 'RightColumn', Parent = scroll, Position = UDim2.new(0.5, 4, 0, 8), Size = UDim2.new(0.5, -10, 0, 0), BackgroundTransparency = 1, ZIndex = 4})
+        local layouts = {frame('UIListLayout', {Parent = left, Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder}), frame('UIListLayout', {Parent = right, Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder})}
+        tab.TabFrame, tab.LeftSide, tab.RightSide, tab.Scroll = page, left, right, scroll
+        local navButton, marker = makeNav(name, function() tab:ShowTab() end, tab.Sequence)
+        tab.TabButton, tab.TextLabel, tab.Blocker = navButton, navButton:FindFirstChild('NavigationLabel'), marker
+        function tab:Resize()
+            local function height(column)
+                local total, count = 0, 0
+                for _, child in ipairs(column:GetChildren()) do
+                    if child:IsA('GuiObject') and child.Visible then total = total + child.Size.Y.Offset; count = count + 1 end
+                end
+                return total + math.max(0, count - 1) * 12
             end
-            self.ActiveSection = section
-            section:Resize()
-            scroll.CanvasPosition = section.CanvasPosition or Vector2.zero
-            local x = section.Button.AbsolutePosition.X - sections.AbsolutePosition.X + sections.CanvasPosition.X
-            sections.CanvasPosition = Vector2.new(math.max(0, x - 8), 0)
-            if changed and page.Visible then
-                page.GroupTransparency = Library.ReducedMotion and 0 or 0.35
-                Library:AnimateControl(page, {GroupTransparency = 0, Position = UDim2.fromOffset(0, 0)})
-            end
+            local lh, rh = height(left), height(right)
+            local oneColumn = content.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01) < 680
+            left.Size = UDim2.new(oneColumn and 1 or 0.5, oneColumn and -6 or -8, 0, lh)
+            right.Size = UDim2.new(oneColumn and 1 or 0.5, oneColumn and -6 or -10, 0, rh)
+            right.Position = oneColumn and UDim2.fromOffset(0, lh + (lh > 0 and 12 or 0) + 8) or UDim2.new(0.5, 4, 0, 8)
+            scroll.CanvasSize = UDim2.fromOffset(0, oneColumn and lh + rh + (lh > 0 and rh > 0 and 12 or 0) + 16 or math.max(lh, rh) + 16)
         end
+        for _, layout in ipairs(layouts) do layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function() tab:Resize() end) end
+        scroll:GetPropertyChangedSignal('CanvasPosition'):Connect(function() if Library.PrunePopups then Library:PrunePopups() end end)
         function tab:ShowTab()
             Library:ClosePopups()
-            Library:HideToolbarPanels()
-            for _, other in pairs(window.Tabs) do if other ~= self then other:HideTab() end end
             window.HideCustomPanels()
             local changed = window.ActiveTab ~= self
+            for _, other in pairs(window.Tabs) do if other ~= self then other:HideTab() end end
             window.ActiveTab, window.LastTab = self, self
-            heading.Text = tostring(self.Name)
             page.Visible, marker.Visible = true, true
-            Library.RegistryMap[navButton].Properties.BackgroundColor3 = 'MainColor'
+            selectNav(navButton, true)
             Library:AnimateControl(navButton, {BackgroundTransparency = 0, TextTransparency = 0})
-            window.FooterSetActive(tostring(self.Name):lower() == 'protection' and 'Protection' or nil)
-            if self.ActiveSection then self:ShowSection(self.ActiveSection) end
-            if changed then
-                page.Position = Library.ReducedMotion and UDim2.fromOffset(0, 0) or UDim2.fromOffset(0, 6)
-                page.GroupTransparency = Library.ReducedMotion and 0 or 0.35
-                Library:AnimateControl(page, {Position = UDim2.fromOffset(0, 0), GroupTransparency = 0})
-            end
+            window.FooterSetActive(nil)
+            self:Resize()
+            if changed then page.GroupTransparency = Library.ReducedMotion and 0 or 0.25; Library:AnimateControl(page, {GroupTransparency = 0}) end
         end
         function tab:HideTab()
             if window.ActiveTab == self then window.ActiveTab = nil end
             page.Visible, marker.Visible = false, false
-            Library:AnimateControl(navButton, {BackgroundTransparency = 1, TextTransparency = 0.25})
+            selectNav(navButton, false)
+            Library:AnimateControl(navButton, {BackgroundTransparency = 1})
         end
         function tab:SetLayoutOrder(order) navButton.LayoutOrder = order end
-        local function makeSection(sectionName)
-            tab.SectionSequence = tab.SectionSequence + 1
-            local section = {Name = sectionName, RootTab = tab, ColorPickers = {}, ChromaOn = false}
-            local holder = frame('Frame', {Name = 'WorkspaceSection', Parent = scroll, Size = UDim2.new(1, -12, 0, 0), BackgroundTransparency = 1, Visible = false, ZIndex = 4})
-            local sectionLabel = label(holder, tostring(sectionName), UDim2.fromOffset(0, 0), UDim2.new(1, -68, 0, 32), 17)
-            local chroma = button(holder, 'RGB', UDim2.fromOffset(48, 24), function()
-                Library:SetGroupChroma(section, not section.ChromaOn); Library:AttemptSave()
-            end)
-            chroma.Position, chroma.Visible = UDim2.new(1, -50, 0, 3), false
-            local container = frame('Frame', {Parent = holder, Position = UDim2.fromOffset(0, 38), Size = UDim2.new(1, 0, 0, 0), BackgroundTransparency = 1, ZIndex = 4})
-            local layout = frame('UIListLayout', {Parent = container, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 0)})
-            local width = math.clamp(select(1, Library:GetTextBounds(tostring(sectionName), Library.Font, 13)) + 24, 66, 190)
-            local sectionButton = button(sections, tostring(sectionName), UDim2.fromOffset(width, 32), function() tab:ShowSection(section) end)
-            sectionButton.LayoutOrder = tab.SectionSequence
-            local selected = Library:CreateSelectionMarker(sectionButton)
-            selected.Position, selected.Size = UDim2.new(0, 8, 1, -2), UDim2.new(1, -16, 0, 2)
-            section.Container, section.Holder, section.Button, section.Marker = container, holder, sectionButton, selected
+        local function group(name, parent, box)
+            local section = {Name = name, RootTab = tab, ColorPickers = {}, ChromaOn = false, ParentTabbox = box}
+            local holder = frame('Frame', {Name = 'ClassicGroupbox', Parent = parent, Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
+            Library:StyleControl(holder, holder, 1)
+            local naturalWidth = select(1, Library:GetTextBounds(tostring(name), Library.Font, 13))
+            local sectionLabel = label(holder, tostring(name), UDim2.fromOffset(10, -8), UDim2.fromOffset(naturalWidth + 12, 18), 13)
+            sectionLabel.BackgroundTransparency, sectionLabel.BackgroundColor3 = 0, Library.BackgroundColor
+            Library:AddToRegistry(sectionLabel, {BackgroundColor3 = 'BackgroundColor', TextColor3 = 'FontColor'})
+            local chroma = button(holder, 'RGB', UDim2.fromOffset(36, 18), function() Library:SetGroupChroma(section, not section.ChromaOn); Library:AttemptSave() end)
+            chroma.Position, chroma.Visible = UDim2.new(1, -46, 0, -8), false
+            local container = frame('Frame', {Parent = holder, Position = UDim2.fromOffset(10, 16), Size = UDim2.new(1, -20, 0, 0), BackgroundTransparency = 1, ZIndex = 5})
+            local layout = frame('UIListLayout', {Parent = container, SortOrder = Enum.SortOrder.LayoutOrder})
+            section.Container, section.Holder, section.TextLabel = container, holder, sectionLabel
             section.ChromaBtn, section.ChromaBtnInner, section.ChromaBtnLabel = chroma, chroma, chroma
-            section.TextLabel = sectionLabel
             setmetatable(section, BaseGroupbox)
             function section:Resize()
+                sectionLabel.Size = UDim2.fromOffset(math.max(0, math.min(naturalWidth + 12, holder.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01) - 60)), 18)
                 local height = 0
                 for _, child in ipairs(container:GetChildren()) do if child:IsA('GuiObject') and child.Visible then height = height + child.Size.Y.Offset end end
-                container.Size = UDim2.new(1, 0, 0, height)
-                holder.Size = UDim2.new(1, -12, 0, height + 50)
+                container.Size, holder.Size = UDim2.new(1, -20, 0, height), UDim2.new(1, 0, 0, height + 28)
+                if box then box:Resize() else tab:Resize() end
             end
-            function section:Show() tab:ShowSection(self) end
-            function section:Hide() holder.Visible, selected.Visible = false, false end
+            function section:Show()
+                if box then box:Select(self) else holder.Visible = true; self:Resize() end
+            end
+            function section:Hide() holder.Visible = false; if box then box:Resize() else tab:Resize() end end
             function section:SetChroma(value) Library:SetGroupChroma(self, value) end
             layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function() section:Resize() end)
             tab.Sections[#tab.Sections + 1] = section
             Library.Groupboxes[#Library.Groupboxes + 1] = section
             Library.CurrentGroupbox = section
-            if not tab.ActiveSection then tab:ShowSection(section) end
             return section
         end
         function tab:AddGroupbox(info)
-            local group = makeSection(info.Name)
-            self.Groupboxes[info.Name] = group
+            local item = group(info.Name, info.Side == 2 and right or left)
+            self.Groupboxes[info.Name] = item
             local lower = tostring(self.Name):lower()
-            if (lower == 'ui settings' or lower == 'ui' or lower == 'settings') and not self.WorkspaceDefaults then
-                self.WorkspaceDefaults = true
-                group:AddDropdown('NotificationStyle', {Text = 'Notification style', Values = {'Default', 'Gamesense', 'Simple', 'Gamesensical', 'Progress'}, Default = Library.NotificationStyle or 'Default', Callback = function(value) Library:SetNotificationStyle(value) end})
-                group:AddDropdown('NotificationPosition', {Text = 'Notification position', Values = {'Bottom', 'Top', 'Bottom Left', 'Bottom Right', 'Top Left', 'Top Right'}, Default = Library.NotificationPosition or 'Bottom', Callback = function(value) Library:SetNotificationPosition(value) end})
-                group:AddToggle('KeybindIndicator', {Text = 'Keybind indicator', Default = true, Callback = function(value) Library:SetKeybindIndicator(value) end})
-                group:AddSlider('UIScale', {Text = 'UI scale', Default = 100, Min = 75, Max = 150, Rounding = 0, Suffix = '%', Callback = function(value) Library:SetUIScale(value / 100) end})
-                group:AddToggle('ReducedMotion', {Text = 'Reduced motion', Default = false, Callback = function(value) Library.ReducedMotion = value end})
-                group:AddButton('Copy JobId', function() pcall(setclipboard, tostring(game.JobId)); Library:Notify('Copied JobId', 2) end)
+            if (lower == 'ui settings' or lower == 'ui' or lower == 'settings') and not self.ClassicDefaults then
+                self.ClassicDefaults = true
+                item:AddDropdown('NotificationStyle', {Text = 'Notification style', Values = {'Default', 'Gamesense', 'Simple', 'Gamesensical', 'Progress'}, Default = Library.NotificationStyle or 'Default', Callback = function(value) Library:SetNotificationStyle(value) end})
+                item:AddDropdown('NotificationPosition', {Text = 'Notification position', Values = {'Bottom', 'Top', 'Bottom Left', 'Bottom Right', 'Top Left', 'Top Right'}, Default = Library.NotificationPosition or 'Bottom', Callback = function(value) Library:SetNotificationPosition(value) end})
+                item:AddToggle('KeybindIndicator', {Text = 'Keybind indicator', Default = true, Callback = function(value) Library:SetKeybindIndicator(value) end})
+                item:AddSlider('UIScale', {Text = 'UI scale', Default = 100, Min = 75, Max = 150, Rounding = 0, Suffix = '%', Callback = function(value) Library:SetUIScale(value / 100) end})
+                item:AddToggle('ReducedMotion', {Text = 'Reduced motion', Default = false, Callback = function(value) Library.ReducedMotion = value end})
+                item:AddButton('Copy JobId', function() pcall(setclipboard, tostring(game.JobId)); Library:Notify('Copied JobId', 2) end)
             end
-            return group
+            item:Resize()
+            return item
         end
         function tab:AddLeftGroupbox(name) return self:AddGroupbox({Name = name, Side = 1}) end
         function tab:AddRightGroupbox(name) return self:AddGroupbox({Name = name, Side = 2}) end
         function tab:AddTabbox(info)
-            local box = {Tabs = {}, RootTab = self}
-            function box:AddTab(name)
-                local section = makeSection(name)
-                self.Tabs[name] = section
-                return section
+            local box = {Tabs = {}, RootTab = self, TabSequence = 0}
+            local holder = frame('Frame', {Name = 'ClassicTabbox', Parent = info.Side == 2 and right or left, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), ZIndex = 4})
+            local bar = frame('ScrollingFrame', {Name = 'Subtabs', Parent = holder, Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 2, ScrollingDirection = Enum.ScrollingDirection.X, CanvasSize = UDim2.fromOffset(0, 0), ZIndex = 5})
+            local barLayout = frame('UIListLayout', {Parent = bar, FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder})
+            local host = frame('Frame', {Parent = holder, Position = UDim2.fromOffset(0, 40), Size = UDim2.new(1, 0, 0, 0), BackgroundTransparency = 1, ZIndex = 4})
+            box.Holder, box.Container = holder, host
+            function box:Resize()
+                local height = self.ActiveTab and self.ActiveTab.Holder.Size.Y.Offset or 0
+                host.Size, holder.Size = UDim2.new(1, 0, 0, height), UDim2.new(1, 0, 0, height + 40)
+                tab:Resize()
             end
+            function box:Select(selected)
+                Library:ClosePopups()
+                for _, item in pairs(self.Tabs) do
+                    item.Holder.Visible, item.Marker.Visible = item == selected, item == selected
+                    Library:AnimateControl(item.Button, {BackgroundTransparency = item == selected and 0 or 1})
+                end
+                self.ActiveTab = selected
+                selected:Resize()
+            end
+            function box:AddTab(name)
+                self.TabSequence = self.TabSequence + 1
+                local item = group(name, host, self)
+                item.Holder.Visible = false
+                local width = math.clamp(select(1, Library:GetTextBounds(tostring(name), Library.Font, 12)) + 24, 70, 180)
+                item.Button = button(bar, tostring(name), UDim2.fromOffset(width, 26), function() self:Select(item) end)
+                item.Button.LayoutOrder = self.TabSequence
+                item.Marker = Library:CreateSelectionMarker(item.Button)
+                item.Marker.Position, item.Marker.Size, item.Marker.Visible = UDim2.new(0, 6, 1, -2), UDim2.new(1, -12, 0, 2), false
+                self.Tabs[name] = item
+                if not self.ActiveTab then self:Select(item) end
+                bar.CanvasSize = UDim2.fromOffset(barLayout.AbsoluteContentSize.X / math.max(Library.UIScale or 1, 0.01), 0)
+                return item
+            end
+            barLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function() bar.CanvasSize = UDim2.fromOffset(barLayout.AbsoluteContentSize.X / math.max(Library.UIScale or 1, 0.01), 0) end)
             self.Tabboxes[info.Name or ''] = box
+            self.Boxes[#self.Boxes + 1] = box
             return box
         end
         function tab:AddLeftTabbox(name) return self:AddTabbox({Name = name, Side = 1}) end
@@ -8479,6 +6928,7 @@ function Library:CreateWindow(...)
         if not self.ActiveTab then tab:ShowTab() end
         return tab
     end
+
     local drag, resize, lastWidth, lastScale
     local function fit()
         local screen = ScreenGui.AbsoluteSize
@@ -8490,18 +6940,22 @@ function Library:CreateWindow(...)
         local x = outer.Position.X.Scale * screen.X + outer.Position.X.Offset
         local y = outer.Position.Y.Scale * screen.Y + outer.Position.Y.Offset
         outer.Position = UDim2.fromOffset(math.clamp(x, 8, math.max(8, screen.X - width * scale - 8)), math.clamp(y, 8, math.max(8, screen.Y - height * scale - 8)))
-        local sidebar = width < 660 and 112 or 154
-        nav.Size = UDim2.new(0, sidebar, 1, -28)
-        divider.Position = UDim2.fromOffset(sidebar + 20, 0)
-        content.Position, content.Size = UDim2.fromOffset(sidebar + 36, 0), UDim2.new(1, -sidebar - 56, 1, 0)
-        local searchWidth = math.min(244, math.max(110, width * 0.36))
-        searchOuter.Size, searchOuter.Position = UDim2.fromOffset(searchWidth, 32), UDim2.new(1, -searchWidth - 56, 0, 14)
-        title.Size, subtitle.Size = UDim2.new(1, -searchWidth - 100, 0, 24), UDim2.new(1, -searchWidth - 100, 0, 16)
-        status.Visible = width >= 560
+        local sidebar = width < 960 and 112 or 160
+        rail.Size = UDim2.new(0, sidebar, 1, 0)
+        divider.Position = UDim2.fromOffset(sidebar + 12, 0)
+        content.Position, content.Size = UDim2.fromOffset(sidebar + 24, 4), UDim2.new(1, -sidebar - 24, 1, -4)
+        railTitle.Text = sidebar < 140 and 'WEAPONS' or 'WEAPON PROFILES'
+        local searchWidth = math.min(230, math.max(130, width * 0.32))
+        searchOuter.Size, searchOuter.Position = UDim2.fromOffset(searchWidth, 22), UDim2.new(1, -searchWidth - 44, 0, 6)
+        title.Size = UDim2.new(1, -searchWidth - 70, 1, 0)
         updateCanvas(nav, navLayout)
+        weaponList.CanvasSize = UDim2.fromOffset(0, weaponLayout.AbsoluteContentSize.Y / scale + 4)
+        for _, tab in pairs(window.Tabs) do tab:Resize() end
+        for _, group in ipairs(Library.Groupboxes) do if group.RootTab and group.Resize then group:Resize() end end
         if width ~= lastWidth or scale ~= lastScale then
             lastWidth, lastScale = width, scale
             for row, reflow in pairs(Library.WorkspaceRows or {}) do if row.Parent then reflow() end end
+            for _, tab in pairs(window.Tabs) do tab:Resize() end
         end
     end
     window.RefreshTabLayout = fit
@@ -8511,7 +6965,7 @@ function Library:CreateWindow(...)
         drag = {Input = input, Pointer = input.Position, Position = outer.Position}
         Library:ConsumeInput(input)
     end)
-    local resizeButton = frame('TextButton', {Name = 'WorkspaceResize', Parent = outer, Text = utf8.char(9698), Font = Library.Font, TextSize = 16, TextColor3 = Library.FontColor, TextTransparency = 0.5, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(20, 20), Position = UDim2.new(1, -20, 1, -20), AutoButtonColor = false, ZIndex = 20}, {TextColor3 = 'FontColor'})
+    local resizeButton = frame('TextButton', {Name = 'ClassicResize', Parent = outer, Text = utf8.char(9698), Font = Library.Font, TextSize = 16, TextColor3 = Library.FontColor, TextTransparency = 0.5, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(20, 20), Position = UDim2.new(1, -20, 1, -20), AutoButtonColor = false, ZIndex = 20}, {TextColor3 = 'FontColor'})
     resizeButton.InputBegan:Connect(function(input)
         if not Library:IsClickInput(input) or Library:MouseIsOverOpenedFrame() then return end
         resize = {Input = input, Pointer = input.Position, Size = outer.Size}
@@ -8543,8 +6997,10 @@ function Library:CreateWindow(...)
         drag, resize = nil, nil
         self:ClosePopups()
         self:HideToolbarPanels()
+        window.FooterSetActive(nil)
         self:RefreshCustomCursor()
         if toggled then
+            if not window.ActiveTab and window.LastTab then window.LastTab:ShowTab() end
             fit()
             if not outer.Visible then outer.GroupTransparency = self.ReducedMotion and 0 or 1 end
             outer.Visible = true
