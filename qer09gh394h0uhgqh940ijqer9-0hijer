@@ -52,7 +52,7 @@ local Library = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 10;
+Library.PhowgRevision = 11;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
 Library.ChromaPickers = {};
@@ -211,6 +211,7 @@ function Library:SafeCallback(f, ...)
 end;
 
 Library.SettingsBoxes = setmetatable({}, {__mode = 'k'})
+Library.DependencyHolders = setmetatable({}, {__mode = 'k'})
 Library.SettingsLayers = setmetatable({}, {__mode = 'k'})
 Library.PopupAnchors = setmetatable({}, {__mode = 'k'})
 function Library:GetSettingsBox(frame)
@@ -287,10 +288,25 @@ function Library:JumpToControl(index)
     for i = #chain, 1, -1 do chain[i]:Open() end
     local row = entry.Row
     if typeof(row) ~= 'Instance' or not row.Parent then return false end
+    local ancestor, hidden = row.Parent, nil
+    while ancestor do
+        if self.DependencyHolders[ancestor] and not ancestor.Visible then hidden = self.DependencyHolders[ancestor] end
+        ancestor = ancestor.Parent
+    end
+    if hidden then
+        for _, dependency in ipairs(hidden.Dependencies) do
+            local control, value = dependency[1], dependency[2]
+            if control.Type == 'Toggle' and control.Value ~= value and control.TextLabel then
+                row = control.TextLabel
+                self:Notify('This setting is hidden by "' .. row.Text .. '".', 3)
+                break
+            end
+        end
+    end
     local parent = row.Parent
     while parent do
         if parent:IsA('ScrollingFrame') then
-            parent.CanvasPosition = Vector2.new(parent.CanvasPosition.X, math.max(0, parent.CanvasPosition.Y + row.AbsolutePosition.Y - parent.AbsolutePosition.Y - 20))
+            parent.CanvasPosition = Vector2.new(parent.CanvasPosition.X, math.max(0, parent.CanvasPosition.Y + (row.AbsolutePosition.Y - parent.AbsolutePosition.Y) / math.max(self.UIScale or 1, 0.01) - 20))
             break
         end
         parent = parent.Parent
@@ -2961,7 +2977,7 @@ do
             BackgroundColor3 = Color3.new(0, 0, 0);
             BackgroundTransparency = 1;
             BorderColor3 = Color3.new(0, 0, 0);
-            Size = UDim2.new(1, -4, 0, 28);
+            Size = UDim2.new(1, -4, 0, 24);
             ZIndex = 5;
             Parent = Container;
         });
@@ -3133,7 +3149,7 @@ do
         end
 
         Toggle:Display();
-        Groupbox:AddBlank(Info.BlankSize or 4);
+        Groupbox:AddBlank(Info.BlankSize or 2);
         Groupbox:Resize();
 
         Toggle.TextLabel = ToggleLabel;
@@ -3603,7 +3619,7 @@ do
         end;
 
         Slider:Display();
-        Groupbox:AddBlank(Info.BlankSize or 4);
+        Groupbox:AddBlank(Info.BlankSize or 2);
         Groupbox:Resize();
 
         Options[Idx] = Slider;
@@ -4212,7 +4228,7 @@ do
             Dropdown:Display();
         end
 
-        Groupbox:AddBlank(Info.BlankSize or 4);
+        Groupbox:AddBlank(Info.BlankSize or 2);
         Groupbox:Resize();
 
         Options[Idx] = Dropdown;
@@ -4784,7 +4800,7 @@ do
             Dropdown:Display();
         end
 
-        Groupbox:AddBlank(Info.BlankSize or 4);
+        Groupbox:AddBlank(Info.BlankSize or 2);
         Groupbox:Resize();
 
         Options[Idx] = Dropdown;
@@ -4796,94 +4812,8 @@ do
     function Funcs:AddSettingsBox(toggle, info)
         assert(toggle and toggle.Type == 'Toggle', 'AddSettingsBox: toggle required')
         if toggle.Settings then return toggle.Settings end
-        info = info or {}
-        local box = {ControlGroup = self.ControlGroup or self, RootTab = self.RootTab, ParentSettings = Library:GetSettingsBox(self.Container)}
-        local button = Library:Create('TextButton', {
-            Name = 'Settings'; Text = utf8.char(9881); Font = Library.Font; TextSize = 17;
-            TextColor3 = Library.FontColor; BackgroundTransparency = 1; BorderSizePixel = 0;
-            Size = UDim2.fromOffset(18, 14); LayoutOrder = 1000; ZIndex = 8; AutoButtonColor = false;
-            Parent = toggle.TextLabel;
-        })
-        Library:AddToRegistry(button, {TextColor3 = 'FontColor'})
-        local frame = Library:Create('Frame', {
-            Name = 'ToggleSettings'; BackgroundColor3 = Library.MainColor; BorderColor3 = Library.OutlineColor;
-            Size = UDim2.fromOffset(280, 42); Active = true; Visible = false; ZIndex = 1;
-            SettingsLayer = Library:GetSettingsLayer(button) + 100; Parent = ScreenGui;
-        })
-        box.Frame, box.Button = frame, button
-        Library.SettingsBoxes[frame] = box
-        Library.PopupAnchors[frame] = button
-        Library:AddToRegistry(frame, {BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor'})
-        Library:CreateLabel({Text = info.Text or toggle.TextLabel.Text; TextSize = 14; TextXAlignment = Enum.TextXAlignment.Left;
-            Position = UDim2.fromOffset(10, 0); Size = UDim2.new(1, -42, 0, 28); ZIndex = 4; Parent = frame})
-        local close = Library:Create('TextButton', {Text = '×'; Font = Library.Font; TextSize = 20; TextColor3 = Library.FontColor;
-            BackgroundTransparency = 1; Position = UDim2.new(1, -28, 0, 0); Size = UDim2.fromOffset(28, 28);
-            BorderSizePixel = 0; ZIndex = 8; Parent = frame})
-        Library:AddToRegistry(close, {TextColor3 = 'FontColor'})
-        local scroll = Library:Create('ScrollingFrame', {BackgroundTransparency = 1; BorderSizePixel = 0;
-            Position = UDim2.fromOffset(10, 32); Size = UDim2.new(1, -20, 1, -40);
-            CanvasSize = UDim2.fromOffset(0, 0); ScrollBarThickness = 2; ScrollBarImageColor3 = Library.AccentColor;
-            ScrollingDirection = Enum.ScrollingDirection.Y; Active = true; ZIndex = 4; Parent = frame})
-        Library:AddToRegistry(scroll, {ScrollBarImageColor3 = 'AccentColor'})
-        local container = Library:Create('Frame', {BackgroundTransparency = 1; Size = UDim2.new(1, -4, 0, 0); ZIndex = 4; Parent = scroll})
-        local layout = Library:Create('UIListLayout', {FillDirection = Enum.FillDirection.Vertical; SortOrder = Enum.SortOrder.LayoutOrder; Parent = container})
-        box.Container = container
-        setmetatable(box, BaseGroupbox)
-        function box:Position()
-            local viewport = ScreenGui.AbsoluteSize
-            local scale = Library.UIScale or 1
-            local width = math.min(info.Width or 280, math.max(120, (viewport.X - 16) / scale))
-            local height = math.min(math.max(42, layout.AbsoluteContentSize.Y / scale + 40), math.max(42, (viewport.Y - 16) / scale))
-            frame.Size = UDim2.fromOffset(width, height)
-            local point, size = button.AbsolutePosition - ScreenGui.AbsolutePosition, frame.AbsoluteSize
-            local x = point.X + button.AbsoluteSize.X + 8
-            if x + size.X > viewport.X - 8 then x = point.X - size.X - 8 end
-            frame.Position = UDim2.fromOffset(math.clamp(x, 8, math.max(8, viewport.X - size.X - 8)), math.clamp(point.Y, 8, math.max(8, viewport.Y - size.Y - 8)))
-        end
-        function box:Resize()
-            local scale = Library.UIScale or 1
-            container.Size = UDim2.new(1, -4, 0, layout.AbsoluteContentSize.Y / scale)
-            scroll.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y / scale)
-            if frame.Visible then self:Position() end
-        end
-        function box:Open()
-            if Library.Unloaded or not button.Parent then return end
-            if Library.IsControlVisible and not Library:IsControlVisible(button) then return end
-            Library:ClosePopups(self)
-            self:Resize(); self:Position()
-            frame.Visible = true
-            Library.OpenedFrames[frame] = true
-        end
-        function box:Close()
-            if self.Closing then return end
-            self.Closing = true
-            for popup in pairs(table.clone(Library.OpenedFrames)) do
-                local child = Library:GetSettingsBox(Library.PopupAnchors[popup])
-                if popup ~= frame and Library:IsPopupAncestor(frame, child) then
-                    local closer = Library.PopupClosers and Library.PopupClosers[popup]
-                    if closer then closer() elseif popup.Parent then popup.Visible = false end
-                    Library.OpenedFrames[popup] = nil
-                end
-            end
-            frame.Visible = false
-            Library.OpenedFrames[frame] = nil
-            self.Closing = false
-        end
-        Library.PopupOwners = Library.PopupOwners or {}
-        Library.PopupClosers = Library.PopupClosers or {}
-        Library.PopupOwners[frame], Library.PopupClosers[frame] = button, function() box:Close() end
-        Library:ApplyScaleTo(frame)
-        Library:BindPopupPosition(button, frame, function() box:Position() end)
-        layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function() box:Resize() end)
-        scroll:GetPropertyChangedSignal('CanvasPosition'):Connect(function() if Library.PrunePopups then Library:PrunePopups() end end)
-        button.InputBegan:Connect(function(input)
-            if not Library:IsClickInput(input) or Library:MouseIsOverOpenedFrame(button) then return end
-            Library:ConsumeInput(input)
-            if frame.Visible then box:Close() else box:Open() end
-        end)
-        close.InputBegan:Connect(function(input)
-            if Library:IsClickInput(input) then Library:ConsumeInput(input); box:Close() end
-        end)
+        local box = self:AddDependencyBox()
+        box:SetupDependencies({{toggle, true}})
         toggle.Settings = box
         return box
     end
@@ -4927,6 +4857,17 @@ do
 
         Holder:GetPropertyChangedSignal('Visible'):Connect(function()
             Depbox:Resize();
+            if not Holder.Visible then
+                for popup in pairs(table.clone(Library.OpenedFrames)) do
+                    local anchor = Library.PopupAnchors[popup]
+                    if anchor and anchor:IsDescendantOf(Holder) then
+                        local close = Library.PopupClosers and Library.PopupClosers[popup]
+                        if close then close() elseif popup.Parent then popup.Visible = false end
+                        Library.OpenedFrames[popup] = nil
+                    end
+                end
+            end
+            if Library.PrunePopups then Library:PrunePopups() end;
         end);
 
         function Depbox:Update()
@@ -4956,7 +4897,8 @@ do
             Depbox:Update();
         end;
 
-        Depbox.Container = Frame;
+        Depbox.Container, Depbox.Holder = Frame, Holder;
+        Library.DependencyHolders[Holder] = Depbox;
         Depbox.ControlGroup, Depbox.RootTab = self.ControlGroup or self, self.RootTab;
 
         setmetatable(Depbox, BaseGroupbox);
@@ -6463,7 +6405,7 @@ function Library:FormatClassicControl(control, owner, text, anchor)
     end
     if not field or field.Parent ~= container then return end
     local searchList = control.Type == 'Dropdown' and control.Filtered ~= nil
-    local row = self:Create('Frame', {Name = 'ClassicControlRow', Parent = container, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34), ZIndex = 5})
+    local row = self:Create('Frame', {Name = 'ClassicControlRow', Parent = container, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), ZIndex = 5})
     if not caption then caption = self:CreateLabel({Text = text or '', TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6}) end
     caption.Parent, caption.TextTruncate, caption.TextYAlignment = row, Enum.TextTruncate.AtEnd, Enum.TextYAlignment.Center
     field.Parent, field.AnchorPoint = row, Vector2.zero
@@ -6500,14 +6442,14 @@ function Library:FormatClassicControl(control, owner, text, anchor)
     self.WorkspaceRows = self.WorkspaceRows or setmetatable({}, {__mode = 'k'})
     local function reflow()
         local scale = math.max(Library.UIScale or 1, 0.01)
-        local compact = row.AbsoluteSize.X / scale < 300
-        local height = searchList and (control.ClassicListHeight or 62) or control.Type == 'Slider' and 32 or 34
+        local compact = row.AbsoluteSize.X / scale < 270
+        local height = searchList and (control.ClassicListHeight or 62) or control.Type == 'Slider' and 26 or 28
         row.Size = UDim2.new(1, 0, 0, searchList and height + 24 or compact and height + 20 or height)
         caption.Position = UDim2.fromOffset(0, 0)
         caption.Size = (searchList or compact) and UDim2.new(1, 0, 0, 20) or UDim2.new(0.43, -10, 1, 0)
-        field.Position = (searchList or compact) and UDim2.fromOffset(0, 22) or UDim2.new(0.43, 0, 0, 4)
+        field.Position = (searchList or compact) and UDim2.fromOffset(0, 22) or UDim2.new(0.43, 0, 0, 2)
         if searchList then field.Position = UDim2.fromOffset(0, 24) end
-        field.Size = UDim2.new((searchList or compact) and 1 or 0.57, -4, 0, searchList and height or control.Type == 'Slider' and 24 or 26)
+        field.Size = UDim2.new((searchList or compact) and 1 or 0.57, -4, 0, searchList and height or control.Type == 'Slider' and 22 or 24)
         if searchList then field.Size = UDim2.new(1, -4, 0, height) end
         if owner.Resize then owner:Resize() end
     end
@@ -6631,11 +6573,11 @@ do
     function BaseGroupbox.__index:AddLabel(text, wrap)
         local result = originalLabel(self, text, wrap)
         if Library.WorkspaceEnabled then
-            result.TextLabel.Size = UDim2.new(1, -4, 0, math.max(24, result.TextLabel.Size.Y.Offset))
+            result.TextLabel.Size = UDim2.new(1, -4, 0, math.max(20, result.TextLabel.Size.Y.Offset))
             local set = result.SetText
             result.SetText = function(item, value)
                 set(item, value)
-                item.TextLabel.Size = UDim2.new(1, -4, 0, math.max(24, item.TextLabel.Size.Y.Offset))
+                item.TextLabel.Size = UDim2.new(1, -4, 0, math.max(20, item.TextLabel.Size.Y.Offset))
                 self:Resize()
             end
             self:Resize()
@@ -6727,7 +6669,7 @@ function Library:CreateWindow(...)
         return object
     end
     local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
-    local requested = typeof(config.Size) == 'UDim2' and config.Size or UDim2.fromOffset(1100, 740)
+    local requested = typeof(config.Size) == 'UDim2' and config.Size or UDim2.fromOffset(1000, 680)
     local outer = frame('CanvasGroup', {Name = 'ClassicWindow', Parent = ScreenGui, BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, Size = UDim2.fromOffset(math.min(requested.X.Offset, viewport.X - 24), math.min(requested.Y.Offset, viewport.Y - 24)), Position = typeof(config.Position) == 'UDim2' and config.Position or UDim2.fromOffset(24, 24), Visible = false, GroupTransparency = 0, ZIndex = 1}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
     Library:StyleControl(outer, outer, 1)
     window.Holder, window.ScaleObject = outer, Library:ApplyScaleTo(outer)
@@ -6742,15 +6684,26 @@ function Library:CreateWindow(...)
     local close = button(header, utf8.char(215), UDim2.fromOffset(22, 22), function() Library:Toggle() end)
     close.Position = UDim2.new(1, -32, 0, 6)
     title.Visible = false
-    local nav = frame('ScrollingFrame', {Name = 'ClassicNavigation', Parent = outer, Position = UDim2.fromOffset(8, 10), Size = UDim2.new(1, -16, 0, 108), BackgroundTransparency = 1, BorderSizePixel = 0, CanvasSize = UDim2.fromOffset(0, 0), ScrollBarThickness = 2, ScrollBarImageColor3 = Library.OutlineColor, ScrollingDirection = Enum.ScrollingDirection.X, ZIndex = 3}, {ScrollBarImageColor3 = 'OutlineColor'})
-    frame('Frame', {Parent = outer, Position = UDim2.fromOffset(0, 120), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'OutlineColor'})
+    local nav = frame('ScrollingFrame', {Name = 'ClassicNavigation', Parent = outer, Position = UDim2.fromOffset(8, 10), Size = UDim2.new(1, -16, 0, 76), BackgroundTransparency = 1, BorderSizePixel = 0, CanvasSize = UDim2.fromOffset(0, 0), ScrollBarThickness = 2, ScrollBarImageColor3 = Library.OutlineColor, ScrollingDirection = Enum.ScrollingDirection.X, ZIndex = 3}, {ScrollBarImageColor3 = 'OutlineColor'})
+    frame('Frame', {Parent = outer, Position = UDim2.fromOffset(0, 88), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'OutlineColor'})
     local navLayout = frame('UIListLayout', {Parent = nav, FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder})
-    local sectionHost = frame('Frame', {Name = 'ClassicSections', Parent = outer, Position = UDim2.fromOffset(18, 126), Size = UDim2.new(1, -36, 0, 32), BackgroundTransparency = 1, ZIndex = 4})
+    local sectionHost = frame('Frame', {Name = 'ClassicSections', Parent = outer, Position = UDim2.fromOffset(14, 94), Size = UDim2.new(1, -28, 0, 28), BackgroundTransparency = 1, ZIndex = 4})
     local utilityHeading = label(sectionHost, '', UDim2.fromOffset(4, 0), UDim2.fromScale(1, 1), 14)
     utilityHeading.Visible = false
-    frame('Frame', {Parent = outer, Position = UDim2.fromOffset(0, 163), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'OutlineColor'})
-    local function drawIcon(parent, kind) return Library:CreateClassicIcon(parent, kind, 38) end
+    frame('Frame', {Parent = outer, Position = UDim2.fromOffset(0, 127), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'OutlineColor'})
+    local function drawIcon(parent, kind)
+        local icon = Library:CreateClassicIcon(parent, kind, 30)
+        icon.Position = UDim2.new(0.5, -15, 0, 12)
+        return icon
+    end
+    local memberships, navigationGroups = {}, {}
     local function selectNav(object, selected)
+        if memberships[object] then
+            local key = selected and 'AccentColor' or 'FontColor'
+            object.TextColor3 = Library[key]
+            Library.RegistryMap[object].Properties.TextColor3 = key
+            return
+        end
         if selected then
             local scale = math.max(Library.UIScale or 1, 0.01)
             local x = (object.AbsolutePosition.X - nav.AbsolutePosition.X) / scale + nav.CanvasPosition.X
@@ -6769,17 +6722,72 @@ function Library:CreateWindow(...)
             end
         end
     end
-    local function makeNav(name, callback, order)
-        local object = frame('TextButton', {Parent = nav, Text = '', Size = UDim2.fromOffset(110, 104), BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false, LayoutOrder = order, ZIndex = 5})
+    local function makeRootNav(name, callback, order)
+        local object = frame('TextButton', {Parent = nav, Text = '', Size = UDim2.fromOffset(110, 74), BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false, LayoutOrder = order, ZIndex = 5})
         object.Activated:Connect(function() if not Library.Unloaded then callback() end end)
         drawIcon(object, name)
-        local caption = label(object, tostring(name), UDim2.fromOffset(0, 70), UDim2.new(1, 0, 0, 24), 14)
+        local caption = label(object, tostring(name), UDim2.fromOffset(0, 48), UDim2.new(1, 0, 0, 24), 14)
         caption.Name, caption.TextXAlignment = 'NavigationLabel', Enum.TextXAlignment.Center
         frame('Frame', {Parent = object, Position = UDim2.new(1, 0, 0, 6), Size = UDim2.new(0, 1, 1, -20), BackgroundColor3 = Library.OutlineColor, BackgroundTransparency = 0.65, BorderSizePixel = 0, ZIndex = 5}, {BackgroundColor3 = 'OutlineColor'})
         local marker = Library:CreateSelectionMarker(object)
         marker.Position, marker.Size, marker.Visible = UDim2.new(0, 6, 1, -4), UDim2.new(1, -12, 0, 3), false
         return object, marker
     end
+    local groupInfo = {
+        main = {'aim', 'main', 1}, ragebot = {'aim', 'main', 1},
+        visuals = {'visuals', 'visuals', 2}, world = {'visuals', 'visuals', 2},
+        character = {'character', 'character', 3}, protection = {'character', 'character', 3},
+        items = {'items', 'items', 4}, miscellaneous = {'utilities', 'miscellaneous', 5},
+        players = {'utilities', 'miscellaneous', 5}, servers = {'utilities', 'miscellaneous', 5}, executor = {'utilities', 'miscellaneous', 5},
+        ['ui settings'] = {'settings', 'ui settings', 6},
+    }
+    function window:SelectNavigationPage(object)
+        local membership = memberships[object]
+        if not membership then return end
+        local selected = membership.Group
+        selected.Last = object
+        self.NavigationPage = object
+        for _, group in pairs(navigationGroups) do
+            local active = group == selected
+            group.Strip.Visible, group.Marker.Visible = active, active
+            selectNav(group.Button, active)
+            for _, entry in ipairs(group.Pages) do
+                entry.Marker.Visible = entry.Button == object
+                selectNav(entry.Button, entry.Button == object)
+            end
+        end
+        utilityHeading.Visible = false
+        for _, tab in pairs(self.Tabs) do tab.SectionBar.Visible = false end
+    end
+    local function makeNav(name, callback, order)
+        local info = groupInfo[tostring(name):lower()] or {tostring(name), tostring(name), order}
+        local group = navigationGroups[info[1]]
+        if not group then
+            group = {Pages = {}}
+            navigationGroups[info[1]] = group
+            group.Button, group.Marker = makeRootNav(info[2], function()
+                local selected = group.Last or group.Pages[1] and group.Pages[1].Button
+                if selected and window.NavigationPage ~= selected then memberships[selected].Callback() end
+            end, info[3])
+            group.Button.NavigationLabel.Text = info[1]
+            group.Strip = frame('ScrollingFrame', {Name = 'CategoryPages', Parent = sectionHost, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 2, ScrollBarImageColor3 = Library.OutlineColor, ScrollingDirection = Enum.ScrollingDirection.X, CanvasSize = UDim2.fromOffset(0, 0), Visible = false, ZIndex = 8}, {ScrollBarImageColor3 = 'OutlineColor'})
+            group.Layout = frame('UIListLayout', {Parent = group.Strip, FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder})
+            group.Layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
+                group.Strip.CanvasSize = UDim2.fromOffset(group.Layout.AbsoluteContentSize.X / math.max(Library.UIScale or 1, 0.01), 0)
+            end)
+        end
+        local width = math.clamp(select(1, Library:GetTextBounds(tostring(name), Library.Font, 14)) + 28, 72, 180)
+        local object = frame('TextButton', {Name = tostring(name), Parent = group.Strip, Text = tostring(name), Font = Library.Font, TextSize = 14, TextColor3 = Library.FontColor, BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false, LayoutOrder = order, Size = UDim2.fromOffset(width, 26), ZIndex = 9}, {TextColor3 = 'FontColor'})
+        local caption = label(object, tostring(name), UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), 14)
+        caption.Name, caption.Visible = 'NavigationLabel', false
+        local marker = Library:CreateSelectionMarker(object)
+        marker.Position, marker.Size, marker.Visible = UDim2.new(0, 6, 1, -2), UDim2.new(1, -12, 0, 2), false
+        memberships[object] = {Group = group, Callback = callback}
+        group.Pages[#group.Pages + 1] = {Button = object, Marker = marker}
+        object.Activated:Connect(function() if not Library.Unloaded then callback() end end)
+        return object, marker
+    end
+    window.NavigationGroups = navigationGroups
     local footer = frame('Frame', {Name = 'ClassicFooter', Parent = outer, Position = UDim2.new(0, 0, 1, -48), Size = UDim2.new(1, 0, 0, 48), BackgroundColor3 = Library.MainColor, BorderSizePixel = 0, ZIndex = 3}, {BackgroundColor3 = 'MainColor'})
     frame('Frame', {Parent = footer, Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'OutlineColor'})
     searchOuter.Parent = footer
@@ -6788,7 +6796,7 @@ function Library:CreateWindow(...)
     local profileStatus = label(footer, '', UDim2.new(1, -180, 0, 0), UDim2.fromOffset(164, 32), 11)
     profileStatus.Visible = false
     profileStatus.TextXAlignment = Enum.TextXAlignment.Right
-    local body = frame('Frame', {Name = 'ClassicBody', Parent = outer, Position = UDim2.fromOffset(18, 170), Size = UDim2.new(1, -36, 1, -236), BackgroundTransparency = 1, ZIndex = 2})
+    local body = frame('Frame', {Name = 'ClassicBody', Parent = outer, Position = UDim2.fromOffset(14, 134), Size = UDim2.new(1, -28, 1, -192), BackgroundTransparency = 1, ZIndex = 2})
     local rail = frame('Frame', {Name = 'ClassicWeaponRail', Parent = body, Size = UDim2.new(0, 176, 1, 0), BackgroundTransparency = 1, Visible = false, ZIndex = 3})
     local railTitle = label(rail, 'WEAPON PROFILES', UDim2.fromOffset(2, 0), UDim2.new(1, -30, 0, 22), 10)
     local weaponList = frame('ScrollingFrame', {Name = 'WeaponProfiles', Parent = rail, Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, 0, 1, -28), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 2, ScrollBarImageColor3 = Library.OutlineColor, CanvasSize = UDim2.fromOffset(0, 0), ZIndex = 4}, {ScrollBarImageColor3 = 'OutlineColor'})
@@ -6814,7 +6822,7 @@ function Library:CreateWindow(...)
         self.HideCustomPanels()
         panel.Visible, self.CustomPanel, Library.OpenToolbarPanel = true, kind, kind
         self.FooterSetActive(kind)
-        utilityHeading.Text, utilityHeading.Visible = kind == 'Servers' and 'Public servers' or kind, true
+        self:SelectNavigationPage(self.FooterButtons[kind].Outer)
         if self.RefreshTabLayout then self.RefreshTabLayout() end
         local refresh = self.RefreshCustom[kind]
         if refresh then refresh() end
@@ -7018,7 +7026,7 @@ function Library:CreateWindow(...)
         local scroll = frame('ScrollingFrame', {Name = 'ClassicSettings', Parent = page, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, CanvasSize = UDim2.fromOffset(0, 0), ScrollBarThickness = 3, ScrollBarImageColor3 = Library.OutlineColor, ScrollingDirection = Enum.ScrollingDirection.Y, Active = true, ZIndex = 4}, {ScrollBarImageColor3 = 'OutlineColor'})
         local left = frame('Frame', {Name = 'LeftColumn', Parent = scroll, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(0.5, -8, 0, 0), BackgroundTransparency = 1, ZIndex = 4})
         local right = frame('Frame', {Name = 'RightColumn', Parent = scroll, Position = UDim2.new(0.5, 4, 0, 8), Size = UDim2.new(0.5, -10, 0, 0), BackgroundTransparency = 1, ZIndex = 4})
-        local layouts = {frame('UIListLayout', {Parent = left, Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder}), frame('UIListLayout', {Parent = right, Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder})}
+        local layouts = {frame('UIListLayout', {Parent = left, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder}), frame('UIListLayout', {Parent = right, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder})}
         tab.TabFrame, tab.LeftSide, tab.RightSide, tab.Scroll = page, left, right, scroll
         local navButton, marker = makeNav(name, function() tab:ShowTab() end, tab.Sequence)
         tab.TabButton, tab.TextLabel, tab.Blocker = navButton, navButton:FindFirstChild('NavigationLabel'), marker
@@ -7028,14 +7036,14 @@ function Library:CreateWindow(...)
                 for _, child in ipairs(column:GetChildren()) do
                     if child:IsA('GuiObject') and child.Visible then total = total + child.Size.Y.Offset; count = count + 1 end
                 end
-                return total + math.max(0, count - 1) * 12
+                return total + math.max(0, count - 1) * 10
             end
             local lh, rh = height(left), height(right)
             local oneColumn = content.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01) < 680
             left.Size = UDim2.new(oneColumn and 1 or 0.5, oneColumn and -6 or -8, 0, lh)
             right.Size = UDim2.new(oneColumn and 1 or 0.5, oneColumn and -6 or -10, 0, rh)
-            right.Position = oneColumn and UDim2.fromOffset(0, lh + (lh > 0 and 12 or 0) + 8) or UDim2.new(0.5, 4, 0, 8)
-            scroll.CanvasSize = UDim2.fromOffset(0, oneColumn and lh + rh + (lh > 0 and rh > 0 and 12 or 0) + 16 or math.max(lh, rh) + 16)
+            right.Position = oneColumn and UDim2.fromOffset(0, lh + (lh > 0 and 10 or 0) + 8) or UDim2.new(0.5, 4, 0, 8)
+            scroll.CanvasSize = UDim2.fromOffset(0, oneColumn and lh + rh + (lh > 0 and rh > 0 and 10 or 0) + 16 or math.max(lh, rh) + 16)
         end
         for _, layout in ipairs(layouts) do layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function() tab:Resize() end) end
         scroll:GetPropertyChangedSignal('CanvasPosition'):Connect(function() if Library.PrunePopups then Library:PrunePopups() end end)
@@ -7046,7 +7054,7 @@ function Library:CreateWindow(...)
             for _, other in pairs(window.Tabs) do if other ~= self then other:HideTab() end end
             window.ActiveTab, window.LastTab = self, self
             page.Visible, marker.Visible = true, true
-            sectionBar.Visible, utilityHeading.Visible = true, false
+            window:SelectNavigationPage(navButton)
             selectNav(navButton, true)
             window.FooterSetActive(nil)
             if window.RefreshTabLayout then window.RefreshTabLayout() end
@@ -7066,21 +7074,22 @@ function Library:CreateWindow(...)
             local holder = frame('Frame', {Name = 'ClassicGroupbox', Parent = parent, Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
             Library:StyleControl(holder, holder, 1)
             local naturalWidth = select(1, Library:GetTextBounds(tostring(name), Library.Font, 13))
-            local sectionLabel = label(holder, tostring(name), UDim2.fromOffset(10, -8), UDim2.fromOffset(naturalWidth + 12, 18), 13)
+            local sectionLabel = label(holder, tostring(name), UDim2.new(0.5, 0, 0, -8), UDim2.fromOffset(naturalWidth + 12, 18), 13)
+            sectionLabel.AnchorPoint, sectionLabel.TextXAlignment = Vector2.new(0.5, 0), Enum.TextXAlignment.Center
             sectionLabel.BackgroundTransparency, sectionLabel.BackgroundColor3 = 0, Library.BackgroundColor
             Library:AddToRegistry(sectionLabel, {BackgroundColor3 = 'BackgroundColor', TextColor3 = 'FontColor'})
             local chroma = button(holder, 'RGB', UDim2.fromOffset(36, 18), function() Library:SetGroupChroma(section, not section.ChromaOn); Library:AttemptSave() end)
             chroma.Position, chroma.Visible = UDim2.new(1, -46, 0, -8), false
-            local container = frame('Frame', {Parent = holder, Position = UDim2.fromOffset(10, 16), Size = UDim2.new(1, -20, 0, 0), BackgroundTransparency = 1, ZIndex = 5})
+            local container = frame('Frame', {Parent = holder, Position = UDim2.fromOffset(8, 12), Size = UDim2.new(1, -16, 0, 0), BackgroundTransparency = 1, ZIndex = 5})
             local layout = frame('UIListLayout', {Parent = container, SortOrder = Enum.SortOrder.LayoutOrder})
             section.Container, section.Holder, section.TextLabel = container, holder, sectionLabel
             section.ChromaBtn, section.ChromaBtnInner, section.ChromaBtnLabel = chroma, chroma, chroma
             setmetatable(section, BaseGroupbox)
             function section:Resize()
-                sectionLabel.Size = UDim2.fromOffset(math.max(0, math.min(naturalWidth + 12, holder.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01) - 60)), 18)
+                sectionLabel.Size = UDim2.fromOffset(math.max(0, math.min(naturalWidth + 12, holder.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01) - (chroma.Visible and 100 or 24))), 18)
                 local height = 0
                 for _, child in ipairs(container:GetChildren()) do if child:IsA('GuiObject') and child.Visible then height = height + child.Size.Y.Offset end end
-                container.Size, holder.Size = UDim2.new(1, -20, 0, height), UDim2.new(1, 0, 0, height + 28)
+                container.Size, holder.Size = UDim2.new(1, -16, 0, height), UDim2.new(1, 0, 0, height + 22)
                 if box then box:Resize() else tab:Resize() end
             end
             function section:Show()
@@ -7132,11 +7141,11 @@ function Library:CreateWindow(...)
             local holder = frame('Frame', {Name = 'ClassicTabbox', Parent = info.Side == 2 and right or left, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), ZIndex = 4})
             local bar = frame('ScrollingFrame', {Name = 'Subtabs', Parent = holder, Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 2, ScrollingDirection = Enum.ScrollingDirection.X, CanvasSize = UDim2.fromOffset(0, 0), ZIndex = 5})
             local barLayout = frame('UIListLayout', {Parent = bar, FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder})
-            local host = frame('Frame', {Parent = holder, Position = UDim2.fromOffset(0, 40), Size = UDim2.new(1, 0, 0, 0), BackgroundTransparency = 1, ZIndex = 4})
+            local host = frame('Frame', {Parent = holder, Position = UDim2.fromOffset(0, 32), Size = UDim2.new(1, 0, 0, 0), BackgroundTransparency = 1, ZIndex = 4})
             box.Holder, box.Container = holder, host
             function box:Resize()
                 local height = self.ActiveTab and self.ActiveTab.Holder.Size.Y.Offset or 0
-                host.Size, holder.Size = UDim2.new(1, 0, 0, height), UDim2.new(1, 0, 0, height + 40)
+                host.Size, holder.Size = UDim2.new(1, 0, 0, height), UDim2.new(1, 0, 0, height + 32)
                 tab:Resize()
             end
             function box:Select(selected)
@@ -7202,7 +7211,7 @@ function Library:CreateWindow(...)
         local stackedFooter = window.ConfigManager ~= nil and width < 960
         local footerHeight = stackedFooter and 78 or 48
         footer.Position, footer.Size = UDim2.new(0, 0, 1, -footerHeight), UDim2.new(1, 0, 0, footerHeight)
-        body.Size = UDim2.new(1, -36, 1, -188 - footerHeight)
+        body.Size = UDim2.new(1, -28, 1, -148 - footerHeight)
         searchOuter.Size = UDim2.fromOffset(searchWidth, 28)
         searchOuter.Position = stackedFooter and UDim2.fromOffset(18, 43) or UDim2.new(1, -searchWidth - (window.ConfigManager and 288 or 40), 0, 10)
         if window.ConfigPicker then window.ConfigPicker.Size = UDim2.fromOffset(math.min(220, math.max(100, width - 410)), 28) end
@@ -7213,7 +7222,7 @@ function Library:CreateWindow(...)
         local navButtons = {}
         for _, child in ipairs(nav:GetChildren()) do if child:IsA('TextButton') then navButtons[#navButtons + 1] = child end end
         local tabWidth = math.clamp((width - 20 - math.max(0, #navButtons - 1) * 2) / math.max(1, #navButtons), 88, 180)
-        for _, object in ipairs(navButtons) do object.Size = UDim2.fromOffset(tabWidth, 104) end
+        for _, object in ipairs(navButtons) do object.Size = UDim2.fromOffset(tabWidth, 74) end
         updateCanvas(nav, navLayout)
         weaponList.CanvasSize = UDim2.fromOffset(0, weaponLayout.AbsoluteContentSize.Y / scale + 4)
         for _, tab in pairs(window.Tabs) do tab:Resize() end
