@@ -52,7 +52,8 @@ local Library = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 11;
+Library.PhowgRevision = 13;
+Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
 Library.ChromaPickers = {};
@@ -642,62 +643,49 @@ function Library:MakeDraggable(Instance, Cutoff)
     end)
 end;
 
+function Library:HideTooltip()
+    if self.TooltipConnection then self.TooltipConnection:Disconnect(); self.TooltipConnection = nil end
+    self.TooltipOwner = nil
+    if self.TooltipContainer then self.TooltipContainer.Visible = false end
+end
+
+function Library:SetTooltipsEnabled(enabled)
+    self.TooltipsEnabled = enabled == true
+    if not self.TooltipsEnabled then self:HideTooltip() end
+end
+
 function Library:AddToolTip(InfoStr, HoverInstance)
-    local X, Y = Library:GetTextBounds(InfoStr, Library.Font, 14);
-    local Tooltip = Library:Create('Frame', {
-        BackgroundColor3 = Library.MainColor,
-        BorderColor3 = Library.OutlineColor,
-
-        Size = UDim2.fromOffset(X + 5, Y + 4),
-        ZIndex = 100,
-        Parent = Library.ScreenGui,
-
-        Visible = false,
-    })
-
-    local Label = Library:CreateLabel({
-        Position = UDim2.fromOffset(3, 1),
-        Size = UDim2.fromOffset(X, Y);
-        TextSize = 14;
-        Text = InfoStr,
-        TextColor3 = Library.FontColor,
-        TextXAlignment = Enum.TextXAlignment.Left;
-        ZIndex = Tooltip.ZIndex + 1,
-
-        Parent = Tooltip;
-    });
-
-    Library:AddToRegistry(Tooltip, {
-        BackgroundColor3 = 'MainColor';
-        BorderColor3 = 'OutlineColor';
-    });
-
-    Library:AddToRegistry(Label, {
-        TextColor3 = 'FontColor',
-    });
-
-    local IsHovering = false
-
-    HoverInstance.MouseEnter:Connect(function()
-        if Library:MouseIsOverOpenedFrame(HoverInstance) then
-            return
+    Library:GiveSignal(HoverInstance.MouseEnter:Connect(function()
+        if not Library.TooltipsEnabled or Library.Unloaded or not HoverInstance.Parent or Library:MouseIsOverOpenedFrame(HoverInstance) then return end
+        Library:HideTooltip()
+        if not Library.TooltipContainer then
+            Library.TooltipContainer = Library:Create('Frame', {
+                Name = 'LibraryTooltip', BackgroundColor3 = Library.MainColor, BorderColor3 = Library.OutlineColor,
+                ZIndex = 100, Parent = Library.ScreenGui, Visible = false,
+            })
+            Library.TooltipLabel = Library:CreateLabel({
+                Position = UDim2.fromOffset(3, 1), TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left,
+                ZIndex = 101, Parent = Library.TooltipContainer,
+            })
+            Library:AddToRegistry(Library.TooltipContainer, {BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor'})
         end
-
-        IsHovering = true
-
-        Tooltip.Position = UDim2.fromOffset(Mouse.X + 15, Mouse.Y + 12)
-        Tooltip.Visible = true
-
-        while IsHovering do
-            RunService.Heartbeat:Wait()
+        local X, Y = Library:GetTextBounds(InfoStr, Library.Font, 14)
+        local Tooltip = Library.TooltipContainer
+        Tooltip.Size = UDim2.fromOffset(X + 5, Y + 4)
+        Library.TooltipLabel.Size, Library.TooltipLabel.Text = UDim2.fromOffset(X, Y), InfoStr
+        Library.TooltipOwner = HoverInstance
+        Tooltip.Position, Tooltip.Visible = UDim2.fromOffset(Mouse.X + 15, Mouse.Y + 12), true
+        Library.TooltipConnection = RunService.Heartbeat:Connect(function()
+            if not Library.TooltipsEnabled or Library.Unloaded or not HoverInstance.Parent or Library.MainVisible == false or (Library.IsControlVisible and not Library:IsControlVisible(HoverInstance)) then
+                Library:HideTooltip()
+                return
+            end
             Tooltip.Position = UDim2.fromOffset(Mouse.X + 15, Mouse.Y + 12)
-        end
-    end)
-
-    HoverInstance.MouseLeave:Connect(function()
-        IsHovering = false
-        Tooltip.Visible = false
-    end)
+        end)
+    end))
+    Library:GiveSignal(HoverInstance.MouseLeave:Connect(function()
+        if Library.TooltipOwner == HoverInstance then Library:HideTooltip() end
+    end))
 end
 
 function Library:OnHighlight(HighlightInstance, Instance, Properties, PropertiesDefault)
@@ -833,6 +821,7 @@ end
 
 function Library:Unload()
     Library.Unloaded = true;
+    Library:HideTooltip();
     Library.CustomCursorEnabled = false;
     Library:RefreshCustomCursor();
     Library:RestoreMouseIcon();
@@ -3087,7 +3076,7 @@ do
             Func(Toggle.Value);
         end;
 
-        function Toggle:SetValue(Bool)
+        function Toggle:SetValue(Bool, Restoring)
             Bool = (not not Bool);
 
             Toggle.Value = Bool;
@@ -3102,7 +3091,7 @@ do
                 end
             end
 
-            Library:SafeCallback(Toggle.Callback, Toggle.Value);
+            Library:SafeCallback(Toggle.Callback, Toggle.Value, Restoring);
             Library:SafeCallback(Toggle.Changed, Toggle.Value);
             Library:UpdateDependencyBoxes();
         end;
@@ -4914,7 +4903,7 @@ do
     end;
 end;
 
-Library.UIScale = 1;
+Library.UIScale = 0.9;
 Library.ScaleObjects = {};
 Library.ReducedMotion = false;
 Library.NotifyDuration = 5;
@@ -6670,7 +6659,7 @@ function Library:CreateWindow(...)
     end
     local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
     local requested = typeof(config.Size) == 'UDim2' and config.Size or UDim2.fromOffset(1000, 680)
-    local outer = frame('CanvasGroup', {Name = 'ClassicWindow', Parent = ScreenGui, BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, Size = UDim2.fromOffset(math.min(requested.X.Offset, viewport.X - 24), math.min(requested.Y.Offset, viewport.Y - 24)), Position = typeof(config.Position) == 'UDim2' and config.Position or UDim2.fromOffset(24, 24), Visible = false, GroupTransparency = 0, ZIndex = 1}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
+    local outer = frame('CanvasGroup', {Name = 'ClassicWindow', Parent = ScreenGui, BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, Size = UDim2.fromOffset(math.min(requested.X.Offset, viewport.X - 24), math.min(requested.Y.Offset, viewport.Y - 24)), Position = typeof(config.Position) == 'UDim2' and config.Position or UDim2.fromOffset(8, 8), Visible = false, GroupTransparency = 0, ZIndex = 1}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
     Library:StyleControl(outer, outer, 1)
     window.Holder, window.ScaleObject = outer, Library:ApplyScaleTo(outer)
     if config.Center then outer.Position = UDim2.fromOffset((viewport.X - outer.Size.X.Offset) / 2, (viewport.Y - outer.Size.Y.Offset) / 2) end
@@ -6978,7 +6967,7 @@ function Library:CreateWindow(...)
         local matches = {}
         for index, entry in pairs(Library.ControlRegistry) do
             local text = tostring(entry.Tab and entry.Tab.Name or '') .. ' / ' .. tostring(entry.Group and entry.Group.Name or '') .. ' / ' .. entry.Label
-            if text:lower():find(query, 1, true) or tostring(index):lower():find(query, 1, true) then matches[#matches + 1] = {Index = index, Text = text} end
+            if entry.Searchable ~= false and (text:lower():find(query, 1, true) or tostring(index):lower():find(query, 1, true)) then matches[#matches + 1] = {Index = index, Text = text} end
         end
         table.sort(matches, function(a, b) return a.Text == b.Text and tostring(a.Index) < tostring(b.Index) or a.Text < b.Text end)
         for i = 1, math.min(#matches, 14) do
@@ -7023,11 +7012,16 @@ function Library:CreateWindow(...)
         tab.SectionBar = sectionBar
         self.TabSequence = tab.Sequence
         local page = frame('CanvasGroup', {Name = 'ClassicPage', Parent = pageHost, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false, GroupTransparency = 0, ZIndex = 3})
-        local scroll = frame('ScrollingFrame', {Name = 'ClassicSettings', Parent = page, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, CanvasSize = UDim2.fromOffset(0, 0), ScrollBarThickness = 3, ScrollBarImageColor3 = Library.OutlineColor, ScrollingDirection = Enum.ScrollingDirection.Y, Active = true, ZIndex = 4}, {ScrollBarImageColor3 = 'OutlineColor'})
-        local left = frame('Frame', {Name = 'LeftColumn', Parent = scroll, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(0.5, -8, 0, 0), BackgroundTransparency = 1, ZIndex = 4})
-        local right = frame('Frame', {Name = 'RightColumn', Parent = scroll, Position = UDim2.new(0.5, 4, 0, 8), Size = UDim2.new(0.5, -10, 0, 0), BackgroundTransparency = 1, ZIndex = 4})
+        local scroll = frame('Frame', {Name = 'ClassicSettings', Parent = page, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 4})
+        local function columnScroll(name)
+            return frame('ScrollingFrame', {Name = name, Parent = scroll, BackgroundTransparency = 1, BorderSizePixel = 0, CanvasSize = UDim2.fromOffset(0, 0), ScrollBarThickness = 3, ScrollBarImageColor3 = Library.OutlineColor, ScrollingDirection = Enum.ScrollingDirection.Y, Active = true, ZIndex = 4}, {ScrollBarImageColor3 = 'OutlineColor'})
+        end
+        local leftScroll, rightScroll = columnScroll('LeftSettingsScroll'), columnScroll('RightSettingsScroll')
+        local left = frame('Frame', {Name = 'LeftColumn', Parent = leftScroll, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, -4, 0, 0), BackgroundTransparency = 1, ZIndex = 4})
+        local right = frame('Frame', {Name = 'RightColumn', Parent = rightScroll, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, -4, 0, 0), BackgroundTransparency = 1, ZIndex = 4})
         local layouts = {frame('UIListLayout', {Parent = left, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder}), frame('UIListLayout', {Parent = right, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder})}
-        tab.TabFrame, tab.LeftSide, tab.RightSide, tab.Scroll = page, left, right, scroll
+        tab.TabFrame, tab.LeftSide, tab.RightSide, tab.Scroll = page, left, right, leftScroll
+        tab.LeftScroll, tab.RightScroll = leftScroll, rightScroll
         local navButton, marker = makeNav(name, function() tab:ShowTab() end, tab.Sequence)
         tab.TabButton, tab.TextLabel, tab.Blocker = navButton, navButton:FindFirstChild('NavigationLabel'), marker
         function tab:Resize()
@@ -7039,14 +7033,23 @@ function Library:CreateWindow(...)
                 return total + math.max(0, count - 1) * 10
             end
             local lh, rh = height(left), height(right)
-            local oneColumn = content.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01) < 680
-            left.Size = UDim2.new(oneColumn and 1 or 0.5, oneColumn and -6 or -8, 0, lh)
-            right.Size = UDim2.new(oneColumn and 1 or 0.5, oneColumn and -6 or -10, 0, rh)
-            right.Position = oneColumn and UDim2.fromOffset(0, lh + (lh > 0 and 10 or 0) + 8) or UDim2.new(0.5, 4, 0, 8)
-            scroll.CanvasSize = UDim2.fromOffset(0, oneColumn and lh + rh + (lh > 0 and rh > 0 and 10 or 0) + 16 or math.max(lh, rh) + 16)
+            local stacked = content.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01) < 680
+            left.Size, right.Size = UDim2.new(1, -4, 0, lh), UDim2.new(1, -4, 0, rh)
+            if stacked then
+                local both = lh > 0 and rh > 0
+                leftScroll.Position, leftScroll.Size = UDim2.fromOffset(0, 0), UDim2.new(1, 0, both and 0.5 or 1, both and -5 or 0)
+                rightScroll.Position, rightScroll.Size = UDim2.new(0, 0, both and 0.5 or 0, both and 5 or 0), UDim2.new(1, 0, both and 0.5 or 1, both and -5 or 0)
+            else
+                leftScroll.Position, leftScroll.Size = UDim2.fromOffset(0, 0), UDim2.new(0.5, -6, 1, 0)
+                rightScroll.Position, rightScroll.Size = UDim2.new(0.5, 6, 0, 0), UDim2.new(0.5, -6, 1, 0)
+            end
+            leftScroll.Visible, rightScroll.Visible = lh > 0, rh > 0
+            leftScroll.CanvasSize, rightScroll.CanvasSize = UDim2.fromOffset(0, lh + 16), UDim2.fromOffset(0, rh + 16)
         end
         for _, layout in ipairs(layouts) do layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function() tab:Resize() end) end
-        scroll:GetPropertyChangedSignal('CanvasPosition'):Connect(function() if Library.PrunePopups then Library:PrunePopups() end end)
+        for _, column in ipairs({leftScroll, rightScroll}) do
+            column:GetPropertyChangedSignal('CanvasPosition'):Connect(function() if Library.PrunePopups then Library:PrunePopups() end end)
+        end
         function tab:ShowTab()
             Library:ClosePopups()
             window.HideCustomPanels()
@@ -7070,7 +7073,7 @@ function Library:CreateWindow(...)
         end
         function tab:SetLayoutOrder(order) navButton.LayoutOrder = order end
         local function group(name, parent, box)
-            local section = {Name = name, RootTab = tab, ColorPickers = {}, ChromaOn = false, ParentTabbox = box}
+            local section = {Name = name, RootTab = tab, ColorPickers = {}, ChromaOn = false, ParentTabbox = box, Scroll = parent == left and leftScroll or rightScroll}
             local holder = frame('Frame', {Name = 'ClassicGroupbox', Parent = parent, Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
             Library:StyleControl(holder, holder, 1)
             local naturalWidth = select(1, Library:GetTextBounds(tostring(name), Library.Font, 13))
@@ -7104,7 +7107,8 @@ function Library:CreateWindow(...)
                 tab:ShowTab()
                 if box then box:Select(section) end
                 local scale = math.max(Library.UIScale or 1, 0.01)
-                scroll.CanvasPosition = Vector2.new(0, math.max(0, scroll.CanvasPosition.Y + (holder.AbsolutePosition.Y - scroll.AbsolutePosition.Y) / scale - 8))
+                local sectionScroll = section.Scroll
+                sectionScroll.CanvasPosition = Vector2.new(0, math.max(0, sectionScroll.CanvasPosition.Y + (holder.AbsolutePosition.Y - sectionScroll.AbsolutePosition.Y) / scale - 8))
                 for _, other in ipairs(tab.Sections) do
                     local selected = other == section
                     other.SectionButton.BackgroundTransparency = selected and 0 or 1
@@ -7127,7 +7131,7 @@ function Library:CreateWindow(...)
                 item:AddDropdown('NotificationStyle', {Text = 'Notification style', Values = {'Default', 'Gamesense', 'Simple', 'Gamesensical', 'Progress'}, Default = Library.NotificationStyle or 'Default', Callback = function(value) Library:SetNotificationStyle(value) end})
                 item:AddDropdown('NotificationPosition', {Text = 'Notification position', Values = {'Bottom', 'Top', 'Bottom Left', 'Bottom Right', 'Top Left', 'Top Right'}, Default = Library.NotificationPosition or 'Bottom', Callback = function(value) Library:SetNotificationPosition(value) end})
                 item:AddToggle('KeybindIndicator', {Text = 'Keybind indicator', Default = true, Callback = function(value) Library:SetKeybindIndicator(value) end})
-                item:AddSlider('UIScale', {Text = 'UI scale', Default = 100, Min = 75, Max = 150, Rounding = 0, Suffix = '%', Callback = function(value) Library:SetUIScale(value / 100) end})
+                item:AddSlider('UIScale', {Text = 'UI scale', Default = 90, Min = 75, Max = 150, Rounding = 0, Suffix = '%', Callback = function(value) Library:SetUIScale(value / 100) end})
                 item:AddToggle('ReducedMotion', {Text = 'Reduced motion', Default = false, Callback = function(value) Library.ReducedMotion = value end})
                 item:AddButton('Copy JobId', function() pcall(setclipboard, tostring(game.JobId)); Library:Notify('Copied JobId', 2) end)
             end
@@ -7265,6 +7269,7 @@ function Library:CreateWindow(...)
     local toggled, toggleRevision = false, 0
     function Library:Toggle()
         if self.Unloaded then return end
+        self:HideTooltip()
         toggled, toggleRevision = not toggled, toggleRevision + 1
         local revision = toggleRevision
         self.MainVisible, modal.Modal = toggled, toggled
