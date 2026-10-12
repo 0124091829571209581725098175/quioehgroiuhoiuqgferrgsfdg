@@ -52,7 +52,7 @@ local Library = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 15;
+Library.PhowgRevision = 16;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -2610,9 +2610,20 @@ do
             Parent = Container;
         });
 
+        local measuredWidth
+        local function resizeWrapped()
+            local width = TextLabel.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01)
+            if width < 80 then width = 300 end
+            measuredWidth = width
+            local height = select(2, Library:GetTextBounds(TextLabel.Text, Library.Font, 14, Vector2.new(width, math.huge)))
+            TextLabel.Size = UDim2.new(1, -4, 0, math.max(Library.WorkspaceEnabled and 20 or 15, height))
+        end
         if DoesWrap then
-            local Y = select(2, Library:GetTextBounds(Text, Library.Font, 14, Vector2.new(TextLabel.AbsoluteSize.X, math.huge)))
-            TextLabel.Size = UDim2.new(1, -4, 0, Y)
+            resizeWrapped()
+            Library:GiveSignal(TextLabel:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
+                local width = TextLabel.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01)
+                if width >= 80 and math.abs(width - (measuredWidth or 0)) > 1 then resizeWrapped(); Groupbox:Resize() end
+            end))
         else
             Library:Create('UIListLayout', {
                 Padding = UDim.new(0, 4);
@@ -2631,8 +2642,7 @@ do
             TextLabel.Text = Text
 
             if DoesWrap then
-                local Y = select(2, Library:GetTextBounds(Text, Library.Font, 14, Vector2.new(TextLabel.AbsoluteSize.X, math.huge)))
-                TextLabel.Size = UDim2.new(1, -4, 0, Y)
+                resizeWrapped()
             end
 
             Groupbox:Resize();
