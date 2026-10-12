@@ -52,7 +52,7 @@ local Library = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 13;
+Library.PhowgRevision = 14;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -745,9 +745,32 @@ function Library:MapValue(Value, MinA, MaxA, MinB, MaxB)
     return (1 - ((Value - MinA) / (MaxA - MinA))) * MinB + ((Value - MinA) / (MaxA - MinA)) * MaxB;
 end;
 
+Library.TextBoundsCache = {};
+Library.TextBoundsCacheCount = 0;
 function Library:GetTextBounds(Text, Font, Size, Resolution)
-    local Bounds = TextService:GetTextSize(Text, Size, Font, Resolution or Vector2.new(1920, 1080))
-    return Bounds.X, Bounds.Y
+    Text, Resolution = tostring(Text), Resolution or Vector2.new(1920, 1080);
+    local Key = tostring(Font) .. '/' .. tostring(Size) .. '/' .. tostring(Resolution.X) .. '/' .. tostring(Resolution.Y) .. '/' .. Text;
+    local Cached = self.TextBoundsCache[Key];
+    if Cached then return Cached.X, Cached.Y end;
+    local Bounds = TextService:GetTextSize(Text, Size, Font, Resolution);
+    if self.TextBoundsCacheCount >= 2048 then table.clear(self.TextBoundsCache); self.TextBoundsCacheCount = 0 end;
+    self.TextBoundsCache[Key] = Bounds;
+    self.TextBoundsCacheCount += 1;
+    return Bounds.X, Bounds.Y;
+end;
+function Library:DeferStartupLayout(Owner)
+    if self.ControlsReady ~= false or Owner.LayoutFlushing then return false end;
+    if not Owner.LayoutPending then
+        Owner.LayoutPending = true;
+        task.defer(function()
+            Owner.LayoutPending = false;
+            if self.Unloaded then return end;
+            Owner.LayoutFlushing = true;
+            Owner:Resize();
+            Owner.LayoutFlushing = false;
+        end);
+    end;
+    return true;
 end;
 
 function Library:GetDarkerColor(Color)
@@ -909,6 +932,11 @@ function Library:BindPopupPosition(Anchor, Popup, Update)
     Sync();
 end;
 Library.CustomCursorEnabled = true;
+Library.CustomCursorAlways = false;
+Library.CustomCursorStyle = 'cross';
+Library.CustomCursorSize = 20;
+Library.CustomCursorColor = Color3.new(1, 1, 1);
+Library.CustomCursorStyles = {'cross', 'crosshair', 'dot', 'ring', 'diamond', 'arrow'};
 Library.MouseIconRequests = {};
 function Library:SetMouseIconHidden(Owner, Hidden)
     Hidden = Hidden == true and not Library.Unloaded;
@@ -932,63 +960,92 @@ function Library:RestoreMouseIcon()
         Library.MouseIconOriginal = nil;
     end;
 end;
+function Library:BuildCustomCursor()
+    local Cursor = self.CustomCursor;
+    if not Cursor then return end;
+    local Style, Size, Color = self.CustomCursorStyle, self.CustomCursorSize, self.CustomCursorColor;
+    if self.CursorBuiltStyle == Style and self.CursorBuiltSize == Size and self.CursorBuiltColor == Color then return end;
+    for _, Child in ipairs(Cursor:GetChildren()) do Child:Destroy() end;
+    self.CursorBuiltStyle, self.CursorBuiltSize, self.CursorBuiltColor = Style, Size, Color;
+    Cursor.Size = UDim2.fromOffset(Size, Size);
+    Cursor.AnchorPoint = Style == 'arrow' and Vector2.zero or Vector2.new(0.5, 0.5);
+    local function Shape(Properties)
+        Properties.Parent, Properties.Active, Properties.BorderSizePixel, Properties.ZIndex = Cursor, false, 0, Properties.ZIndex or 10000;
+        return self:Create('Frame', Properties);
+    end;
+    local function Line(X1, Y1, X2, Y2)
+        local DX, DY = X2 - X1, Y2 - Y1;
+        local Length, Angle = math.sqrt(DX * DX + DY * DY), math.deg(math.atan2(DY, DX));
+        for _, Outline in ipairs({true, false}) do
+            Shape({AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset((X1 + X2) * 0.5, (Y1 + Y2) * 0.5), Size = UDim2.fromOffset(Length, Outline and 3 or 1), Rotation = Angle, BackgroundColor3 = Outline and Color3.new(0, 0, 0) or Color, ZIndex = Outline and 10000 or 10001});
+        end;
+    end;
+    local function Circle(Diameter, Hollow)
+        local Object = Shape({AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(Diameter, Diameter), BackgroundColor3 = Color, BackgroundTransparency = Hollow and 1 or 0});
+        self:Create('UICorner', {CornerRadius = UDim.new(1, 0), Parent = Object});
+        self:Create('UIStroke', {Color = Hollow and Color or Color3.new(0, 0, 0), Thickness = Hollow and 1.5 or 1, Parent = Object});
+    end;
+    local Half, Gap = Size * 0.5, math.max(2, math.floor(Size * 0.15));
+    if Style == 'cross' then
+        Line(0, Half, Size, Half); Line(Half, 0, Half, Size);
+    elseif Style == 'crosshair' then
+        Line(0, Half, Half - Gap, Half); Line(Half + Gap, Half, Size, Half);
+        Line(Half, 0, Half, Half - Gap); Line(Half, Half + Gap, Half, Size);
+    elseif Style == 'dot' then Circle(math.max(3, math.floor(Size * 0.25)), false);
+    elseif Style == 'ring' then Circle(Size - 2, true);
+    elseif Style == 'diamond' then
+        Line(Half, 1, Size - 1, Half); Line(Size - 1, Half, Half, Size - 1);
+        Line(Half, Size - 1, 1, Half); Line(1, Half, Half, 1);
+    elseif Style == 'arrow' then
+        Line(1, 1, 1, Size * 0.85); Line(1, 1, Size * 0.6, Size * 0.6);
+        Line(Size * 0.6, Size * 0.6, Size * 0.24, Size * 0.6);
+        Line(Size * 0.24, Size * 0.6, 1, Size * 0.85);
+        Line(Size * 0.24, Size * 0.6, Size * 0.4, Size);
+    end;
+end;
 function Library:RefreshCustomCursor()
-    local Visible = Library.CustomCursorEnabled and not Library.Unloaded;
-    if Visible and not Library.CustomCursor then
-        local Cursor = Library:Create('Frame', {
-            Name = 'CustomCursor';
-            AnchorPoint = Vector2.new(0.5, 0.5);
-            BackgroundTransparency = 1;
-            BorderSizePixel = 0;
-            Size = UDim2.fromOffset(21, 21);
-            Active = false;
-            ZIndex = 10000;
-            Parent = ScreenGui;
-        });
-        Library:Create('Frame', {
-            AnchorPoint = Vector2.new(0.5, 0.5);
-            Position = UDim2.fromScale(0.5, 0.5);
-            Size = UDim2.fromOffset(21, 1);
-            BackgroundColor3 = Color3.new(1, 1, 1);
-            BorderSizePixel = 0;
-            Active = false;
-            ZIndex = 10000;
-            Parent = Cursor;
-        });
-        Library:Create('Frame', {
-            AnchorPoint = Vector2.new(0.5, 0.5);
-            Position = UDim2.fromScale(0.5, 0.5);
-            Size = UDim2.fromOffset(1, 21);
-            BackgroundColor3 = Color3.new(1, 1, 1);
-            BorderSizePixel = 0;
-            Active = false;
-            ZIndex = 10000;
-            Parent = Cursor;
-        });
-        Library.CustomCursor = Cursor;
+    local Visible = self.CustomCursorEnabled and not self.Unloaded and (self.CustomCursorAlways or self.MainVisible == true);
+    if Visible and not self.CustomCursor then
+        self.CustomCursor = self:Create('Frame', {Name = 'CustomCursor', BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(20, 20), Active = false, ZIndex = 10000, Parent = ScreenGui});
     end;
-    if Library.CustomCursor then
-        Library.CustomCursor.Visible = Visible == true;
-        if Visible then Library.CustomCursor.Position = UDim2.fromOffset(Mouse.X, Mouse.Y) end;
+    if self.CustomCursor then
+        if Visible then self:BuildCustomCursor(); self.CustomCursor.Position = UDim2.fromOffset(Mouse.X, Mouse.Y) end;
+        self.CustomCursor.Visible = Visible == true;
     end;
-    Library:SetMouseIconHidden('custom cursor', Visible == true);
-    if Visible and not Library.CustomCursorConnection then
-        Library.CustomCursorConnection = InputService.InputChanged:Connect(function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseMovement and Library.CustomCursor then
-                Library.CustomCursor.Position = UDim2.fromOffset(Mouse.X, Mouse.Y);
-            end;
+    self:SetMouseIconHidden('custom cursor', Visible == true);
+    if Visible and not self.CustomCursorConnection then
+        self.CustomCursorConnection = InputService.InputChanged:Connect(function(Input)
+            if Input.UserInputType == Enum.UserInputType.MouseMovement and self.CustomCursor then self.CustomCursor.Position = UDim2.fromOffset(Mouse.X, Mouse.Y) end;
         end);
-        Library:GiveSignal(Library.CustomCursorConnection);
-    elseif not Visible and Library.CustomCursorConnection then
-        Library.CustomCursorConnection:Disconnect();
-        local Index = table.find(Library.Signals, Library.CustomCursorConnection);
-        if Index then table.remove(Library.Signals, Index) end;
-        Library.CustomCursorConnection = nil;
+        self:GiveSignal(self.CustomCursorConnection);
+    elseif not Visible and self.CustomCursorConnection then
+        self.CustomCursorConnection:Disconnect();
+        local Index = table.find(self.Signals, self.CustomCursorConnection);
+        if Index then table.remove(self.Signals, Index) end;
+        self.CustomCursorConnection = nil;
     end;
 end;
 function Library:SetCustomCursor(Enabled)
-    Library.CustomCursorEnabled = Enabled == true;
-    Library:RefreshCustomCursor();
+    self.CustomCursorEnabled = Enabled == true;
+    self:RefreshCustomCursor();
+end;
+function Library:SetCustomCursorAlways(Enabled)
+    self.CustomCursorAlways = Enabled == true;
+    self:RefreshCustomCursor();
+end;
+function Library:SetCustomCursorStyle(Style)
+    if not table.find(self.CustomCursorStyles, Style) then Style = 'cross' end;
+    self.CustomCursorStyle = Style;
+    self:RefreshCustomCursor();
+end;
+function Library:SetCustomCursorSize(Size)
+    self.CustomCursorSize = math.clamp(tonumber(Size) or 20, 12, 36);
+    self:RefreshCustomCursor();
+end;
+function Library:SetCustomCursorColor(Color)
+    if typeof(Color) ~= 'Color3' then return end;
+    self.CustomCursorColor = Color;
+    self:RefreshCustomCursor();
 end;
 function Library:QueueKeybindLayout()
     if Library.KeybindLayoutPending or Library.Unloaded then return end;
@@ -7019,18 +7076,19 @@ function Library:CreateWindow(...)
         local leftScroll, rightScroll = columnScroll('LeftSettingsScroll'), columnScroll('RightSettingsScroll')
         local left = frame('Frame', {Name = 'LeftColumn', Parent = leftScroll, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, -4, 0, 0), BackgroundTransparency = 1, ZIndex = 4})
         local right = frame('Frame', {Name = 'RightColumn', Parent = rightScroll, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, -4, 0, 0), BackgroundTransparency = 1, ZIndex = 4})
-        local layouts = {frame('UIListLayout', {Parent = left, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder}), frame('UIListLayout', {Parent = right, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder})}
+        local layouts = {frame('UIListLayout', {Parent = left, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder}), frame('UIListLayout', {Parent = right, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder})}
         tab.TabFrame, tab.LeftSide, tab.RightSide, tab.Scroll = page, left, right, leftScroll
         tab.LeftScroll, tab.RightScroll = leftScroll, rightScroll
         local navButton, marker = makeNav(name, function() tab:ShowTab() end, tab.Sequence)
         tab.TabButton, tab.TextLabel, tab.Blocker = navButton, navButton:FindFirstChild('NavigationLabel'), marker
         function tab:Resize()
+            if Library:DeferStartupLayout(self) then return end
             local function height(column)
                 local total, count = 0, 0
                 for _, child in ipairs(column:GetChildren()) do
                     if child:IsA('GuiObject') and child.Visible then total = total + child.Size.Y.Offset; count = count + 1 end
                 end
-                return total + math.max(0, count - 1) * 10
+                return total + math.max(0, count - 1) * 8
             end
             local lh, rh = height(left), height(right)
             local stacked = content.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01) < 680
@@ -7089,6 +7147,7 @@ function Library:CreateWindow(...)
             section.ChromaBtn, section.ChromaBtnInner, section.ChromaBtnLabel = chroma, chroma, chroma
             setmetatable(section, BaseGroupbox)
             function section:Resize()
+                if Library:DeferStartupLayout(self) then return end
                 sectionLabel.Size = UDim2.fromOffset(math.max(0, math.min(naturalWidth + 12, holder.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01) - (chroma.Visible and 100 or 24))), 18)
                 local height = 0
                 for _, child in ipairs(container:GetChildren()) do if child:IsA('GuiObject') and child.Visible then height = height + child.Size.Y.Offset end end
