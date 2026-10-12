@@ -52,7 +52,7 @@ local Library = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 14;
+Library.PhowgRevision = 15;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -278,6 +278,8 @@ function Library:RegisterControl(index, control, owner, label, row)
     local workspaceRow = self.FormatWorkspaceControl and self:FormatWorkspaceControl(control, owner, label, row)
     row = workspaceRow or row
     self.ControlRegistry[index] = {Index = index, Control = control, Label = tostring(label or index):lower(), Group = group, Tab = tab, Category = category, Row = row or control.TextLabel or control.Label or control.Container, Settings = self:GetSettingsBox(owner and owner.Container)}
+    control.ControlIndex = index;
+    if self.SaveManager and self.SaveManager.ObserveControl then self.SaveManager:ObserveControl(index, control) end;
 end
 function Library:JumpToControl(index)
     local entry = self.ControlRegistry[index]
@@ -314,9 +316,10 @@ function Library:JumpToControl(index)
     end
     return true
 end
-function Library:AttemptSave()
+function Library:AttemptSave(index, control)
     if Library.SuppressSave then return end;
     Library.ConfigDirty = true;
+    if self.SaveManager and self.SaveManager.OnControlChanged then self.SaveManager:OnControlChanged(index, control) end;
 end;
 
 function Library:Create(Class, Properties)
@@ -462,6 +465,75 @@ function Library:CreateSelectionMarker(Holder)
     Library:AddToRegistry(Marker, {BackgroundColor3 = 'AccentColor';});
     return Marker;
 end;
+function Library:StopSliderDrag(save)
+    local drag = self.ActiveSliderDrag;
+    self.ActiveSliderDrag = nil;
+    if drag and save and drag.Changed then self:AttemptSave(drag.Control.ControlIndex, drag.Control) end;
+end;
+function Library:UpdateSliderDrag(input)
+    local drag = self.ActiveSliderDrag;
+    if not drag then return end;
+    if self.Unloaded or not self.MainVisible or not drag.Track.Parent then self:StopSliderDrag(false); return end;
+    if drag.Input.UserInputType == Enum.UserInputType.Touch and input ~= drag.Input then return end;
+    local x = input.Position and input.Position.X or Mouse.X;
+    local track = drag.Track;
+    local width = math.max(1, track.AbsoluteSize.X);
+    local value;
+    if drag.Precision then
+        value = drag.StartValue + (x - drag.StartX) / width * (drag.Control.Max - drag.Control.Min) * 0.1;
+        value = tonumber(string.format('%.' .. math.clamp(drag.Control.Rounding or 0, 0, 10) .. 'f', value));
+        value = math.clamp(value, drag.Control.Min, drag.Control.Max);
+    else
+        value = drag.Control:GetValueFromXOffset(math.clamp(x - track.AbsolutePosition.X, 0, width));
+    end;
+    if value ~= drag.Control.Value then
+        drag.Changed = true;
+        drag.Control:SetValue(value);
+    end;
+end;
+function Library:BindSliderInput(control, track)
+    control.Track = track;
+    local hit = self:Create('TextButton', {Name = 'SliderHitArea'; Parent = track.Parent; BackgroundTransparency = 1; Text = ''; AutoButtonColor = false; Active = true; Position = UDim2.fromOffset(0, 0); Size = UDim2.new(track.Size.X.Scale, track.Size.X.Offset, 1, 0); ZIndex = 11;});
+    control.HitArea = hit;
+    track:GetPropertyChangedSignal('Size'):Connect(function() hit.Size = UDim2.new(track.Size.X.Scale, track.Size.X.Offset, 1, 0) end);
+    hit.InputBegan:Connect(function(input)
+        if not self:IsClickInput(input) or self.Unloaded or self:MouseIsOverOpenedFrame(hit) then return end;
+        self:StopSliderDrag(true);
+        local focused = InputService:GetFocusedTextBox();
+        if focused then focused:ReleaseFocus() end;
+        local precision = InputService:IsKeyDown(Enum.KeyCode.LeftShift) or InputService:IsKeyDown(Enum.KeyCode.RightShift);
+        self.ActiveSliderDrag = {Control = control; Track = track; Input = input; StartX = input.Position and input.Position.X or Mouse.X; StartValue = control.Value; Precision = precision; Changed = false;};
+        self:UpdateSliderDrag(input);
+    end);
+    if self.SliderInputBound then return end;
+    self.SliderInputBound = true;
+    self:GiveSignal(InputService.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then self:UpdateSliderDrag(input) end;
+    end));
+    self:GiveSignal(InputService.InputEnded:Connect(function(input)
+        local drag = self.ActiveSliderDrag;
+        if drag and (input == drag.Input or input.UserInputType == Enum.UserInputType.MouseButton1 and drag.Input.UserInputType == Enum.UserInputType.MouseButton1) then self:StopSliderDrag(true) end;
+    end));
+    self:GiveSignal(InputService.InputBegan:Connect(function(input)
+        local slider = self.FocusedSlider;
+        local entry = slider and slider.NumericEntry;
+        if not entry or not entry:IsFocused() or self.Unloaded then return end;
+        local key, direction = input.KeyCode, nil;
+        if key == Enum.KeyCode.Up then direction = 1 elseif key == Enum.KeyCode.Down then direction = -1 end;
+        if key == Enum.KeyCode.Escape then entry.Text = tostring(slider.Value); entry:ReleaseFocus(); return end;
+        local value = tonumber(entry.Text) or slider.Value;
+        if direction then
+            local multiplier = InputService:IsKeyDown(Enum.KeyCode.LeftShift) or InputService:IsKeyDown(Enum.KeyCode.RightShift);
+            value = value + direction * (slider.Step or 10 ^ -(slider.Rounding or 0)) * (multiplier and 10 or 1);
+        elseif key == Enum.KeyCode.Home then value = slider.Min
+        elseif key == Enum.KeyCode.End then value = slider.Max
+        else return end;
+        slider:SetValue(value);
+        entry.Text = tostring(slider.Value);
+        self:AttemptSave(slider.ControlIndex, slider);
+    end));
+end;
+
 function Library:StyleSlider(Outer, Inner, Fill)
     Library:StyleControl(Outer, Inner, 4);
     Fill.BorderSizePixel = 0;
@@ -843,6 +915,7 @@ function Library:GiveSignal(Signal)
 end
 
 function Library:Unload()
+    Library:StopSliderDrag(false);
     Library.Unloaded = true;
     Library:HideTooltip();
     Library.CustomCursorEnabled = false;
@@ -1475,7 +1548,7 @@ do
             end;
 
             StopTouch();
-            Library:AttemptSave();
+            Library:AttemptSave(Idx, ColorPicker);
         end);
 
         UpdateSpeed();
@@ -1522,7 +1595,7 @@ do
         ChromaOuter.InputBegan:Connect(function(Input)
             if not Library:IsClickInput(Input) then return end
             Library:SetChromaEnabled(ColorPicker, not ColorPicker.RgbEnabled)
-            Library:AttemptSave();
+            Library:AttemptSave(Idx, ColorPicker);
         end);
 
         TransInner.InputBegan:Connect(function(Input)
@@ -1549,7 +1622,7 @@ do
                 end;
 
                 StopTouch();
-                Library:AttemptSave();
+                Library:AttemptSave(Idx, ColorPicker);
             end;
         end);
 
@@ -1905,7 +1978,7 @@ do
                 end;
 
                 StopTouch();
-                Library:AttemptSave();
+                Library:AttemptSave(Idx, ColorPicker);
             end;
         end);
 
@@ -1939,7 +2012,7 @@ do
                 end;
 
                 StopTouch();
-                Library:AttemptSave();
+                Library:AttemptSave(Idx, ColorPicker);
             end;
         end);
 
@@ -1989,7 +2062,7 @@ do
                     end;
 
                     StopTouch();
-                    Library:AttemptSave();
+                    Library:AttemptSave(Idx, ColorPicker);
                 end;
             end);
         end;
@@ -2195,7 +2268,7 @@ do
                 if Library:IsClickInput(Input) then
                     Library:ConsumeInput(Input);
                     ModeButton:Select();
-                    Library:AttemptSave();
+                    Library:AttemptSave(Idx, KeyPicker);
                 end;
             end);
 
@@ -2330,7 +2403,7 @@ do
                     Library:SafeCallback(KeyPicker.ChangedCallback, Input.KeyCode or Input.UserInputType)
                     Library:SafeCallback(KeyPicker.Changed, Input.KeyCode or Input.UserInputType)
 
-                    Library:AttemptSave();
+                    Library:AttemptSave(Idx, KeyPicker);
 
                     Event:Disconnect();
                 end);
@@ -2937,12 +3010,12 @@ do
                 if not enter and not Info.CommitOnBlur then return end
 
                 Textbox:SetValue(Box.Text);
-                Library:AttemptSave();
+                Library:AttemptSave(Idx, Textbox);
             end)
         else
             Box:GetPropertyChangedSignal('Text'):Connect(function()
                 Textbox:SetValue(Box.Text);
-                Library:AttemptSave();
+                Library:AttemptSave(Idx, Textbox);
             end);
         end
 
@@ -3156,7 +3229,7 @@ do
         local function flipSwitch(Input)
             if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame(ToggleRegion) then
                 Toggle:SetValue(not Toggle.Value)
-                Library:AttemptSave();
+                Library:AttemptSave(Idx, Toggle);
             end;
         end
         ToggleRegion.InputBegan:Connect(flipSwitch)
@@ -3226,6 +3299,7 @@ do
             Min = Info.Min;
             Max = Info.Max;
             Rounding = Info.Rounding;
+            Step = type(Info.Step) == 'number' and Info.Step > 0 and Info.Step or 10 ^ -math.clamp(Info.Rounding, 0, 10);
             Suffix = Info.Suffix or '';
             MaxSize = 232;
             Type = 'Slider';
@@ -3375,11 +3449,12 @@ do
         function Slider:SetValue(Str)
             local Num = tonumber(Str);
 
-            if (not Num) then
+            if not Num or Num ~= Num or math.abs(Num) == math.huge then
                 return;
             end;
 
             Num = math.clamp(Num, Slider.Min, Slider.Max);
+            Num = math.clamp(tonumber(string.format('%.' .. math.clamp(Slider.Rounding or 0, 0, 10) .. 'f', Num)), Slider.Min, Slider.Max);
 
             Slider.Value = Num;
             Slider:Display();
@@ -3388,33 +3463,7 @@ do
             Library:SafeCallback(Slider.Changed, Slider.Value);
         end;
 
-        SliderInner.InputBegan:Connect(function(Input)
-            if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame(SliderInner) then
-                local GetTouch, StopTouch = Library:TrackTouch(Input);
-
-                while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or GetTouch() ~= nil do
-                    local Active = GetTouch();
-                    local nMPos = Active and Active.Position.X or Mouse.X;
-                    local nX = math.clamp(nMPos - SliderInner.AbsolutePosition.X, 0, GetTrackWidth());
-
-                    local nValue = Slider:GetValueFromXOffset(nX);
-                    local OldValue = Slider.Value;
-                    Slider.Value = nValue;
-
-                    Slider:Display();
-
-                    if nValue ~= OldValue then
-                        Library:SafeCallback(Slider.Callback, Slider.Value);
-                        Library:SafeCallback(Slider.Changed, Slider.Value);
-                    end;
-
-                    RenderStepped:Wait();
-                end;
-
-                StopTouch();
-                Library:AttemptSave();
-            end;
-        end);
+        Library:BindSliderInput(Slider, SliderInner);
 
         function Slider:AddSlider(Idx, Info)
             if Library.WorkspaceEnabled then return Slider.Groupbox:AddSlider(Idx, Info) end;
@@ -3431,6 +3480,7 @@ do
                 Min = Info.Min;
                 Max = Info.Max;
                 Rounding = Info.Rounding;
+                Step = type(Info.Step) == 'number' and Info.Step > 0 and Info.Step or 10 ^ -math.clamp(Info.Rounding, 0, 10);
                 MaxSize = 116;
                 Type = 'Slider';
                 Callback = Info.Callback or function(Value) end;
@@ -3609,11 +3659,12 @@ do
             function Slider2:SetValue(Str)
                 local Num = tonumber(Str);
 
-                if (not Num) then
+                if not Num or Num ~= Num or math.abs(Num) == math.huge then
                     return;
                 end;
 
                 Num = math.clamp(Num, Slider2.Min, Slider2.Max);
+            Num = math.clamp(tonumber(string.format('%.' .. math.clamp(Slider2.Rounding or 0, 0, 10) .. 'f', Num)), Slider2.Min, Slider2.Max);
 
                 Slider2.Value = Num;
                 Slider2:Display();
@@ -3622,33 +3673,8 @@ do
                 Library:SafeCallback(Slider2.Changed, Slider2.Value);
             end;
 
-            S2Inner.InputBegan:Connect(function(Input)
-                if Library:IsClickInput(Input) and not Library:MouseIsOverOpenedFrame(S2Inner) then
-                    local GetTouch, StopTouch = Library:TrackTouch(Input);
-
-                    while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or GetTouch() ~= nil do
-                        local Active = GetTouch();
-                        local nMPos = Active and Active.Position.X or Mouse.X;
-                        local nX = math.clamp(nMPos - S2Inner.AbsolutePosition.X, 0, GetTrackWidth2());
-
-                        local nValue = Slider2:GetValueFromXOffset(nX);
-                        local OldValue = Slider2.Value;
-                        Slider2.Value = nValue;
-
-                        Slider2:Display();
-
-                        if nValue ~= OldValue then
-                            Library:SafeCallback(Slider2.Callback, Slider2.Value);
-                            Library:SafeCallback(Slider2.Changed, Slider2.Value);
-                        end;
-
-                        RenderStepped:Wait();
-                    end;
-
-                    StopTouch();
-                    Library:AttemptSave();
-                end;
-            end);
+            Slider2.Outer = S2Outer;
+            Library:BindSliderInput(Slider2, S2Inner);
 
             Slider2.Outer = S2Outer;
             Slider2.Container = PairContainer;
@@ -3963,7 +3989,7 @@ do
             CustomBox:GetPropertyChangedSignal('Text'):Connect(function()
                 if Info.Multi and Dropdown.Value[CustomKey] or (not Info.Multi) and Dropdown.Value == CustomKey then
                     Library:SafeCallback(Dropdown.Callback, CustomBox.Text ~= '' and CustomBox.Text or CustomKey);
-                    Library:AttemptSave();
+                    Library:AttemptSave(Idx, Dropdown);
                 end;
             end);
         end;
@@ -4120,7 +4146,7 @@ do
                             Library:SafeCallback(Dropdown.Callback, Dropdown.Value);
                             Library:SafeCallback(Dropdown.Changed, Dropdown.Value);
 
-                            Library:AttemptSave();
+                            Library:AttemptSave(Idx, Dropdown);
                         end;
                 end);
 
@@ -4529,7 +4555,7 @@ do
             CustomBox:GetPropertyChangedSignal('Text'):Connect(function()
                 if Info.Multi and Dropdown.Value[CustomKey] or (not Info.Multi) and Dropdown.Value == CustomKey then
                     Library:SafeCallback(Dropdown.Callback, CustomBox.Text ~= '' and CustomBox.Text or CustomKey);
-                    Library:AttemptSave();
+                    Library:AttemptSave(Idx, Dropdown);
                 end;
             end);
         end;
@@ -4682,7 +4708,7 @@ do
                         Library:SafeCallback(Dropdown.Callback, Dropdown.Value);
                         Library:SafeCallback(Dropdown.Changed, Dropdown.Value);
 
-                        Library:AttemptSave();
+                        Library:AttemptSave(Idx, Dropdown);
                     end;
 
                     Button.Activated:Connect(function() Table:Activate() end);
@@ -6172,7 +6198,16 @@ function Library:BuildCustomPanels(Window, TabContainer)
         end)
         if not ok then self:Notify('Teleport failed: ' .. tostring(problem), 4) end
     end
-    local playersPanel = panel('Players')
+    local playersPanel, serversPanel, executor = panel('Players'), panel('Servers'), panel('Executor')
+    local builders, built = {}, {}
+    Window.UtilityBuilt = built
+    local state = {Rows = {}, Seen = {}, Token = 0, Requesting = false, Cursor = nil, Loaded = false}
+    Window.ServerBrowser = state
+    for _, player in ipairs(Players:GetPlayers()) do
+        self.PlayerJoinTimes[player] = self.PlayerJoinTimes[player] or tick()
+        self.PlayerJoinTimes[player.UserId] = self.PlayerJoinTimes[player.UserId] or self.PlayerJoinTimes[player]
+    end
+    builders.Players = function()
     local search = input(playersPanel, 'PlayerSearch', 'Search name or display name...', UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 30))
     local count = text(playersPanel, 'PlayerCount', 'Players', UDim2.fromOffset(0, 36), UDim2.new(1, 0, 0, 22))
     local playerList, resizePlayers = list(playersPanel, 'PlayerList', 64, 0, 4)
@@ -6242,10 +6277,9 @@ function Library:BuildCustomPanels(Window, TabContainer)
         end
         queuePlayers()
     end))
-    local serversPanel = panel('Servers')
+    end
+    builders.Servers = function()
     local serverCount = text(serversPanel, 'ServerCount', 'Public server browser', UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 24))
-    local state = {Rows = {}, Seen = {}, Token = 0, Requesting = false, Cursor = nil, Loaded = false}
-    Window.ServerBrowser = state
     local serverList, resizeServers = list(serversPanel, 'ServerList', 118, 0, 4)
     local status = text(serversPanel, 'ScanStatus', 'Select Scan to load public servers', UDim2.fromOffset(0, 90), UDim2.new(1, -98, 0, 22))
     local scan, more, render, start
@@ -6350,16 +6384,22 @@ function Library:BuildCustomPanels(Window, TabContainer)
         render()
         if not state.Loaded and not state.Requesting then start(false) end
     end
-    local executor = panel('Executor')
+    end
+    builders.Executor = function()
     local info, resizeInfo = list(executor, 'ExecutorInfo', 0, 0, 5)
-    local gameName = game.Name
-    pcall(function() gameName = game:GetService('MarketplaceService'):GetProductInfo(game.PlaceId).Name end)
+    local gameName = self.GameNameCache or game.Name
     local function infoRow(name, value)
         local label = text(info, name, value, UDim2.fromOffset(0, 0), UDim2.new(1, -6, 0, 26))
         label.TextWrapped = true
         return label
     end
-    infoRow('Game', 'Game: ' .. gameName)
+    local gameLabel = infoRow('Game', 'Game: ' .. gameName)
+    if not self.GameNameCache then
+        task.spawn(function()
+            local ok, result = pcall(function() return game:GetService('MarketplaceService'):GetProductInfo(game.PlaceId).Name end)
+            if ok and not self.Unloaded and gameLabel.Parent then self.GameNameCache = tostring(result); gameLabel.Text = 'Game: ' .. self.GameNameCache end
+        end)
+    end
     infoRow('PlaceId', 'Place ID: ' .. game.PlaceId)
     local job = infoRow('JobId', 'Job ID: ' .. tostring(game.JobId)); job.Size = UDim2.new(1, -6, 0, 42)
     local playerCount = infoRow('PlayerCount', 'Players: ...')
@@ -6391,15 +6431,32 @@ function Library:BuildCustomPanels(Window, TabContainer)
         end)
     end)
     executor.Destroying:Connect(function() if statsConnection then statsConnection:Disconnect(); statsConnection = nil end end)
+    end
+    function Window.EnsureCustomPanel(name)
+        if self.Unloaded then return false end
+        if built[name] then return true end
+        local build = builders[name]
+        if not build then return false end
+        built[name] = true
+        build()
+        return true
+    end
+    Window.ScanServers = function(append) Window.EnsureCustomPanel('Servers'); return Window.ScanServers(append) end
+    Window.RenderServers = function() Window.EnsureCustomPanel('Servers'); return Window.RenderServers() end
     function Window.HideCustomPanels()
         for _, object in pairs(Window.CustomPanels) do object.Visible = false end
         Window.CustomPanel, Library.OpenToolbarPanel = nil, nil
     end
     self.ToolbarPanels = Window.CustomPanels
-    function self:RenderServerList() render() end
-    function self:UpdateSortButtons() render() end
-    function self.RefreshToolbarPanel(name) local callback = Window.RefreshCustom[name]; if callback then callback() end end
+    function self:RenderServerList() Window.EnsureCustomPanel('Servers'); Window.RenderServers() end
+    function self:UpdateSortButtons() Window.EnsureCustomPanel('Servers'); Window.RenderServers() end
+    function self.RefreshToolbarPanel(name) Window.EnsureCustomPanel(name); local callback = Window.RefreshCustom[name]; if callback then callback() end end
 end
+
+function Library:BuildUtilityTab(name)
+    local window = self.WorkspaceWindow;
+    return window and window.EnsureCustomPanel and window.EnsureCustomPanel(name) or false;
+end;
 
 function Library:GetDropdownLayout(Position, ControlSize, RequestedHeight, Viewport)
     local Width = math.min(math.max(0, ControlSize.X), math.max(0, Viewport.X - 16));
@@ -6467,19 +6524,26 @@ function Library:FormatClassicControl(control, owner, text, anchor)
             if stroke then stroke.Transparency = 1 end
         end
         if display then display.Visible = false end
-        local entry = self:Create('TextBox', {Name = 'SliderValue', Parent = field, Position = UDim2.new(1, -52, 0, 0), Size = UDim2.new(0, 52, 1, 0), Text = tostring(control.Value) .. control.Suffix, TextXAlignment = Enum.TextXAlignment.Right, ClearTextOnFocus = false, Font = self.Font, TextSize = 14, TextColor3 = self.FontColor, BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 12})
-        self:AddToRegistry(entry, {TextColor3 = 'FontColor'})
+        local entry = self:Create('TextBox', {Name = 'SliderValue', Parent = field, Position = UDim2.new(1, -52, 0, 0), Size = UDim2.new(0, 52, 1, 0), Text = tostring(control.Value) .. control.Suffix, TextXAlignment = Enum.TextXAlignment.Right, ClearTextOnFocus = false, Font = self.Font, TextSize = 14, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 12})
+        self:AddToRegistry(entry, {TextColor3 = 'FontColor', BackgroundColor3 = 'MainColor'})
+        local editorStroke = self:Create('UIStroke', {Name = 'NumericFocus', Parent = entry, Color = self.AccentColor, Thickness = 1, Transparency = 1})
+        self:AddToRegistry(editorStroke, {Color = 'AccentColor'})
+        self:Create('UICorner', {Parent = entry, CornerRadius = UDim.new(0, 2)})
         local original = control.Display
         function control:Display()
             original(self)
             if not entry:IsFocused() then entry.Text = tostring(self.Value) .. self.Suffix end
         end
-        entry.Focused:Connect(function() entry.Text = tostring(control.Value) end)
+        entry.Focused:Connect(function()
+            Library.FocusedSlider = control; entry.Text = tostring(control.Value); entry.BackgroundTransparency = 0.25; editorStroke.Transparency = 0
+        end)
         entry.FocusLost:Connect(function()
+            if Library.FocusedSlider == control then Library.FocusedSlider = nil end
+            entry.BackgroundTransparency = 1; editorStroke.Transparency = 1
             local value = tonumber(entry.Text)
             if value and value == value and math.abs(value) ~= math.huge then
                 value = tonumber(string.format('%.' .. math.clamp(control.Rounding or 0, 0, 10) .. 'f', value))
-                control:SetValue(value); Library:AttemptSave()
+                if value ~= control.Value then control:SetValue(value); Library:AttemptSave(control.ControlIndex, control) end
             end
             entry.Text = tostring(control.Value) .. control.Suffix
         end)
@@ -6863,7 +6927,7 @@ function Library:CreateWindow(...)
         if kind == 'Protection' then if self.ProtectionTab then self.ProtectionTab:ShowTab() end; return end
         if self.CustomPanel == kind then self.HideCustomPanels(); if self.LastTab then self.LastTab:ShowTab() end; return end
         local panel = self.CustomPanels[kind]
-        if not panel then return end
+        if not panel or not Library:BuildUtilityTab(kind) then return end
         for _, tab in pairs(self.Tabs) do tab:HideTab() end
         self.HideCustomPanels()
         panel.Visible, self.CustomPanel, Library.OpenToolbarPanel = true, kind, kind
@@ -6935,7 +6999,8 @@ function Library:CreateWindow(...)
         label(picker, utf8.char(9662), UDim2.new(1, -20, 0, 0), UDim2.fromOffset(16, 28), 12)
         local popup = frame('CanvasGroup', {Name = 'ConfigPopup', Parent = ScreenGui, PopupAnchor = picker, BackgroundColor3 = Library.MainColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, Size = UDim2.fromOffset(220, 0), Visible = false, GroupTransparency = 0, ZIndex = 30}, {BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor'})
         Library:StyleControl(popup, popup, 1)
-        local list = frame('ScrollingFrame', {Parent = popup, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = Library.AccentColor, CanvasSize = UDim2.fromOffset(0, 0), ZIndex = 31}, {ScrollBarImageColor3 = 'AccentColor'})
+        local configSearch = frame('TextBox', {Name = 'ConfigSearch', Parent = popup, Position = UDim2.fromOffset(8, 3), Size = UDim2.new(1, -16, 0, 28), Text = '', PlaceholderText = 'Search configs...', ClearTextOnFocus = false, Font = Library.Font, TextSize = 13, TextColor3 = Library.FontColor, PlaceholderColor3 = Library.FontColor, TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 33}, {TextColor3 = 'FontColor', PlaceholderColor3 = 'FontColor'})
+        local list = frame('ScrollingFrame', {Parent = popup, Position = UDim2.fromOffset(0, 32), Size = UDim2.new(1, 0, 1, -32), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = Library.AccentColor, CanvasSize = UDim2.fromOffset(0, 0), ZIndex = 31}, {ScrollBarImageColor3 = 'AccentColor'})
         local function closePopup() popup.Visible = false; Library.OpenedFrames[popup] = nil end
         Library.PopupClosers[popup] = closePopup
         local popupHeight = 24
@@ -6943,32 +7008,45 @@ function Library:CreateWindow(...)
             popup.Position, popup.Size = Library:GetDropdownLayout(picker.AbsolutePosition - ScreenGui.AbsolutePosition, picker.AbsoluteSize, popupHeight * math.max(Library.UIScale or 1, 0.01), ScreenGui.AbsoluteSize)
         end
         Library:BindPopupPosition(picker, popup, positionPopup)
-        local function refreshCaption() selected.Text = tostring(option.Value or 'Select config') end
+        local function refreshCaption() selected.Text = tostring(option.Value or 'Select config') .. (self.ConfigDirty and ' *' or '') end
         local setValue = option.SetValue
         option.SetValue = function(item, ...)
             local result = setValue(item, ...)
             refreshCaption()
             return result
         end
-        picker.Activated:Connect(function()
-            if popup.Visible then closePopup(); return end
-            Library:ClosePopups(popup)
-            local values = manager:RefreshConfigList()
-            option:SetValues(values)
+        local function buildConfigList()
+            local query = configSearch.Text:lower():match('^%s*(.-)%s*$')
+            local values
+            if manager.GetFilteredConfigList then values = manager:GetFilteredConfigList(query)
+            else
+                values = {}
+                for _, name in ipairs(manager:RefreshConfigList()) do if query == '' or name:lower():find(query, 1, true) then values[#values + 1] = name end end
+            end
             for _, child in ipairs(list:GetChildren()) do child:Destroy() end
             local scale = math.max(Library.UIScale or 1, 0.01)
+            configSearch.Position, configSearch.Size, configSearch.TextSize = UDim2.fromOffset(8 * scale, 3 * scale), UDim2.new(1, -16 * scale, 0, 28 * scale), 13 * scale
+            list.Position, list.Size = UDim2.fromOffset(0, 32 * scale), UDim2.new(1, 0, 1, -32 * scale)
             for i, name in ipairs(values) do
                 local row = frame('TextButton', {Name = name, Parent = list, Text = name, TextXAlignment = Enum.TextXAlignment.Left, Font = Library.Font, TextSize = 14 * scale, TextColor3 = option.Value == name and Library.AccentColor or Library.FontColor, BackgroundColor3 = Library.MainColor, BorderSizePixel = 0, AutoButtonColor = false, Position = UDim2.fromOffset(0, (i - 1) * 24 * scale), Size = UDim2.new(1, -4, 0, 24 * scale), ZIndex = 32}, {BackgroundColor3 = 'MainColor', TextColor3 = option.Value == name and 'AccentColor' or 'FontColor'})
                 frame('UIPadding', {Parent = row, PaddingLeft = UDim.new(0, 8)})
                 row.Activated:Connect(function() option:SetValue(name); closePopup() end)
             end
             if #values == 0 then
-                local empty = label(list, 'No saved configs', UDim2.fromOffset(8, 0), UDim2.fromScale(1, 1), 14)
+                local empty = label(list, query == '' and 'No saved configs' or 'No matching configs', UDim2.fromOffset(8 * scale, 0), UDim2.fromScale(1, 1), 13 * scale)
                 empty.ZIndex = 32
             end
-            popupHeight = math.max(24, math.min(#values, 8) * 24)
+            popupHeight = 32 + math.max(24, math.min(#values, 8) * 24)
             list.CanvasSize = UDim2.fromOffset(0, #values * 24 * scale)
             positionPopup()
+        end
+        configSearch:GetPropertyChangedSignal('Text'):Connect(function() if popup.Visible then buildConfigList() end end)
+        picker.Activated:Connect(function()
+            if popup.Visible then closePopup(); return end
+            Library:ClosePopups(popup)
+            option:SetValues(manager:RefreshConfigList())
+            configSearch.Text = ''
+            buildConfigList()
             popup.Visible, Library.OpenedFrames[popup] = true, true
             popup.GroupTransparency = Library.ReducedMotion and 0 or 0.2
             Library:AnimateControl(popup, {GroupTransparency = 0})
@@ -6995,7 +7073,15 @@ function Library:CreateWindow(...)
         load.Position = UDim2.new(1, -192, 0, 10)
         local settings = button(footer, 'Config', UDim2.fromOffset(72, 28), function() if window.UITab then window.UITab:ShowTab() end end)
         settings.Position = UDim2.new(1, -112, 0, 10)
-        self.ConfigPicker, self.ConfigCaption, self.ConfigPopup = picker, caption, popup
+        self.ConfigPicker, self.ConfigCaption, self.ConfigPopup, self.ConfigSearch = picker, caption, popup, configSearch
+        if manager.RegisterStatusListener then
+            local disconnect = manager:RegisterStatusListener(function(text, dirty)
+                self.ConfigStatusText, self.ConfigDirty = text, dirty
+                caption.Text = dirty and 'Unsaved config' or 'Current config'
+                selected.Text = tostring(option.Value or 'Select config') .. (dirty and ' *' or '')
+            end)
+            if type(disconnect) == 'function' then popup.Destroying:Connect(disconnect) end
+        end
         refreshCaption()
         if self.RefreshTabLayout then self.RefreshTabLayout() end
     end
@@ -7024,21 +7110,28 @@ function Library:CreateWindow(...)
         local matches = {}
         for index, entry in pairs(Library.ControlRegistry) do
             local text = tostring(entry.Tab and entry.Tab.Name or '') .. ' / ' .. tostring(entry.Group and entry.Group.Name or '') .. ' / ' .. entry.Label
-            if entry.Searchable ~= false and (text:lower():find(query, 1, true) or tostring(index):lower():find(query, 1, true)) then matches[#matches + 1] = {Index = index, Text = text} end
+            if entry.Searchable ~= false and (text:lower():find(query, 1, true) or tostring(index):lower():find(query, 1, true)) then matches[#matches + 1] = {Index = index, Text = text, Label = entry.Label, Path = tostring(entry.Tab and entry.Tab.Name or 'other') .. ' / ' .. tostring(entry.Group and entry.Group.Name or 'settings')} end
         end
         table.sort(matches, function(a, b) return a.Text == b.Text and tostring(a.Index) < tostring(b.Index) or a.Text < b.Text end)
         for i = 1, math.min(#matches, 14) do
             local entry = matches[i]
-            local hit = button(results, entry.Text, UDim2.new(1, -6, 0, 36), function()
+            local hit = button(results, '', UDim2.new(1, -6, 0, 42), function()
                 search.Text = ''; search:ReleaseFocus(); results.Visible = false
                 Library:JumpToControl(entry.Index)
             end)
-            hit.LayoutOrder, hit.TextXAlignment, hit.TextTruncate = i, Enum.TextXAlignment.Left, Enum.TextTruncate.AtEnd
+            hit.Name, hit.ZIndex, hit.LayoutOrder, hit.TextXAlignment, hit.TextTruncate = tostring(entry.Index), 301, i, Enum.TextXAlignment.Left, Enum.TextTruncate.AtEnd
+            local settingName = label(hit, entry.Label, UDim2.fromOffset(10, 3), UDim2.new(1, -20, 0, 20), 14)
+            settingName.Name, settingName.ZIndex, settingName.TextTransparency = 'SettingName', 302, 0
+            local path = label(hit, entry.Path, UDim2.fromOffset(10, 24), UDim2.new(1, -20, 0, 15), 11)
+            path.Name, path.ZIndex, path.TextTransparency = 'SettingPath', 302, 0.25
+            Library:OnHighlight(hit, hit, {BackgroundColor3 = 'BackgroundColor'}, {BackgroundColor3 = 'MainColor'})
             frame('UIPadding', {Parent = hit, PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10)})
             Library:AddToolTip(entry.Text, hit)
         end
-        if #matches == 0 then label(results, 'No matching settings', UDim2.fromOffset(10, 0), UDim2.new(1, -20, 0, 36), 13) end
-        results.CanvasSize = UDim2.fromOffset(0, math.max(36, math.min(#matches, 14) * 38))
+        if #matches == 0 then
+            local empty = label(results, 'No matching settings', UDim2.fromOffset(10, 0), UDim2.new(1, -20, 0, 36), 13); empty.ZIndex = 302
+        end
+        results.CanvasSize = UDim2.fromOffset(0, math.max(36, math.min(#matches, 14) * 44))
         Library:ClosePopups(results)
         results.Visible = true
         positionResults()
@@ -7331,6 +7424,7 @@ function Library:CreateWindow(...)
         self:HideTooltip()
         toggled, toggleRevision = not toggled, toggleRevision + 1
         local revision = toggleRevision
+        if not toggled then self:StopSliderDrag(true) end
         self.MainVisible, modal.Modal = toggled, toggled
         drag, resize = nil, nil
         self:ClosePopups()
@@ -7376,7 +7470,10 @@ local function OnPlayerChange()
     end);
 end;
 
-Library:GiveSignal(Players.PlayerAdded:Connect(OnPlayerChange));
+Library:GiveSignal(Players.PlayerAdded:Connect(function(player)
+    Library.PlayerJoinTimes[player], Library.PlayerJoinTimes[player.UserId] = tick(), tick();
+    OnPlayerChange();
+end));
 Library:GiveSignal(Players.PlayerRemoving:Connect(OnPlayerChange));
 
 getgenv().Library = Library
