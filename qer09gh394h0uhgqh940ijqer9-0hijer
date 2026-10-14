@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 18;
+Library.PhowgRevision = 19;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -923,6 +923,8 @@ end
 
 function Library:Unload()
     Library:StopSliderDrag(false);
+    Library:ClosePlayerInspector(true);
+    Library:StopPlayerView();
     Library.Unloaded = true;
     Library:HideTooltip();
     Library.CustomCursorEnabled = false;
@@ -5057,6 +5059,7 @@ function Library:SetUIScale(Scale)
     for _, S in next, Library.ScaleObjects do
         S.Scale = Scale;
     end;
+    if Library.PlayerInspector and Library.PlayerInspector.Resize then Library.PlayerInspector.Resize() end;
 end;
 
 function Library:ApplyScaleTo(Gui)
@@ -6128,57 +6131,270 @@ function Library:UnwhitelistCrew(player)
         Library:Notify("unwhitelisted crew " .. tostring(Library:GetCrewGroupName(cid)), 2)
     end
 end
-function Library:ShowPlayerContextMenu(target, position)
+function Library:StopPlayerView()
+    for _, connection in ipairs(self.PlayerViewConnections or {}) do connection:Disconnect() end
+    self.PlayerViewConnections = nil
+    self.Spectating = nil
+    local camera = workspace.CurrentCamera
+    local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass('Humanoid')
+    if camera and humanoid then camera.CameraSubject = humanoid end
+end
+function Library:StartPlayerView(target)
+    local humanoid = target.Character and target.Character:FindFirstChildOfClass('Humanoid')
+    if not humanoid or not workspace.CurrentCamera then self:Notify('Player has no character to view', 2); return end
+    self:StopPlayerView()
+    self.Spectating = target
+    workspace.CurrentCamera.CameraSubject = humanoid
+    local elapsed = 0
+    self.PlayerViewConnections = {
+        RunService.Heartbeat:Connect(function(delta)
+            elapsed = elapsed + delta
+            if elapsed < 0.25 then return end
+            elapsed = 0
+            if self.Unloaded or target.Parent ~= Players then self:StopPlayerView(); return end
+            local subject = target.Character and target.Character:FindFirstChildOfClass('Humanoid')
+            local camera = workspace.CurrentCamera
+            if camera and subject and camera.CameraSubject ~= subject then camera.CameraSubject = subject end
+        end),
+        Players.PlayerRemoving:Connect(function(player) if player == target then self:StopPlayerView() end end),
+    }
+end
+function Library:ClosePlayerInspector(immediate)
+    local state = self.PlayerInspector
+    if not state or state.Closing then return end
+    state.Closing = true
+    if state.Tween then state.Tween:Cancel() end
+    if immediate or self.ReducedMotion then state.Frame:Destroy(); return end
+    state.Tween = TweenService:Create(state.Frame, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {Position = UDim2.new(1, state.Frame.AbsoluteSize.X + 24, 0, 16)})
+    state.Tween:Play()
+    task.delay(0.23, function() if state.Frame.Parent then state.Frame:Destroy() end end)
+end
+function Library:GetPlayerInspectorProtection(player)
+    self.PlayerProtectionCache = self.PlayerProtectionCache or setmetatable({}, {__mode = 'k'})
+    local entry = self.PlayerProtectionCache[player]
+    local pd = self.PhongData
+    local pf = getgenv and getgenv().PhowgFunc
+    if not pd or not pd.Shield or not pf or not pf.LoadProtectionGroups then return 'Protection unavailable' end
+    if not entry then
+        entry = {Record = {Memberships = {}, Roles = {}}, RetryAt = 0, Loading = false}
+        self.PlayerProtectionCache[player] = entry
+    end
+    local record = pd.ShieldChecks and pd.ShieldChecks[player] or entry.Record
+    if not record.GroupsLoaded and not entry.Loading and tick() >= entry.RetryAt then
+        entry.Loading = true
+        task.spawn(function()
+            local ok, loaded = pcall(pf.LoadProtectionGroups, player, record)
+            entry.Loading, entry.RetryAt = false, tick() + 10
+            entry.Failed = not ok or not loaded
+        end)
+    end
+    local flags, seen = {}, {}
+    local function add(value) if not seen[value] then seen[value] = true; flags[#flags + 1] = value end end
+    if pd.Shield.MarkedIds and pd.Shield.MarkedIds[player.UserId] then add('Marked reporter') end
+    for id, group in pairs(pd.Shield.KickGroups or {}) do
+        if record.Memberships[tonumber(id)] then add(tostring(type(group) == 'table' and group.Name or id)) end
+    end
+    for id, group in pairs(pd.Shield.ModGroups or {}) do
+        if type(group) == 'table' and record.Memberships[tonumber(id)] then
+            local role = record.Roles[tonumber(id)]
+            if group.Kick or type(group.Forbidden) == 'table' and table.find(group.Forbidden, role) then
+                add(tostring(group.Name or id) .. (role and ' / ' .. role or ''))
+            end
+        end
+    end
+    if #flags > 0 then return table.concat(flags, '\n') end
+    return record.GroupsLoaded and 'No protection flags' or entry.Failed and 'Group check unavailable' or 'Checking staff roles...'
+end
+function Library:ShowPlayerContextMenu(target, _position)
+    if self.Unloaded or not target or target.Parent ~= Players then return end
     self:ClosePopups()
-    if self.PlayerContextMenu then self.PlayerContextMenu:Destroy() end
-    local menu = self:Create('Frame', {Name = 'PlayerContext', Parent = ScreenGui, BackgroundColor3 = self.BackgroundColor, BorderColor3 = self.OutlineColor, BorderSizePixel = 0, Size = UDim2.fromOffset(208, 0), ZIndex = 90})
-    self:AddToRegistry(menu, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
-    self:StyleControl(menu, menu, 1)
-    self:ApplyScaleTo(menu)
-    local connection
-    local function close() if menu.Parent then menu:Destroy() end end
-    menu.Destroying:Connect(function()
-        if connection then connection:Disconnect(); connection = nil end
-        if self.PlayerContextMenu == menu then self.PlayerContextMenu = nil end
-        self.OpenedFrames[menu] = nil
-        if self.PopupClosers then self.PopupClosers[menu] = nil end
-    end)
-    local title = self:CreateLabel({Parent = menu, Text = self:PlayerDisplayName(target), TextSize = 12, TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Left, Position = UDim2.fromOffset(8, 4), Size = UDim2.new(1, -16, 0, 20), ZIndex = 92})
-    title.TextTransparency = 0.3
-    local count = 0
-    local function action(name, callback)
-        count = count + 1
-        local button = self:Create('TextButton', {Name = name, Parent = menu, Text = name, Font = self.Font, TextSize = 12, TextColor3 = self.FontColor, TextXAlignment = Enum.TextXAlignment.Left, BackgroundColor3 = self.MainColor, BorderColor3 = self.OutlineColor, BorderSizePixel = 0, AutoButtonColor = false, Position = UDim2.fromOffset(4, 26 + (count - 1) * 28), Size = UDim2.new(1, -8, 0, 26), ZIndex = 92})
-        self:Create('UIPadding', {Parent = button, PaddingLeft = UDim.new(0, 7)})
-        self:AddToRegistry(button, {BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor', TextColor3 = 'FontColor'})
-        self:StyleControl(button, button, 1)
-        button.Activated:Connect(function() close(); self:SafeCallback(callback) end)
+    self:ClosePlayerInspector(true)
+    local state: {[string]: any} = {Target = target, Connections = {}, Buttons = {}, InventorySignature = '', Closing = false}
+    local scale = math.max(self.UIScale or 1, 0.01)
+    local width = math.min(352, math.max(220, (ScreenGui.AbsoluteSize.X - 32) / scale))
+    local height = math.max(160, (ScreenGui.AbsoluteSize.Y - 32) / scale)
+    local frame = self:Create('Frame', {Name = 'PlayerInspector', Parent = ScreenGui, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, width * scale + 24, 0, 16), Size = UDim2.fromOffset(width, height), BackgroundColor3 = self.BackgroundColor, BorderSizePixel = 0, ZIndex = 310, Active = true})
+    self:AddToRegistry(frame, {BackgroundColor3 = 'BackgroundColor'})
+    self:StyleControl(frame, frame, 1)
+    self:ApplyScaleTo(frame)
+    state.Frame, self.PlayerInspector = frame, state
+    local function connect(signal, callback)
+        local connection = signal:Connect(callback)
+        state.Connections[#state.Connections + 1] = connection
+        return connection
     end
-    action('Teleport', function() self:TeleportToPlayer(target) end)
-    action('Copy username', function() pcall(setclipboard, target.Name); self:Notify('Copied @' .. target.Name, 2) end)
-    action('Copy display name', function() pcall(setclipboard, target.DisplayName); self:Notify('Copied ' .. target.DisplayName, 2) end)
-    local whitelisted = self:IsFullyWhitelisted(target)
-    local crew = self:GetCrewName(target)
-    if not whitelisted and crew and self.PhongData and self.PhongData.WhitelistedCrews then whitelisted = self.PhongData.WhitelistedCrews[tostring(crew)] == true end
-    if whitelisted then
-        action('Unwhitelist player', function() self:UnwhitelistFully(target) end)
-        action('Unwhitelist crew', function() self:UnwhitelistCrew(target) end)
+    connect(frame.Destroying, function()
+        if state.Tween then state.Tween:Cancel() end
+        for _, connection in ipairs(state.Connections) do connection:Disconnect() end
+        if self.PlayerInspector == state then self.PlayerInspector = nil end
+        for i = #self.ScaleObjects, 1, -1 do if self.ScaleObjects[i].Parent == frame then table.remove(self.ScaleObjects, i) end end
+    end)
+    local strip = self:Create('Frame', {Parent = frame, BackgroundColor3 = self.AccentColor, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 2), ZIndex = 311})
+    self:AddToRegistry(strip, {BackgroundColor3 = 'AccentColor'})
+    local function label(parent, value, y, h, size)
+        return self:CreateLabel({Parent = parent, Text = value, TextSize = size or 12, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Position = UDim2.fromOffset(14, y), Size = UDim2.new(1, -28, 0, h), ZIndex = 313})
+    end
+    label(frame, 'PLAYER PROFILE', 12, 24, 11).TextTransparency = 0.35
+    local close = self:Create('TextButton', {Parent = frame, Text = utf8.char(215), Font = self.Font, TextSize = 22, TextColor3 = self.FontColor, BackgroundTransparency = 1, Position = UDim2.new(1, -42, 0, 8), Size = UDim2.fromOffset(32, 30), ZIndex = 314})
+    self:AddToRegistry(close, {TextColor3 = 'FontColor'})
+    connect(close.Activated, function() self:ClosePlayerInspector() end)
+    local avatar = self:Create('ImageLabel', {Parent = frame, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, Position = UDim2.fromOffset(14, 46), Size = UDim2.fromOffset(62, 62), ZIndex = 312})
+    self:AddToRegistry(avatar, {BackgroundColor3 = 'MainColor'})
+    self:FetchThumbnail(target.UserId, avatar)
+    local title = label(frame, self:PlayerDisplayName(target), 49, 24, 16)
+    title.Position, title.Size = UDim2.fromOffset(88, 49), UDim2.new(1, -102, 0, 24)
+    local username = label(frame, '@' .. target.Name, 75, 20, 12)
+    username.Position, username.Size, username.TextTransparency = UDim2.fromOffset(88, 75), UDim2.new(1, -102, 0, 20), 0.35
+    local body = self:Create('ScrollingFrame', {Parent = frame, Position = UDim2.fromOffset(0, 122), Size = UDim2.new(1, 0, 1, -136), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = self.AccentColor, CanvasSize = UDim2.fromOffset(0, 760), ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 312})
+    self:AddToRegistry(body, {ScrollBarImageColor3 = 'AccentColor'})
+    local country = label(body, '', 0, 22)
+    local device = label(body, '', 24, 20)
+    local accuracy = label(body, '', 49, 40)
+    accuracy.TextWrapped, accuracy.TextTruncate = true, Enum.TextTruncate.None
+    local crew = label(body, '', 94, 36)
+    crew.TextWrapped, crew.TextTruncate = true, Enum.TextTruncate.None
+    local protection = label(body, '', 136, 64)
+    protection.TextWrapped, protection.TextTruncate = true, Enum.TextTruncate.None
+    local detection = label(body, '', 202, 22)
+    local columns = {[238] = {238, 0}, [272] = {238, 1}, [314] = {288, 0}, [348] = {288, 1}, [382] = {322, 0}, [416] = {322, 1}, [450] = {356, 0}, [484] = {356, 1}, [518] = {390, 0}, [560] = {424, 0}, [594] = {424, 1}}
+    local function action(name, y, callback, active)
+        local cell = columns[y]
+        local object = self:Create('TextButton', {Parent = body, Text = name, Font = self.Font, TextSize = 12, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, AutoButtonColor = false, Position = UDim2.fromOffset(14, y), Size = UDim2.new(1, -28, 0, 28), ZIndex = 314})
+        if cell then
+            object.Position = UDim2.new(cell[2] * 0.5, cell[2] == 0 and 14 or 3, 0, cell[1])
+            object.Size = UDim2.new(0.5, -17, 0, 28)
+        end
+        self:AddToRegistry(object, {TextColor3 = 'FontColor', BackgroundColor3 = 'MainColor'})
+        self:StyleControl(object, object, 1)
+        connect(object.MouseEnter, function() self:AnimateControl(object, {BackgroundColor3 = self.AccentColor:Lerp(self.MainColor, 0.8)}) end)
+        connect(object.MouseLeave, function() self:AnimateControl(object, {BackgroundColor3 = self.MainColor}) end)
+        connect(object.Activated, function()
+            if state.Closing or target.Parent ~= Players then return end
+            self:SafeCallback(callback)
+            if state.Refresh then state.Refresh() end
+            self:AttemptSave()
+        end)
+        if active then state.Buttons[#state.Buttons + 1] = {Object = object, Name = name, Active = active} end
+        return object
+    end
+    local view = action('view', 238, function()
+        if self.Spectating == target then self:StopPlayerView(); return end
+        self:StartPlayerView(target)
+    end)
+    action('go to', 272, function() self:TeleportToPlayer(target) end)
+    action('whitelist player', 314, function()
+        if self:IsFullyWhitelisted(target) then self:UnwhitelistFully(target) else self:WhitelistFully(target) end
+    end, function() return self:IsFullyWhitelisted(target) end)
+    action('whitelist crew', 348, function()
+        local id = self:GetCrewName(target)
+        local pd = self.PhongData
+        if id and pd and pd.WhitelistedCrews and pd.WhitelistedCrews[tostring(id)] then self:UnwhitelistCrew(target) else self:WhitelistCrew(target) end
+    end, function()
+        local id, pd = self:GetCrewName(target), self.PhongData
+        return id and pd and pd.WhitelistedCrews and pd.WhitelistedCrews[tostring(id)] == true
+    end)
+    action('ragebot whitelist', 382, function() self:ToggleRageWhitelist(target) end, function() return self:IsRageWhitelisted(target) end)
+    action('silent aim whitelist', 416, function() self:ToggleSilentWhitelist(target) end, function() return self:IsSilentWhitelisted(target) end)
+    action('sticky aim whitelist', 450, function() self:ToggleStickyWhitelist(target) end, function() return self:IsStickyWhitelisted(target) end)
+    action('support whitelist', 484, function() self:ToggleIsraelWhitelist(target) end, function() return self:IsIsraelWhitelisted(target) end)
+    action('support protection', 518, function() self:ToggleProtectByIsrael(target) end, function() return self:IsProtectedByIsrael(target) end)
+    action('copy username', 560, function() if type(setclipboard) == 'function' then setclipboard(target.Name) end end)
+    action('copy display name', 594, function() if type(setclipboard) == 'function' then setclipboard(target.DisplayName) end end)
+    label(body, 'WHITELIST & ACTIONS', 270, 16, 11).TextTransparency = 0.35
+    local inventoryTitle = label(body, 'INVENTORY', 466, 22, 11)
+    inventoryTitle.TextTransparency = 0.35
+    local inventory = self:Create('Frame', {Parent = body, BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 494), Size = UDim2.new(1, -28, 0, 40), ZIndex = 313})
+    local function stat(name)
+        local folder = target:FindFirstChild('DataFolder')
+        local value = folder and folder:FindFirstChild(name)
+        return tonumber(target:GetAttribute(name)) or value and value:IsA('ValueBase') and tonumber(value.Value)
+    end
+    local function percent(hits, shots)
+        hits, shots = stat(hits), stat(shots)
+        return hits and shots and shots > 0 and string.format('%.1f%%', math.clamp(hits / shots * 100, 0, 100)) or 'N/A'
+    end
+    local function refresh()
+        if state.Closing or self.Unloaded then return end
+        if target.Parent ~= Players then self:ClosePlayerInspector(true); return end
+        title.Text = self:PlayerDisplayName(target)
+        username.Text = self.StreamerMode == 'Off' and '@' .. target.Name or 'Identity hidden'
+        if self.ThumbnailCache[target.UserId] then avatar.Image = self.ThumbnailCache[target.UserId] end
+        local pd = self.PhongData
+        local code = tostring(target:GetAttribute('Country') or ''):upper()
+        country.Text = 'Country  /  ' .. tostring(pd and pd.NotificationCountries and pd.NotificationCountries[code] or (code ~= '' and code or 'Unknown'))
+        device.Text = 'Device  /  ' .. tostring(target:GetAttribute('Device') or 'Unknown')
+        accuracy.Text = 'Aim accuracy  /  ' .. percent('ShotLand', 'ShotTotal') .. ' this server\n' .. percent('AimLandAllTime', 'AimShotsAllTime') .. ' all time'
+        crew.Text = self:GetCrewDisplayWithCount(target) .. '\n' .. self:FormatJoinedTime(target)
+        local protectionText = self:GetPlayerInspectorProtection(target)
+        local protectionLines = string.split(protectionText, '\n')
+        if #protectionLines > 3 then protectionText = protectionLines[1] .. '\n' .. protectionLines[2] .. '\n+' .. (#protectionLines - 2) .. ' more protection flags' end
+        protection.Text = protectionText
+        local flag = stat('LockFlagged') or 0
+        local statuses = {'not sure', 'suspected', 'flagged', 'bannable'}
+        detection.Text = 'Cheater status  /  ' .. (flag >= 1 and statuses[math.min(4, math.floor(flag))] or 'Not flagged')
+        detection.TextColor3 = flag >= 2 and Color3.fromRGB(235, 116, 116) or self.FontColor
+        view.Text = self.Spectating == target and 'unview' or 'view'
+        for _, item in ipairs(state.Buttons) do item.Object.Text = (item.Active() and '[on]  ' or '[off]  ') .. item.Name end
+        local tools, rows, signature = {}, {}, {}
+        for _, container in pairs({target.Character, target:FindFirstChildOfClass('Backpack')}) do
+            for _, tool in ipairs(container:GetChildren()) do
+                if tool:IsA('Tool') and tool:FindFirstChild('Ammo') then tools[#tools + 1] = tool end
+            end
+        end
+        table.sort(tools, function(a, b) return a.Name < b.Name end)
+        local esp = pd and pd.ESPInstance or getgenv and getgenv().ESP
+        for _, tool in ipairs(tools) do
+            local ammo, maximum = tool:FindFirstChild('Ammo'), tool:FindFirstChild('MaxAmmo')
+            local asset = esp and esp.GetWeaponIconAsset and esp:GetWeaponIconAsset(tool.Name) or ''
+            local amount = tostring(ammo.Value) .. ' / ' .. tostring(maximum and maximum.Value or tool:GetAttribute('MaxAmmo') or '?')
+            rows[#rows + 1] = {Name = tool.Name, Ammo = amount, Asset = asset or '', Equipped = tool.Parent == target.Character}
+            signature[#signature + 1] = tool.Name .. amount .. tostring(asset) .. tostring(tool.Parent == target.Character)
+        end
+        inventoryTitle.Text = 'INVENTORY  /  ' .. #rows .. ' weapons'
+        local key = table.concat(signature, '|')
+        if state.InventorySignature ~= key or not state.InventoryBuilt then
+            state.InventorySignature, state.InventoryBuilt = key, true
+            for _, child in ipairs(inventory:GetChildren()) do child:Destroy() end
+            for i, item in ipairs(rows) do
+                local row = self:Create('Frame', {Parent = inventory, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, Position = UDim2.fromOffset(0, (i - 1) * 46), Size = UDim2.new(1, 0, 0, 42), ZIndex = 313})
+                self:AddToRegistry(row, {BackgroundColor3 = 'MainColor'})
+                self:Create('ImageLabel', {Parent = row, Image = item.Asset, BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit, Position = UDim2.fromOffset(8, 7), Size = UDim2.fromOffset(62, 28), ZIndex = 314})
+                local name = label(row, item.Name .. (item.Equipped and '  / held' or ''), 4, 17, 12)
+                name.Position, name.Size = UDim2.fromOffset(82, 4), UDim2.new(1, -90, 0, 17)
+                local ammoLabel = label(row, item.Ammo, 23, 16, 11)
+                ammoLabel.Position, ammoLabel.Size, ammoLabel.TextTransparency = UDim2.fromOffset(82, 23), UDim2.new(1, -90, 0, 16), 0.35
+            end
+            if #rows == 0 then label(inventory, 'No replicated weapons', 0, 24).TextTransparency = 0.4 end
+            inventory.Size = UDim2.new(1, -28, 0, math.max(30, #rows * 46))
+            body.CanvasSize = UDim2.fromOffset(0, 506 + math.max(30, #rows * 46))
+        end
+    end
+    state.Refresh = refresh
+    refresh()
+    local elapsed = 0
+    connect(RunService.Heartbeat, function(delta)
+        elapsed = elapsed + delta
+        if elapsed < 0.25 then return end
+        elapsed = 0
+        if not self.MainVisible or self.Unloaded then self:ClosePlayerInspector(true); return end
+        self:SafeCallback(refresh)
+    end)
+    connect(Players.PlayerRemoving, function(player)
+        if player == target then
+            if self.Spectating == target then self:StopPlayerView() end
+            self:ClosePlayerInspector(true)
+        end
+    end)
+    state.Resize = function()
+        local currentScale = math.max(self.UIScale or 1, 0.01)
+        frame.Size = UDim2.fromOffset(math.min(352, math.max(220, (ScreenGui.AbsoluteSize.X - 32) / currentScale)), math.max(160, (ScreenGui.AbsoluteSize.Y - 32) / currentScale))
+    end
+    connect(ScreenGui:GetPropertyChangedSignal('AbsoluteSize'), state.Resize)
+    if self.ReducedMotion then frame.Position = UDim2.new(1, -16, 0, 16)
     else
-        action('Whitelist player', function() self:WhitelistFully(target) end)
-        action('Whitelist crew', function() self:WhitelistCrew(target) end)
+        state.Tween = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2.new(1, -16, 0, 16)})
+        state.Tween:Play()
     end
-    menu.Size = UDim2.fromOffset(208, 30 + count * 28)
-    local scale, viewport = math.max(self.UIScale or 1, 0.01), ScreenGui.AbsoluteSize
-    menu.Position = UDim2.fromOffset(math.clamp(position.X, 8, math.max(8, viewport.X - 208 * scale - 8)), math.clamp(position.Y, 8, math.max(8, viewport.Y - menu.Size.Y.Offset * scale - 8)))
-    self.PlayerContextMenu, self.OpenedFrames[menu] = menu, true
-    self.PopupClosers = self.PopupClosers or {}
-    self.PopupClosers[menu] = close
-    connection = InputService.InputBegan:Connect(function(input)
-        if not self:IsClickInput(input) and input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
-        local point, origin, size = input.Position, menu.AbsolutePosition, menu.AbsoluteSize
-        if point.X < origin.X or point.X > origin.X + size.X or point.Y < origin.Y or point.Y > origin.Y + size.Y then close() end
-    end)
-    task.delay(5, function() if self.PlayerContextMenu == menu then close() end end)
 end
 
 function Library:BuildCustomPanels(Window, TabContainer)
@@ -6266,8 +6482,10 @@ function Library:BuildCustomPanels(Window, TabContainer)
                 local hit = self:Create('TextButton', {Parent = row, BackgroundTransparency = 1, Text = '', Size = UDim2.fromScale(1, 1), ZIndex = 9})
                 hit.InputBegan:Connect(function(event)
                     if self:MouseIsOverOpenedFrame(row) then return end
-                    if event.UserInputType == Enum.UserInputType.MouseButton2 then self:ShowPlayerContextMenu(player, Vector2.new(event.Position.X, event.Position.Y))
-                    elseif self:IsClickInput(event) then self:TeleportToPlayer(player) end
+                    if event.UserInputType == Enum.UserInputType.MouseButton2 then self:ShowPlayerContextMenu(player, Vector2.new(event.Position.X, event.Position.Y)) end
+                end)
+                hit.Activated:Connect(function()
+                    if not self:MouseIsOverOpenedFrame(row) then self:ShowPlayerContextMenu(player) end
                 end)
             end
         end
@@ -6279,7 +6497,7 @@ function Library:BuildCustomPanels(Window, TabContainer)
         self.PlayerJoinTimes[player] = self.PlayerJoinTimes[player] or tick()
         self.PlayerJoinTimes[player.UserId] = self.PlayerJoinTimes[player.UserId] or self.PlayerJoinTimes[player]
     end
-    self:AddToolTip('Click a player to teleport. Right-click for player actions.', playerList)
+    self:AddToolTip('Click a player to open their profile and actions.', playerList)
     Window.RefreshCustom.Players = refreshPlayers
     local pending = false
     local function queuePlayers()
@@ -6296,9 +6514,7 @@ function Library:BuildCustomPanels(Window, TabContainer)
     end))
     self:GiveSignal(Players.PlayerRemoving:Connect(function(player)
         if self.Spectating == player then
-            self.Spectating = nil
-            local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass('Humanoid')
-            if workspace.CurrentCamera and humanoid then workspace.CurrentCamera.CameraSubject = humanoid end
+            self:StopPlayerView()
         end
         queuePlayers()
     end))
@@ -7449,7 +7665,7 @@ function Library:CreateWindow(...)
         self:HideTooltip()
         toggled, toggleRevision = not toggled, toggleRevision + 1
         local revision = toggleRevision
-        if not toggled then self:StopSliderDrag(true) end
+        if not toggled then self:StopSliderDrag(true); self:ClosePlayerInspector() end
         self.MainVisible, modal.Modal = toggled, toggled
         drag, resize = nil, nil
         self:ClosePopups()
