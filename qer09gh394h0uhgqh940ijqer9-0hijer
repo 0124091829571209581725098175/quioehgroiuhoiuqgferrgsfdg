@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 19;
+Library.PhowgRevision = 20;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -6165,7 +6165,7 @@ function Library:ClosePlayerInspector(immediate)
     state.Closing = true
     if state.Tween then state.Tween:Cancel() end
     if immediate or self.ReducedMotion then state.Frame:Destroy(); return end
-    state.Tween = TweenService:Create(state.Frame, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {Position = UDim2.new(1, state.Frame.AbsoluteSize.X + 24, 0, 16)})
+    state.Tween = TweenService:Create(state.Frame, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {Position = UDim2.new(1, state.Frame.AbsoluteSize.X + 24, 0, 16), GroupTransparency = 1})
     state.Tween:Play()
     task.delay(0.23, function() if state.Frame.Parent then state.Frame:Destroy() end end)
 end
@@ -6211,11 +6211,13 @@ function Library:ShowPlayerContextMenu(target, _position)
     self:ClosePlayerInspector(true)
     local state: {[string]: any} = {Target = target, Connections = {}, Buttons = {}, InventorySignature = '', Closing = false}
     local scale = math.max(self.UIScale or 1, 0.01)
-    local width = math.min(352, math.max(220, (ScreenGui.AbsoluteSize.X - 32) / scale))
+    local width = math.min(384, math.max(220, (ScreenGui.AbsoluteSize.X - 32) / scale))
     local height = math.max(160, (ScreenGui.AbsoluteSize.Y - 32) / scale)
-    local frame = self:Create('Frame', {Name = 'PlayerInspector', Parent = ScreenGui, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, width * scale + 24, 0, 16), Size = UDim2.fromOffset(width, height), BackgroundColor3 = self.BackgroundColor, BorderSizePixel = 0, ZIndex = 310, Active = true})
+    local frame = self:Create('CanvasGroup', {GroupTransparency = self.ReducedMotion and 0 or 1, Name = 'PlayerInspector', Parent = ScreenGui, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, width * scale + 24, 0, 16), Size = UDim2.fromOffset(width, height), BackgroundColor3 = self.BackgroundColor, BorderSizePixel = 0, ZIndex = 310, Active = true})
     self:AddToRegistry(frame, {BackgroundColor3 = 'BackgroundColor'})
-    self:StyleControl(frame, frame, 1)
+    self:Create('UICorner', {Parent = frame, CornerRadius = UDim.new(0, 8)})
+    local panelStroke = self:Create('UIStroke', {Parent = frame, Color = self.OutlineColor, Thickness = 1, Transparency = 0.2})
+    self:AddToRegistry(panelStroke, {Color = 'OutlineColor'})
     self:ApplyScaleTo(frame)
     state.Frame, self.PlayerInspector = frame, state
     local function connect(signal, callback)
@@ -6229,43 +6231,93 @@ function Library:ShowPlayerContextMenu(target, _position)
         if self.PlayerInspector == state then self.PlayerInspector = nil end
         for i = #self.ScaleObjects, 1, -1 do if self.ScaleObjects[i].Parent == frame then table.remove(self.ScaleObjects, i) end end
     end)
-    local strip = self:Create('Frame', {Parent = frame, BackgroundColor3 = self.AccentColor, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 2), ZIndex = 311})
+    local strip = self:Create('Frame', {Parent = frame, BackgroundColor3 = self.AccentColor, BorderSizePixel = 0, Position = UDim2.fromOffset(16, 0), Size = UDim2.new(1, -32, 0, 2), ZIndex = 311})
     self:AddToRegistry(strip, {BackgroundColor3 = 'AccentColor'})
     local function label(parent, value, y, h, size)
         return self:CreateLabel({Parent = parent, Text = value, TextSize = size or 12, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Position = UDim2.fromOffset(14, y), Size = UDim2.new(1, -28, 0, h), ZIndex = 313})
     end
-    label(frame, 'PLAYER PROFILE', 12, 24, 11).TextTransparency = 0.35
-    local close = self:Create('TextButton', {Parent = frame, Text = utf8.char(215), Font = self.Font, TextSize = 22, TextColor3 = self.FontColor, BackgroundTransparency = 1, Position = UDim2.new(1, -42, 0, 8), Size = UDim2.fromOffset(32, 30), ZIndex = 314})
+    local function card(parent, y, h)
+        local object = self:Create('Frame', {Parent = parent, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, Position = UDim2.fromOffset(14, y), Size = UDim2.new(1, -28, 0, h), ZIndex = 312})
+        self:AddToRegistry(object, {BackgroundColor3 = 'MainColor'})
+        self:Create('UICorner', {Parent = object, CornerRadius = UDim.new(0, 5)})
+        local stroke = self:Create('UIStroke', {Parent = object, Color = self.OutlineColor, Thickness = 1, Transparency = 0.5})
+        self:AddToRegistry(stroke, {Color = 'OutlineColor'})
+        return object
+    end
+    local function section(parent, value, y)
+        local text = label(parent, value, y, 18, 10)
+        text.TextTransparency = 0.4
+        return text
+    end
+    label(frame, 'PLAYER INTELLIGENCE', 13, 22, 11).TextTransparency = 0.35
+    local close = self:Create('TextButton', {Parent = frame, Text = utf8.char(215), Font = self.Font, TextSize = 21, TextColor3 = self.FontColor, BackgroundTransparency = 1, Position = UDim2.new(1, -42, 0, 8), Size = UDim2.fromOffset(32, 30), ZIndex = 314})
     self:AddToRegistry(close, {TextColor3 = 'FontColor'})
     connect(close.Activated, function() self:ClosePlayerInspector() end)
-    local avatar = self:Create('ImageLabel', {Parent = frame, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, Position = UDim2.fromOffset(14, 46), Size = UDim2.fromOffset(62, 62), ZIndex = 312})
+    local avatar = self:Create('ImageLabel', {Parent = frame, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, Position = UDim2.fromOffset(16, 47), Size = UDim2.fromOffset(72, 72), ZIndex = 312})
     self:AddToRegistry(avatar, {BackgroundColor3 = 'MainColor'})
+    self:Create('UICorner', {Parent = avatar, CornerRadius = UDim.new(0, 8)})
+    local avatarStroke = self:Create('UIStroke', {Parent = avatar, Color = self.AccentColor, Thickness = 1, Transparency = 0.5})
+    self:AddToRegistry(avatarStroke, {Color = 'AccentColor'})
     self:FetchThumbnail(target.UserId, avatar)
-    local title = label(frame, self:PlayerDisplayName(target), 49, 24, 16)
-    title.Position, title.Size = UDim2.fromOffset(88, 49), UDim2.new(1, -102, 0, 24)
-    local username = label(frame, '@' .. target.Name, 75, 20, 12)
-    username.Position, username.Size, username.TextTransparency = UDim2.fromOffset(88, 75), UDim2.new(1, -102, 0, 20), 0.35
-    local body = self:Create('ScrollingFrame', {Parent = frame, Position = UDim2.fromOffset(0, 122), Size = UDim2.new(1, 0, 1, -136), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = self.AccentColor, CanvasSize = UDim2.fromOffset(0, 760), ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 312})
+    local title = label(frame, '', 48, 27, 20)
+    title.Position, title.Size = UDim2.fromOffset(102, 48), UDim2.new(1, -118, 0, 27)
+    local username = label(frame, '@' .. target.Name, 78, 19, 12)
+    username.Position, username.Size, username.TextTransparency = UDim2.fromOffset(102, 78), UDim2.new(1, -118, 0, 19), 0.4
+    local crew = label(frame, '', 103, 18, 10)
+    crew.Position, crew.Size, crew.TextTransparency = UDim2.fromOffset(102, 103), UDim2.new(1, -118, 0, 18), 0.4
+    local country = label(frame, '', 130, 20, 12)
+    country.Position, country.Size = UDim2.fromOffset(16, 130), UDim2.new(0.68, -22, 0, 20)
+    local device = label(frame, '', 130, 20, 10)
+    device.Position, device.Size, device.TextXAlignment, device.TextTransparency = UDim2.new(0.68, 0, 0, 130), UDim2.new(0.32, -16, 0, 20), Enum.TextXAlignment.Right, 0.35
+    local body = self:Create('ScrollingFrame', {Parent = frame, Position = UDim2.fromOffset(0, 210), Size = UDim2.new(1, 0, 1, -246), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 2, ScrollBarImageColor3 = self.AccentColor, CanvasSize = UDim2.fromOffset(0, 600), ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 312})
     self:AddToRegistry(body, {ScrollBarImageColor3 = 'AccentColor'})
-    local country = label(body, '', 0, 22)
-    local device = label(body, '', 24, 20)
-    local accuracy = label(body, '', 49, 40)
-    accuracy.TextWrapped, accuracy.TextTruncate = true, Enum.TextTruncate.None
-    local crew = label(body, '', 94, 36)
-    crew.TextWrapped, crew.TextTruncate = true, Enum.TextTruncate.None
-    local protection = label(body, '', 136, 64)
-    protection.TextWrapped, protection.TextTruncate = true, Enum.TextTruncate.None
-    local detection = label(body, '', 202, 22)
-    local columns = {[238] = {238, 0}, [272] = {238, 1}, [314] = {288, 0}, [348] = {288, 1}, [382] = {322, 0}, [416] = {322, 1}, [450] = {356, 0}, [484] = {356, 1}, [518] = {390, 0}, [560] = {424, 0}, [594] = {424, 1}}
+    local footer = label(frame, 'LIVE PROFILE  /  UPDATES AUTOMATICALLY', 0, 20, 9)
+    footer.Position, footer.Size, footer.TextTransparency = UDim2.new(0, 16, 1, -27), UDim2.new(1, -32, 0, 20), 0.5
+    section(body, 'AIM ACCURACY', 0)
+    local accuracyCard = card(body, 25, 73)
+    local divider = self:Create('Frame', {Parent = accuracyCard, BackgroundColor3 = self.OutlineColor, BackgroundTransparency = 0.5, BorderSizePixel = 0, Position = UDim2.new(0.5, 0, 0, 13), Size = UDim2.new(0, 1, 1, -26), ZIndex = 313})
+    self:AddToRegistry(divider, {BackgroundColor3 = 'OutlineColor'})
+    local accuracy = label(accuracyCard, '', 8, 32, 25)
+    accuracy.Size = UDim2.new(0.5, -24, 0, 32)
+    local accuracyAll = label(accuracyCard, '', 8, 32, 25)
+    accuracyAll.Position, accuracyAll.Size = UDim2.new(0.5, 14, 0, 8), UDim2.new(0.5, -24, 0, 32)
+    local serverCaption = label(accuracyCard, 'THIS SERVER', 46, 16, 9)
+    serverCaption.Size, serverCaption.TextTransparency = UDim2.new(0.5, -24, 0, 16), 0.45
+    local serverTrack = self:Create('Frame', {Parent = accuracyCard, BackgroundColor3 = self.OutlineColor, BorderSizePixel = 0, Position = UDim2.fromOffset(14, 40), Size = UDim2.new(0.5, -28, 0, 2), ZIndex = 313})
+    local allTrack = self:Create('Frame', {Parent = accuracyCard, BackgroundColor3 = self.OutlineColor, BorderSizePixel = 0, Position = UDim2.new(0.5, 14, 0, 40), Size = UDim2.new(0.5, -28, 0, 2), ZIndex = 313})
+    local serverFill = self:Create('Frame', {Parent = serverTrack, BackgroundColor3 = self.AccentColor, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1), ZIndex = 314})
+    local allFill = self:Create('Frame', {Parent = allTrack, BackgroundColor3 = self.AccentColor, BackgroundTransparency = 0.3, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1), ZIndex = 314})
+    self:AddToRegistry(serverTrack, {BackgroundColor3 = 'OutlineColor'})
+    self:AddToRegistry(allTrack, {BackgroundColor3 = 'OutlineColor'})
+    self:AddToRegistry(serverFill, {BackgroundColor3 = 'AccentColor'})
+    self:AddToRegistry(allFill, {BackgroundColor3 = 'AccentColor'})
+    local allCaption = label(accuracyCard, 'ALL TIME', 46, 16, 9)
+    allCaption.Position, allCaption.Size, allCaption.TextTransparency = UDim2.new(0.5, 14, 0, 46), UDim2.new(0.5, -24, 0, 16), 0.45
+    section(body, 'PROTECTION & REPUTATION', 114)
+    local reputation = card(body, 139, 94)
+    local statusDot = self:Create('Frame', {Parent = reputation, BackgroundColor3 = self.AccentColor, BorderSizePixel = 0, Position = UDim2.fromOffset(12, 16), Size = UDim2.fromOffset(6, 6), ZIndex = 314})
+    self:Create('UICorner', {Parent = statusDot, CornerRadius = UDim.new(1, 0)})
+    local detection = label(reputation, '', 8, 22, 12)
+    detection.Position, detection.Size = UDim2.fromOffset(26, 8), UDim2.new(1, -38, 0, 22)
+    local protection = label(reputation, '', 38, 45, 11)
+    protection.TextWrapped, protection.TextTruncate, protection.TextTransparency = true, Enum.TextTruncate.None, 0.3
+    local inventoryTitle = section(body, 'WEAPON INVENTORY', 249)
+    local inventory = self:Create('Frame', {Parent = body, BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 274), Size = UDim2.new(1, -28, 0, 40), ZIndex = 313})
+    local controls = self:Create('Frame', {Parent = body, BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 330), Size = UDim2.new(1, 0, 0, 238), ZIndex = 313})
+    section(controls, 'WHITELISTS & SUPPORT', 0)
+    local columns = {[238] = {162, 0}, [272] = {162, 1}, [314] = {28, 0}, [348] = {28, 1}, [382] = {68, 0}, [416] = {68, 1}, [450] = {108, 0}, [484] = {108, 1}, [518] = {148, 0}, [560] = {198, 0}, [594] = {198, 1}}
     local function action(name, y, callback, active)
         local cell = columns[y]
-        local object = self:Create('TextButton', {Parent = body, Text = name, Font = self.Font, TextSize = 12, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, AutoButtonColor = false, Position = UDim2.fromOffset(14, y), Size = UDim2.new(1, -28, 0, 28), ZIndex = 314})
+        local object = self:Create('TextButton', {Parent = (y == 238 or y == 272) and frame or controls, Text = name, Font = self.Font, TextSize = 12, TextTruncate = Enum.TextTruncate.AtEnd, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, AutoButtonColor = false, Position = UDim2.fromOffset(14, y), Size = UDim2.new(1, -28, 0, 34), ZIndex = 314})
         if cell then
             object.Position = UDim2.new(cell[2] * 0.5, cell[2] == 0 and 14 or 3, 0, cell[1])
-            object.Size = UDim2.new(0.5, -17, 0, 28)
+            object.Size = UDim2.new(0.5, -17, 0, 34)
         end
         self:AddToRegistry(object, {TextColor3 = 'FontColor', BackgroundColor3 = 'MainColor'})
-        self:StyleControl(object, object, 1)
+        self:Create('UIPadding', {Parent = object, PaddingLeft = UDim.new(0, active and 18 or 8), PaddingRight = UDim.new(0, 8)})
+        self:Create('UICorner', {Parent = object, CornerRadius = UDim.new(0, 4)})
+        local stroke = self:Create('UIStroke', {Parent = object, Color = self.OutlineColor, Transparency = 0.35, Thickness = 1})
+        self:AddToRegistry(stroke, {Color = 'OutlineColor'})
         connect(object.MouseEnter, function() self:AnimateControl(object, {BackgroundColor3 = self.AccentColor:Lerp(self.MainColor, 0.8)}) end)
         connect(object.MouseLeave, function() self:AnimateControl(object, {BackgroundColor3 = self.MainColor}) end)
         connect(object.Activated, function()
@@ -6274,7 +6326,11 @@ function Library:ShowPlayerContextMenu(target, _position)
             if state.Refresh then state.Refresh() end
             self:AttemptSave()
         end)
-        if active then state.Buttons[#state.Buttons + 1] = {Object = object, Name = name, Active = active} end
+        if active then
+            local dot = self:Create('Frame', {Parent = object, BackgroundColor3 = self.OutlineColor, BorderSizePixel = 0, Position = UDim2.fromOffset(9, 14), Size = UDim2.fromOffset(5, 5), ZIndex = 315})
+            self:Create('UICorner', {Parent = dot, CornerRadius = UDim.new(1, 0)})
+            state.Buttons[#state.Buttons + 1] = {Object = object, Name = name, Active = active, Dot = dot, Stroke = stroke}
+        end
         return object
     end
     local view = action('view', 238, function()
@@ -6300,10 +6356,6 @@ function Library:ShowPlayerContextMenu(target, _position)
     action('support protection', 518, function() self:ToggleProtectByIsrael(target) end, function() return self:IsProtectedByIsrael(target) end)
     action('copy username', 560, function() if type(setclipboard) == 'function' then setclipboard(target.Name) end end)
     action('copy display name', 594, function() if type(setclipboard) == 'function' then setclipboard(target.DisplayName) end end)
-    label(body, 'WHITELIST & ACTIONS', 270, 16, 11).TextTransparency = 0.35
-    local inventoryTitle = label(body, 'INVENTORY', 466, 22, 11)
-    inventoryTitle.TextTransparency = 0.35
-    local inventory = self:Create('Frame', {Parent = body, BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 494), Size = UDim2.new(1, -28, 0, 40), ZIndex = 313})
     local function stat(name)
         local folder = target:FindFirstChild('DataFolder')
         local value = folder and folder:FindFirstChild(name)
@@ -6316,25 +6368,35 @@ function Library:ShowPlayerContextMenu(target, _position)
     local function refresh()
         if state.Closing or self.Unloaded then return end
         if target.Parent ~= Players then self:ClosePlayerInspector(true); return end
-        title.Text = self:PlayerDisplayName(target)
+        title.Text = self.StreamerMode == 'Off' and target.DisplayName or self:PlayerDisplayName(target)
         username.Text = self.StreamerMode == 'Off' and '@' .. target.Name or 'Identity hidden'
         if self.ThumbnailCache[target.UserId] then avatar.Image = self.ThumbnailCache[target.UserId] end
         local pd = self.PhongData
         local code = tostring(target:GetAttribute('Country') or ''):upper()
-        country.Text = 'Country  /  ' .. tostring(pd and pd.NotificationCountries and pd.NotificationCountries[code] or (code ~= '' and code or 'Unknown'))
-        device.Text = 'Device  /  ' .. tostring(target:GetAttribute('Device') or 'Unknown')
-        accuracy.Text = 'Aim accuracy  /  ' .. percent('ShotLand', 'ShotTotal') .. ' this server\n' .. percent('AimLandAllTime', 'AimShotsAllTime') .. ' all time'
-        crew.Text = self:GetCrewDisplayWithCount(target) .. '\n' .. self:FormatJoinedTime(target)
+        country.Text = tostring(pd and pd.NotificationCountries and pd.NotificationCountries[code] or (code ~= '' and code or 'Unknown'))
+        device.Text = tostring(target:GetAttribute('Device') or 'Unknown'):upper()
+        accuracy.Text = percent('ShotLand', 'ShotTotal')
+        accuracyAll.Text = percent('AimLandAllTime', 'AimShotsAllTime')
+        self:AnimateControl(serverFill, {Size = UDim2.fromScale((tonumber(accuracy.Text:match('[%d.]+')) or 0) / 100, 1)})
+        self:AnimateControl(allFill, {Size = UDim2.fromScale((tonumber(accuracyAll.Text:match('[%d.]+')) or 0) / 100, 1)})
+        crew.Text = self:GetCrewDisplayWithCount(target)
+        footer.Text = self:FormatJoinedTime(target) .. '  /  LIVE PROFILE'
         local protectionText = self:GetPlayerInspectorProtection(target)
         local protectionLines = string.split(protectionText, '\n')
         if #protectionLines > 3 then protectionText = protectionLines[1] .. '\n' .. protectionLines[2] .. '\n+' .. (#protectionLines - 2) .. ' more protection flags' end
         protection.Text = protectionText
         local flag = stat('LockFlagged') or 0
         local statuses = {'not sure', 'suspected', 'flagged', 'bannable'}
-        detection.Text = 'Cheater status  /  ' .. (flag >= 1 and statuses[math.min(4, math.floor(flag))] or 'Not flagged')
+        detection.Text = 'LockFlagged  /  ' .. (flag >= 1 and statuses[math.min(4, math.floor(flag))] or 'Not flagged')
         detection.TextColor3 = flag >= 2 and Color3.fromRGB(235, 116, 116) or self.FontColor
+        statusDot.BackgroundColor3 = flag >= 2 and Color3.fromRGB(235, 116, 116) or flag == 1 and Color3.fromRGB(225, 184, 99) or self.AccentColor
         view.Text = self.Spectating == target and 'unview' or 'view'
-        for _, item in ipairs(state.Buttons) do item.Object.Text = (item.Active() and '[on]  ' or '[off]  ') .. item.Name end
+        for _, item in ipairs(state.Buttons) do
+            local active = item.Active()
+            item.Dot.BackgroundColor3 = active and self.AccentColor or self.OutlineColor
+            item.Stroke.Color = active and self.AccentColor or self.OutlineColor
+            item.Stroke.Transparency = active and 0.2 or 0.6
+        end
         local tools, rows, signature = {}, {}, {}
         for _, container in pairs({target.Character, target:FindFirstChildOfClass('Backpack')}) do
             for _, tool in ipairs(container:GetChildren()) do
@@ -6347,26 +6409,31 @@ function Library:ShowPlayerContextMenu(target, _position)
             local ammo, maximum = tool:FindFirstChild('Ammo'), tool:FindFirstChild('MaxAmmo')
             local asset = esp and esp.GetWeaponIconAsset and esp:GetWeaponIconAsset(tool.Name) or ''
             local amount = tostring(ammo.Value) .. ' / ' .. tostring(maximum and maximum.Value or tool:GetAttribute('MaxAmmo') or '?')
-            rows[#rows + 1] = {Name = tool.Name, Ammo = amount, Asset = asset or '', Equipped = tool.Parent == target.Character}
+            rows[#rows + 1] = {Name = tool.Name, Ammo = amount, Asset = asset or '', Equipped = tool.Parent == target.Character, Fraction = math.clamp((tonumber(ammo.Value) or 0) / math.max(1, tonumber(maximum and maximum.Value or tool:GetAttribute('MaxAmmo')) or 1), 0, 1)}
             signature[#signature + 1] = tool.Name .. amount .. tostring(asset) .. tostring(tool.Parent == target.Character)
         end
-        inventoryTitle.Text = 'INVENTORY  /  ' .. #rows .. ' weapons'
+        inventoryTitle.Text = 'WEAPON INVENTORY  /  ' .. #rows .. ' weapons'
         local key = table.concat(signature, '|')
         if state.InventorySignature ~= key or not state.InventoryBuilt then
             state.InventorySignature, state.InventoryBuilt = key, true
             for _, child in ipairs(inventory:GetChildren()) do child:Destroy() end
             for i, item in ipairs(rows) do
-                local row = self:Create('Frame', {Parent = inventory, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, Position = UDim2.fromOffset(0, (i - 1) * 46), Size = UDim2.new(1, 0, 0, 42), ZIndex = 313})
+                local row = self:Create('Frame', {Parent = inventory, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, Position = UDim2.fromOffset(0, (i - 1) * 60), Size = UDim2.new(1, 0, 0, 54), ZIndex = 313})
                 self:AddToRegistry(row, {BackgroundColor3 = 'MainColor'})
-                self:Create('ImageLabel', {Parent = row, Image = item.Asset, BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit, Position = UDim2.fromOffset(8, 7), Size = UDim2.fromOffset(62, 28), ZIndex = 314})
-                local name = label(row, item.Name .. (item.Equipped and '  / held' or ''), 4, 17, 12)
-                name.Position, name.Size = UDim2.fromOffset(82, 4), UDim2.new(1, -90, 0, 17)
-                local ammoLabel = label(row, item.Ammo, 23, 16, 11)
-                ammoLabel.Position, ammoLabel.Size, ammoLabel.TextTransparency = UDim2.fromOffset(82, 23), UDim2.new(1, -90, 0, 16), 0.35
+                self:Create('UICorner', {Parent = row, CornerRadius = UDim.new(0, 4)})
+                self:Create('Frame', {Parent = row, BackgroundColor3 = item.Equipped and self.AccentColor or self.FontColor, BackgroundTransparency = item.Equipped and 0.1 or 0.65, BorderSizePixel = 0, Position = UDim2.fromOffset(90, 49), Size = UDim2.new(item.Fraction, -98 * item.Fraction, 0, 2), ZIndex = 314})
+                local edge = self:Create('Frame', {Parent = row, BackgroundColor3 = item.Equipped and self.AccentColor or self.OutlineColor, BorderSizePixel = 0, Position = UDim2.fromOffset(0, 7), Size = UDim2.new(0, 2, 1, -14), ZIndex = 314})
+                self:Create('ImageLabel', {Parent = row, Image = item.Asset, BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit, Position = UDim2.fromOffset(9, 10), Size = UDim2.fromOffset(70, 34), ZIndex = 314})
+                local name = label(row, item.Name .. (item.Equipped and '  / held' or ''), 7, 18, 12)
+                name.Position, name.Size = UDim2.fromOffset(90, 7), UDim2.new(1, -98, 0, 18)
+                local ammoLabel = label(row, item.Ammo, 29, 16, 11)
+                ammoLabel.Position, ammoLabel.Size, ammoLabel.TextTransparency = UDim2.fromOffset(90, 29), UDim2.new(1, -98, 0, 16), 0.35
             end
             if #rows == 0 then label(inventory, 'No replicated weapons', 0, 24).TextTransparency = 0.4 end
-            inventory.Size = UDim2.new(1, -28, 0, math.max(30, #rows * 46))
-            body.CanvasSize = UDim2.fromOffset(0, 506 + math.max(30, #rows * 46))
+            local inventoryHeight = math.max(38, #rows * 60)
+            inventory.Size = UDim2.new(1, -28, 0, inventoryHeight)
+            controls.Position = UDim2.fromOffset(0, 290 + inventoryHeight)
+            body.CanvasSize = UDim2.fromOffset(0, 538 + inventoryHeight)
         end
     end
     state.Refresh = refresh
@@ -6387,12 +6454,12 @@ function Library:ShowPlayerContextMenu(target, _position)
     end)
     state.Resize = function()
         local currentScale = math.max(self.UIScale or 1, 0.01)
-        frame.Size = UDim2.fromOffset(math.min(352, math.max(220, (ScreenGui.AbsoluteSize.X - 32) / currentScale)), math.max(160, (ScreenGui.AbsoluteSize.Y - 32) / currentScale))
+        frame.Size = UDim2.fromOffset(math.min(384, math.max(220, (ScreenGui.AbsoluteSize.X - 32) / currentScale)), math.max(160, (ScreenGui.AbsoluteSize.Y - 32) / currentScale))
     end
     connect(ScreenGui:GetPropertyChangedSignal('AbsoluteSize'), state.Resize)
-    if self.ReducedMotion then frame.Position = UDim2.new(1, -16, 0, 16)
+    if self.ReducedMotion then frame.Position, frame.GroupTransparency = UDim2.new(1, -16, 0, 16), 0
     else
-        state.Tween = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2.new(1, -16, 0, 16)})
+        state.Tween = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2.new(1, -16, 0, 16), GroupTransparency = 0})
         state.Tween:Play()
     end
 end
