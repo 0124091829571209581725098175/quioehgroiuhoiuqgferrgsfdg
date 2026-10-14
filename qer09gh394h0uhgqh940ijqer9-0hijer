@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 22;
+Library.PhowgRevision = 23;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -6893,6 +6893,23 @@ function Library:CalculateTabWidths(AvailableWidth, NaturalWidths, RequestedPadd
     end;
     return Widths, Padding;
 end;
+function Library:CreateResetIcon(parent)
+    local icon = self:Create('Frame', {Name = 'ResetIcon', Parent = parent, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(14, 14), BackgroundTransparency = 1, ZIndex = parent.ZIndex + 1})
+    local function line(x1, y1, x2, y2)
+        local dx, dy = x2 - x1, y2 - y1
+        local segment = self:Create('Frame', {Parent = icon, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset((x1 + x2) / 2, (y1 + y2) / 2), Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy) + 0.5, 1.4), Rotation = math.deg(math.atan2(dy, dx)), BackgroundColor3 = self.FontColor, BorderSizePixel = 0, ZIndex = icon.ZIndex})
+        self:AddToRegistry(segment, {BackgroundColor3 = 'FontColor'})
+    end
+    for i = 0, 9 do
+        local a, b = math.rad(-135 + i * 27), math.rad(-135 + (i + 1) * 27)
+        line(7 + math.cos(a) * 4.5, 7 + math.sin(a) * 4.5, 7 + math.cos(b) * 4.5, 7 + math.sin(b) * 4.5)
+    end
+    local x, y = 7 + math.cos(math.rad(135)) * 4.5, 7 + math.sin(math.rad(135)) * 4.5
+    line(x, y, x + 3.5, y + 0.1)
+    line(x, y, x + 0.1, y - 3.5)
+    return icon
+end
+
 function Library:CreateWeaponWorkspace(owner, provider, selected, choose, summary)
     local state: {[string]: any} = {Connections = {}, Angle = 0, Zoom = 1, Elapsed = 0, Views = {}}
     local holder = self:Create('Frame', {Name = 'WeaponWorkspace', Parent = owner.Container, Size = UDim2.new(1, 0, 0, 430), BackgroundTransparency = 1, ZIndex = 5})
@@ -6932,6 +6949,7 @@ function Library:CreateWeaponWorkspace(owner, provider, selected, choose, summar
         local aspect = math.max(0.2, record.Viewport.AbsoluteSize.X / math.max(1, record.Viewport.AbsoluteSize.Y))
         local halfFov = math.rad(record.Camera.FieldOfView / 2)
         local distance = math.max(size.Y, size.X / aspect, size.Z) / (2 * math.tan(halfFov)) + size.Magnitude * 0.4
+        if record == main then distance = distance * 1.6 end
         local eye = Vector3.new(math.sin(angle) * distance, distance * 0.16, math.cos(angle) * distance) * zoom
         record.Camera.CFrame = CFrame.lookAt(eye, Vector3.zero)
     end
@@ -7099,7 +7117,8 @@ function Library:FormatClassicControl(control, owner, text, anchor)
             entry.Text = tostring(control.Value) .. control.Suffix
         end)
         control.NumericEntry = entry
-        local reset = self:Create('TextButton', {Name = 'ResetSlider', Parent = field, Position = UDim2.new(1, -22, 0, 0), Size = UDim2.fromOffset(22, 22), Text = utf8.char(8635), Font = self.Font, TextSize = 16, TextColor3 = self.FontColor, BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false, ZIndex = 12})
+        local reset = self:Create('TextButton', {Name = 'ResetSlider', Parent = field, Position = UDim2.new(1, -22, 0, 0), Size = UDim2.fromOffset(22, 22), Text = '', Font = self.Font, TextSize = 16, TextColor3 = self.FontColor, BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false, ZIndex = 12})
+        self:CreateResetIcon(reset)
         self:AddToRegistry(reset, {TextColor3 = 'FontColor'})
         reset.Activated:Connect(function()
             if Library.Unloaded or Library:MouseIsOverOpenedFrame(reset) then return end
@@ -7547,7 +7566,9 @@ function Library:CreateWindow(...)
         self:UpdateSelectedWeapon(selected)
         self:RefreshWeaponIcons()
     end
-    local iconRefresh = button(rail, utf8.char(8635), UDim2.fromOffset(22, 20), function() window:RefreshWeaponIcons() end)
+    local iconRefresh = button(rail, '', UDim2.fromOffset(22, 20), function() window:RefreshWeaponIcons() end)
+    iconRefresh.Name = 'RefreshWeaponIcons'
+    Library:CreateResetIcon(iconRefresh)
     iconRefresh.Position = UDim2.new(1, -24, 0, 0)
     Library:AddToolTip('Refresh weapon icons', iconRefresh)
     function window:BindConfigManager(manager)
@@ -7932,7 +7953,7 @@ function Library:CreateWindow(...)
         local originalShow = tab.ShowTab
         function tab:ShowTab()
             originalShow(self)
-            window:SelectItemWorkspace(self.ItemPage, true)
+            window:SelectItemWorkspace('skins', true)
         end
         function window:SelectItemWorkspace(name, alreadyShown)
             if not pages[name] then return end
