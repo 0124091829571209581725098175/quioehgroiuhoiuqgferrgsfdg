@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 24;
+Library.PhowgRevision = 25;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -6919,6 +6919,19 @@ function Library:CreateResetIcon(parent)
     return icon
 end
 
+function Library:VisiblePreviewBounds(model)
+    local lower,upper
+    for _,part in ipairs(model:GetDescendants()) do
+        if part:IsA('BasePart') and part.Transparency<1 then
+            local cf,size=part.CFrame,part.Size
+            local radius=((cf.XVector*size.X):Abs()+(cf.YVector*size.Y):Abs()+(cf.ZVector*size.Z):Abs())/2
+            local first,last=part.Position-radius,part.Position+radius
+            if lower then lower=lower:Min(first);upper=upper:Max(last) else lower,upper=first,last end
+        end
+    end
+    if not lower then return nil,nil end
+    return (lower+upper)/2,upper-lower
+end
 function Library:CreateWeaponWorkspace(owner, provider, selected, choose, summary)
     local state: {[string]: any} = {Connections = {}, Angle = 0, Zoom = 1, Elapsed = 0, Views = {}}
     local holder = self:Create('Frame', {Name = 'WeaponWorkspace', Parent = owner.Container, Size = UDim2.new(1, 0, 0, 430), BackgroundTransparency = 1, ZIndex = 5})
@@ -6968,9 +6981,13 @@ function Library:CreateWeaponWorkspace(owner, provider, selected, choose, summar
         local ok, model, reason = pcall(provider, weapon, skin)
         if not ok or not model then return false, ok and reason or 'Preview unavailable' end
         model.Parent = record.World
-        local bounds, size = model:GetBoundingBox()
-        model:PivotTo(CFrame.new(-bounds.Position) * model:GetPivot())
-        record.Size = size
+        local center,size=self:VisiblePreviewBounds(model)
+        if not center then model:Destroy();return false,'No visible geometry in this skin' end
+        local basis=model:GetAttribute('PhowgPreviewBasis')
+        local rotation=typeof(basis)=='CFrame' and basis:Inverse() or CFrame.new()
+        model:PivotTo(rotation*CFrame.new(-center)*model:GetPivot())
+        local _,framedSize=self:VisiblePreviewBounds(model)
+        record.Size = framedSize or size
         cameraFit(record, 0.35, 1)
         return true
     end
@@ -6993,9 +7010,10 @@ function Library:CreateWeaponWorkspace(owner, provider, selected, choose, summar
     connect(reset.Activated, function() state.Angle, state.Zoom = 0, 1 end)
     state.Refresh = function()
         if self.Unloaded or not holder.Parent then return end
-        local weapon, skin, names, token = selected()
+        local weapon, skin, names, token, metadata = selected()
         state.Token, state.Dirty = token, false
-        title.Text = tostring(skin or 'Default') .. ' ' .. tostring(weapon or ''):gsub('[%[%]]', '')
+        title.Text = tostring(metadata and metadata.DisplayName or skin or 'Default') .. ' ' .. tostring(weapon or ''):gsub('[%[%]]', '')
+        subtitle.Text = (metadata and metadata.Rarity and tostring(metadata.Rarity)..'  /  ' or '')..'Drag to rotate  /  scroll to zoom'
         local ok, reason = load(main, weapon, skin)
         unavailable.Text, unavailable.Visible = tostring(reason or 'Model not available in this client'), not ok
         state.Angle, state.Zoom = 0.35, 1
@@ -7039,6 +7057,7 @@ function Library:CreateWeaponWorkspace(owner, provider, selected, choose, summar
         end
     end)
     connect(InputService.InputEnded, function(input) if input == state.Drag then state.Drag = nil end end)
+    connect(InputService.WindowFocusReleased,function() state.Drag=nil;releaseScroll() end)
     connect(main.Viewport.InputChanged, function(input)
         if input.UserInputType == Enum.UserInputType.MouseWheel then state.Zoom = math.clamp(state.Zoom - input.Position.Z * 0.08, 0.7, 2) end
     end)
