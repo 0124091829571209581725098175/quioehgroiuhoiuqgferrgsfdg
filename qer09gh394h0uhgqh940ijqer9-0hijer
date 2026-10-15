@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 25;
+Library.PhowgRevision = 26;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -5183,7 +5183,7 @@ do
         BorderColor3 = Library.OutlineColor;
         BorderMode = Enum.BorderMode.Inset;
         Position = UDim2.new(0, 0, 0, 0);
-        Size = UDim2.fromScale(1, 1);
+        Size = UDim2.new(1, 0, 0, 22);
         ZIndex = 101;
         Parent = KeybindOuter;
     });
@@ -5197,8 +5197,8 @@ do
     local ColorFrame = Library:Create('Frame', {
         BackgroundColor3 = Library.AccentColor;
         BorderSizePixel = 0;
-        Size = UDim2.new(0, 3, 1, -10);
-        Position = UDim2.fromOffset(0, 5);
+        Size = UDim2.new(1, -12, 0, 2);
+        Position = UDim2.fromOffset(6, 0);
         ZIndex = 102;
         Parent = KeybindInner;
     });
@@ -7683,13 +7683,20 @@ function Library:CreateWindow(...)
             Library:Notify(ok and 'Config loaded' or tostring(problem), 3)
         end)
         load.Position = UDim2.new(1, -192, 0, 10)
-        local settings = button(footer, 'Config', UDim2.fromOffset(72, 28), function() if window.UITab then window.UITab:ShowTab() end end)
+        local settings = button(footer, 'Manage', UDim2.fromOffset(72, 28), function() if window.UITab then window.UITab:ShowTab() end end)
         settings.Position = UDim2.new(1, -112, 0, 10)
+        Library:AddToolTip('Save changes to the selected configuration',save)
+        Library:AddToolTip('Load the selected configuration',load)
+        Library:AddToolTip('Manage saved configurations and autoload',settings)
+        frame('Frame',{Parent=footer,Position=UDim2.new(1,-284,0,14),Size=UDim2.fromOffset(1,20),BackgroundColor3=Library.OutlineColor,BorderSizePixel=0,ZIndex=4},{BackgroundColor3='OutlineColor'})
         self.ConfigPicker, self.ConfigCaption, self.ConfigPopup, self.ConfigSearch = picker, caption, popup, configSearch
         if manager.RegisterStatusListener then
             local disconnect = manager:RegisterStatusListener(function(text, dirty)
                 self.ConfigStatusText, self.ConfigDirty = text, dirty
                 caption.Text = dirty and 'Unsaved changes' or 'Saved config'
+                caption.TextColor3=dirty and Library.AccentColor or Library.FontColor
+                caption.TextTransparency=dirty and 0 or 0.25
+                if Library.RegistryMap[caption] then Library.RegistryMap[caption].Properties.TextColor3=dirty and 'AccentColor' or 'FontColor' end
                 selected.Text = tostring(option.Value or 'Select config') .. (dirty and ' *' or '')
             end)
             if type(disconnect) == 'function' then popup.Destroying:Connect(disconnect) end
@@ -7998,7 +8005,7 @@ function Library:CreateWindow(...)
         if previous then previous:Resize() end
     end
 
-    local drag, resize, lastWidth, lastScale, lastSidebar
+    local drag, resize, lastWidth, lastScale, lastSidebar, lastHeight, lastStacked
     local function fit()
         local screen = ScreenGui.AbsoluteSize
         if screen.X < 100 or screen.Y < 100 then return end
@@ -8036,10 +8043,9 @@ function Library:CreateWindow(...)
         for _, object in ipairs(navButtons) do object.Size = UDim2.fromOffset(tabWidth, 56) end
         updateCanvas(nav, navLayout)
         weaponList.CanvasSize = UDim2.fromOffset(0, weaponLayout.AbsoluteContentSize.Y / scale + 4)
-        for _, tab in pairs(window.Tabs) do tab:Resize() end
-        for _, group in ipairs(Library.Groupboxes) do if group.RootTab and group.Resize then group:Resize() end end
-        if width ~= lastWidth or scale ~= lastScale or inset ~= lastSidebar then
-            lastWidth, lastScale, lastSidebar = width, scale, inset
+        if width ~= lastWidth or height~=lastHeight or scale ~= lastScale or inset ~= lastSidebar or stackedFooter~=lastStacked then
+            lastWidth, lastScale, lastSidebar, lastHeight, lastStacked = width, scale, inset, height, stackedFooter
+            for _, group in ipairs(Library.Groupboxes) do if group.RootTab and group.Resize then group:Resize() end end
             for row, reflow in pairs(Library.WorkspaceRows or {}) do if row.Parent then reflow() end end
             for _, tab in pairs(window.Tabs) do tab:Resize() end
         end
