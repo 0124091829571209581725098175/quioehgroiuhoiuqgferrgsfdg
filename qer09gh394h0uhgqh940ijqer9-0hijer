@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 23;
+Library.PhowgRevision = 24;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -4234,6 +4234,15 @@ do
         Library.PopupClosers = Library.PopupClosers or {};
         Library.PopupClosers[ListOuter] = function() Dropdown:CloseDropdown() end;
         Dropdown.Outer, Dropdown.Inner, Dropdown.Arrow, Dropdown.ListOuter, Dropdown.ItemList = DropdownOuter, DropdownInner, DropdownArrow, ListOuter, ItemList;
+
+        function Dropdown:SetMulti(Multi, Value)
+            Multi = Multi == true;
+            if self.Multi == Multi then return end;
+            self:CloseDropdown();
+            Info.Multi, self.Multi = Multi, Multi;
+            self:SetValue(Value == nil and self.Value or Value, true);
+            self:BuildDropdownList();
+        end;
 
         function Dropdown:OnChanged(Func)
             Dropdown.Changed = Func;
