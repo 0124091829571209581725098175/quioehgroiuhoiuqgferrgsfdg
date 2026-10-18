@@ -44,7 +44,7 @@ local Library: {[string]: any} = {
     OutlineColor = Color3.fromRGB(69, 73, 86);
     RiskColor = Color3.fromRGB(255, 50, 50),
     Black = Color3.new(0, 0, 0);
-    Font = Enum.Font.SourceSans,
+    Font = Enum.Font.RobotoMono,
     OpenedFrames = {};
     DependencyBoxes = {};
     Signals = {};
@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 28;
+Library.PhowgRevision = 29;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -357,6 +357,13 @@ function Library:Create(Class, Properties)
     end;
     if layer > 0 and not Properties.ZIndex and _Instance:IsA('GuiObject') then _Instance.ZIndex = layer + 1 end
 
+    if _Instance:IsA('TextLabel') or _Instance:IsA('TextButton') or _Instance:IsA('TextBox') then
+        _Instance.TextSize=math.max(14,_Instance.TextSize)
+        if Library.UIFontName=='JetBrains Mono Nerd' then
+            _Instance.Font=Enum.Font.RobotoMono
+            if Library.NerdFontFace then pcall(function()_Instance.FontFace=Library.NerdFontFace end) end
+        end
+    end
     return _Instance;
 end;
 
@@ -2235,7 +2242,8 @@ do
             Parent = KeyRow;
         }, true);
         Library:RemoveFromRegistry(KeyName);
-        KeyName.Font = Enum.Font.SourceSans;
+        KeyName.Font = Library.Font;
+        if Library.UIFontName=='JetBrains Mono Nerd' and Library.NerdFontFace then pcall(function()KeyName.FontFace=Library.NerdFontFace end) end;
         KeyName.TextColor3 = Color3.fromRGB(225, 225, 230);
         KeyPicker.Row = KeyRow;
         KeyPicker.NameLabel = KeyName;
@@ -3122,7 +3130,7 @@ do
             BackgroundColor3 = Color3.new(0, 0, 0);
             BackgroundTransparency = 1;
             BorderColor3 = Color3.new(0, 0, 0);
-            Size = UDim2.new(1, -4, 0, 18);
+            Size = UDim2.new(1, -4, 0, 24);
             ZIndex = 5;
             Parent = Container;
         });
@@ -3135,8 +3143,8 @@ do
             BackgroundColor3 = Library.MainColor;
             BorderColor3 = Library.OutlineColor;
             BorderMode = Enum.BorderMode.Inset;
-            Position = UDim2.fromOffset(0, 5);
-            Size = UDim2.fromOffset(10, 10);
+            Position = UDim2.fromOffset(0, 6);
+            Size = UDim2.fromOffset(12, 12);
             ZIndex = 6;
             Parent = ToggleOuter;
         });
@@ -5026,8 +5034,8 @@ Library.ReducedMotion = false;
 Library.NotifyDuration = 5;
 Library.StreamerMode = 'Off';
 Library.StreamerNames = {};
-Library.UIFontName = 'Gotham';
-Library.UIFonts = { 'GothamMedium', 'Gotham', 'GothamBold', 'GothamBlack', 'Arial', 'Legacy', 'Code' }; 
+Library.UIFontName = 'JetBrains Mono Nerd';
+Library.UIFonts = { 'JetBrains Mono Nerd', 'RobotoMono', 'GothamMedium', 'Gotham', 'GothamBold', 'GothamBlack', 'Arial', 'Legacy', 'Code' }; 
 do
     local seen = {}
     for _, name in ipairs(Library.UIFonts) do seen[name] = true end
@@ -5049,24 +5057,148 @@ function Library:PlayerDisplayName(Target)
 end;
 
 function Library:SetUIFont(Name)
-    local Ok, Font = pcall(function()
-        return Enum.Font[Name];
-    end);
+    local nerd=Name=='JetBrains Mono Nerd'
+    local valid,font=pcall(function()return nerd and Enum.Font.RobotoMono or Enum.Font[Name]end)
+    if not valid or not font then return end
+    self.Font,self.UIFontName=font,Name
+    for _,object in ipairs(ScreenGui:GetDescendants()) do
+        if object:IsA('TextLabel') or object:IsA('TextButton') or object:IsA('TextBox') then
+            object.Font=font
+            if nerd and self.NerdFontFace then pcall(function()object.FontFace=self.NerdFontFace end) end
+        end
+    end
+    table.clear(self.TextBoundsCache)
+    self.TextBoundsCacheCount=0
+    if self.WorkspaceWindow and self.WorkspaceWindow.RefreshTabLayout then self.WorkspaceWindow.RefreshTabLayout() end
+end
+function Library:LoadNerdFont()
+    if self.NerdFontLoading or self.NerdFontFace or self.Unloaded then return end
+    local asset=getcustomasset or getsynasset
+    if type(asset)~='function' or type(writefile)~='function' or type(readfile)~='function' or type(isfile)~='function' or type(makefolder)~='function' or not Font then return end
+    self.NerdFontLoading=true
+    local ok,face=pcall(function()
+        pcall(makefolder,'phowg')
+        pcall(makefolder,'phowg/fonts')
+        local path='phowg/fonts/JetBrainsMonoNLNerdFontMono-Regular.ttf'
+        if not isfile(path) then
+            local bundled
+            for _,candidate in ipairs({'assets/fonts/JetBrainsMonoNLNerdFontMono-Regular.ttf','Linoria/assets/fonts/JetBrainsMonoNLNerdFontMono-Regular.ttf'}) do
+                if isfile(candidate) then bundled=readfile(candidate);break end
+            end
+            local bytes=bundled or game:HttpGet('https://raw.githubusercontent.com/ryanoasis/nerd-fonts/refs/tags/v3.3.0/patched-fonts/JetBrainsMono/NoLigatures/Regular/JetBrainsMonoNLNerdFontMono-Regular.ttf')
+            assert(type(bytes)=='string' and #bytes>100000,'font unavailable')
+            writefile(path,bytes)
+        end
+        if not isfile('phowg/fonts/OFL.txt') then writefile('phowg/fonts/OFL.txt',[=[Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
 
-    if not Ok or not Font then
-        return;
-    end;
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+https://openfontlicense.org
 
-    Library.Font = Font;
-    Library.UIFontName = Name;
-    if Library.WorkspaceWindow then Library.WorkspaceWindow.RefreshTabLayout() end;
 
-    for _, Desc in next, ScreenGui:GetDescendants() do
-        if Desc:IsA('TextLabel') or Desc:IsA('TextButton') or Desc:IsA('TextBox') then
-            Desc.Font = Font;
-        end;
-    end;
-end;
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+]=]) end
+        local manifest={name='JetBrains Mono Nerd',faces={{name='Regular',weight=400,style='normal',assetId=asset(path)}}}
+        local family='phowg/fonts/JetBrainsMonoNerd.json'
+        writefile(family,game:GetService('HttpService'):JSONEncode(manifest))
+        local loaded=Font.new(asset(family),Enum.FontWeight.Regular,Enum.FontStyle.Normal)
+        if type(TextService.GetFamilyInfoAsync)=='function' then
+            local info=TextService:GetFamilyInfoAsync(loaded.Family)
+            assert(type(info)=='table','font family unavailable')
+        end
+        return loaded
+    end)
+    self.NerdFontLoading=false
+    if ok and face and not self.Unloaded then
+        self.NerdFontFace=face
+        if self.UIFontName=='JetBrains Mono Nerd' then self:SetUIFont('JetBrains Mono Nerd') end
+    end
+end
 
 function Library:SetUIScale(Scale)
     Library.UIScale = Scale;
@@ -5294,7 +5426,12 @@ function Library:AddNotificationBorder(Holder)
 end;
 
 Library.ProgressNotifications = {};
+function Library:NotificationMessage(text)
+    local plain=tostring(text or ''):gsub('^%[neuro%.net%]%s*',''):gsub('^%[phowg host%]%s*','')
+    return '[phowg host] '..plain
+end
 function Library:NotifyProgress(Text, Progress, CanDismiss)
+    Text=Library:NotificationMessage(Text)
     local Handle = {Closed = false;};
     local Outer = Library:Create('Frame', {
         Name = 'ProgressNotification';
@@ -5336,7 +5473,7 @@ function Library:NotifyProgress(Text, Progress, CanDismiss)
     Handle.Frame, Handle.Label, Handle.Fill = Outer, Label, Fill;
     function Handle:Update(NewText, Fraction)
         if self.Closed or not Outer.Parent or Library.Unloaded then return end;
-        Label.Text = tostring(NewText or '');
+        Label.Text = Library:NotificationMessage(NewText);
         local Width = Library:GetTextBounds(Label.Text, Library.Font, 13);
         Outer.Size = UDim2.fromOffset(math.clamp(Width + (CanDismiss and 46 or 24), 220, 600), type(Fraction) == 'number' and 44 or 34);
         Track.Visible = type(Fraction) == 'number';
@@ -5371,7 +5508,8 @@ function Library:NotifyProgress(Text, Progress, CanDismiss)
 end;
 
 function Library:NotifyGamesense(Text, Time)
-    local XSize, YSize = Library:GetTextBounds(Text, Library.Font, 13);
+    Text=Library:NotificationMessage(Text)
+    local XSize, YSize = Library:GetTextBounds(Text, Library.Font, 14);
 
     YSize = 26;
     local D = Library.ReducedMotion and 0 or 0.3;
@@ -5385,7 +5523,7 @@ function Library:NotifyGamesense(Text, Time)
     });
 
     Library:Create('Frame', {
-        BackgroundColor3 = Color3.fromRGB(20, 20, 20);
+        BackgroundColor3 = Color3.fromRGB(20, 20, 28);
         BorderSizePixel = 0;
         Size = UDim2.new(1, 0, 1, 0);
         ZIndex = 101;
@@ -5428,6 +5566,7 @@ function Library:NotifyGamesense(Text, Time)
 end;
 
 function Library:NotifySimple(Text, Time)
+    Text=Library:NotificationMessage(Text)
     local Words = SplitNotifyWords(Text);
     local Hex = NotifyAccentHex();
     local Rich = '';
@@ -5444,7 +5583,7 @@ function Library:NotifySimple(Text, Time)
         end;
     end;
 
-    local XSize, YSize = Library:GetTextBounds(Text, Library.Font, 13);
+    local XSize, YSize = Library:GetTextBounds(Text, Library.Font, 14);
 
     local Label = Library:CreateLabel({
         Size = UDim2.new(0, XSize + 8, 0, YSize + 4);
@@ -5488,6 +5627,7 @@ function Library:NotifySimple(Text, Time)
 end;
 
 function Library:NotifyGamesensical(Text, Time)
+    Text=Library:NotificationMessage(Text)
     local Words = SplitNotifyWords(Text);
     local Hex = NotifyAccentHex();
     local Rich = '';
@@ -5505,11 +5645,11 @@ function Library:NotifyGamesensical(Text, Time)
         end;
     end;
 
-    local XSize = Library:GetTextBounds(Text, Library.Font, 13);
+    local XSize = Library:GetTextBounds(Text, Library.Font, 14);
 
     local Outer = Library:Create('Frame', {
         BorderColor3 = Color3.new(0, 0, 0);
-        Size = UDim2.new(0, 0, 0, 20);
+        Size = UDim2.new(0, 0, 0, 28);
         ClipsDescendants = true;
         ZIndex = 100;
         Parent = Library.NotificationArea;
@@ -5536,21 +5676,20 @@ function Library:NotifyGamesensical(Text, Time)
     Label.RichText = true;
 
     local D = Library.ReducedMotion and 0 or 0.25;
-    TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, XSize + 14, 0, 20) }):Play();
+    TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, XSize + 20, 0, 28) }):Play();
 
     Library:AddNotificationBorder(Outer);
 
     task.spawn(function()
         task.wait(Time or Library.NotifyDuration or 5);
-        TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, 0, 0, 20) }):Play();
+        TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, 0, 0, 28) }):Play();
         task.wait(D + 0.05);
         Outer:Destroy();
     end);
 end;
 
 local function NotificationText(Text)
-    local Plain = tostring(Text);
-    if not Plain:match('^%[[^%]]+%]') then Plain = '[neuro.net] ' .. Plain end;
+    local Plain=Library:NotificationMessage(Text);
     local Safe = Plain:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;');
     local Prefix, Body = Safe:match('^(%[[^%]]+%])%s*(.*)$');
     Body = Body:gsub('UNSYNCED', '<font color="#C86173">UNSYNCED</font>');
@@ -5560,6 +5699,7 @@ local function NotificationText(Text)
 end;
 
 function Library:Notify(Text, Time)
+    Text=Library:NotificationMessage(Text)
     local Style = Library.NotificationStyle;
 
     if Style == 'Gamesense' then
@@ -5573,11 +5713,11 @@ function Library:Notify(Text, Time)
     end;
     if Library.Unloaded then return end;
     local Rich, Plain = NotificationText(Text);
-    local Width = math.ceil((Library:GetTextBounds(Plain, Enum.Font.SourceSans, 10))) + 10;
-    local Holder = Library:Create('CanvasGroup', {Name = 'Notification'; BackgroundColor3 = Color3.fromRGB(10, 10, 12); BorderSizePixel = 0; Size = UDim2.fromOffset(Width, 17); GroupTransparency = Library.ReducedMotion and 0 or 1; ZIndex = 100; Parent = Library.NotificationArea;});
+    local Width = math.ceil((Library:GetTextBounds(Plain, Library.Font, 14))) + 10;
+    local Holder = Library:Create('CanvasGroup', {Name = 'Notification'; BackgroundColor3 = Color3.fromRGB(10, 10, 12); BorderSizePixel = 0; Size = UDim2.fromOffset(Width, 28); GroupTransparency = Library.ReducedMotion and 0 or 1; ZIndex = 100; Parent = Library.NotificationArea;});
     Library:Create('UIStroke', {Color = Color3.fromRGB(49, 49, 55); Thickness = 1; ApplyStrokeMode = Enum.ApplyStrokeMode.Border; Parent = Holder;});
     Library:Create('Frame', {BackgroundColor3 = Color3.fromRGB(195, 195, 205); BorderSizePixel = 0; Size = UDim2.new(0, 1, 1, 0); ZIndex = 101; Parent = Holder;});
-    Library:Create('TextLabel', {BackgroundTransparency = 1; Position = UDim2.fromOffset(5, 0); Size = UDim2.new(1, -10, 1, 0); Font = Enum.Font.SourceSans; TextSize = 10; TextColor3 = Color3.fromRGB(225, 225, 230); TextXAlignment = Enum.TextXAlignment.Center; RichText = true; Text = Rich; ZIndex = 102; Parent = Holder;});
+    Library:Create('TextLabel', {BackgroundTransparency = 1; Position = UDim2.fromOffset(5, 0); Size = UDim2.new(1, -10, 1, 0); Font = Library.Font; TextSize = 14; TextColor3 = Color3.fromRGB(225, 225, 230); TextXAlignment = Enum.TextXAlignment.Center; RichText = true; Text = Rich; ZIndex = 102; Parent = Holder;});
     local Duration = Library.ReducedMotion and 0 or 0.18;
     if Duration > 0 then TweenService:Create(Holder, TweenInfo.new(Duration), {GroupTransparency = 0}):Play() end;
     task.delay(math.max(0.2, tonumber(Time) or Library.NotifyDuration or 5), function()
@@ -6938,13 +7078,13 @@ function Library:FormatClassicControl(control, owner, text, anchor)
         local inner = field:FindFirstChildWhichIsA('Frame')
         local display = inner and inner:FindFirstChildWhichIsA('TextLabel')
         if inner then
-            inner.Position, inner.Size = UDim2.fromOffset(0, 2), UDim2.new(1, 0, 0, 9)
+            inner.Position, inner.Size = UDim2.fromOffset(0, 2), UDim2.new(1, 0, 0, 12)
             inner.BorderSizePixel = 0
             local stroke = inner:FindFirstChild('ControlStroke')
             if stroke then stroke.Transparency = 1 end
         end
         if display then display.Visible = false end
-        local entry = self:Create('TextBox', {Name = 'SliderValue', Parent = field, Position = UDim2.new(0.5,-22,0,0), Size = UDim2.fromOffset(44,13), Text = tostring(control.Value) .. control.Suffix, TextXAlignment = Enum.TextXAlignment.Center, ClearTextOnFocus = false, Font = self.Font, TextSize = 11, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 12})
+        local entry = self:Create('TextBox', {Name = 'SliderValue', Parent = field, Position = UDim2.new(0.5,-32,0,0), Size = UDim2.fromOffset(64,18), Text = tostring(control.Value) .. control.Suffix, TextXAlignment = Enum.TextXAlignment.Center, ClearTextOnFocus = false, Font = self.Font, TextSize = 11, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 12})
         self:AddToRegistry(entry, {TextColor3 = 'FontColor', BackgroundColor3 = 'MainColor'})
         local editorStroke = self:Create('UIStroke', {Name = 'NumericFocus', Parent = entry, Color = self.AccentColor, Thickness = 1, Transparency = 1})
         self:AddToRegistry(editorStroke, {Color = 'AccentColor'})
@@ -6984,10 +7124,10 @@ function Library:FormatClassicControl(control, owner, text, anchor)
     local function reflow()
         local scale = math.max(Library.UIScale or 1, 0.01)
         local height=searchList and (control.ClassicListHeight or 120) or 16
-        row.Size=UDim2.new(1,0,0,searchList and height+18 or 34)
-        caption.Position,caption.Size,caption.TextSize=UDim2.fromOffset(0,0),UDim2.new(1,0,0,16),12
-        field.Position=UDim2.fromOffset(0,17)
-        field.Size=UDim2.new(1,0,0,height)
+        row.Size=UDim2.new(1,0,0,searchList and height+22 or 42)
+        caption.Position,caption.Size,caption.TextSize=UDim2.fromOffset(0,0),UDim2.new(1,0,0,20),14
+        field.Position=UDim2.fromOffset(0,22)
+        field.Size=UDim2.new(1,0,0,searchList and height or 20)
         if owner.Resize then owner:Resize() end
     end
     control.ClassicReflow, self.WorkspaceRows[row] = reflow, reflow
@@ -7189,7 +7329,7 @@ end
 function Library:CreateWindow(...)
     local args = {...}
     local config = type(args[1]) == 'table' and table.clone(args[1]) or {Title = args[1], AutoShow = args[2]}
-    local window: {[string]: any} = {Tabs = {}, TabSequence = 0, Title = tostring(config.Title or 'Phowg'), Workspace = true, Classic = true}
+    local window: {[string]: any} = {Tabs = {}, TabSequence = 0, Title = tostring(config.Title or 'phowg host'), Workspace = true, Classic = true}
     Library.WorkspaceWindow = window
     local function frame(class, properties, colors)
         local object = Library:Create(class, properties)
@@ -7206,17 +7346,29 @@ function Library:CreateWindow(...)
         return object
     end
     local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
-    local requested = typeof(config.Size) == 'UDim2' and config.Size or UDim2.fromOffset(640, 740)
+    local requested = typeof(config.Size) == 'UDim2' and config.Size or UDim2.fromOffset(760, 820)
     local outer = frame('CanvasGroup', {Name = 'ClassicWindow', Parent = ScreenGui, BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, Size = UDim2.fromOffset(math.min(requested.X.Offset, viewport.X - 24), math.min(requested.Y.Offset, viewport.Y - 24)), Position = typeof(config.Position) == 'UDim2' and config.Position or UDim2.fromOffset(8, 8), Visible = false, GroupTransparency = 0, ZIndex = 1}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
     Library:StyleControl(outer, outer, 0)
-    outer.BorderSizePixel=1
-    frame('UIStroke',{Name='InnerFrame',Parent=outer,Color=Library.OutlineColor,Thickness=1,Transparency=0.65})
+    outer.BorderSizePixel=0
+    local oldStroke=outer:FindFirstChild('ControlStroke')
+    if oldStroke then oldStroke.Enabled=false end
+    local border=frame('UIStroke',{Name='AnimatedWhiteBorder',Parent=outer,Color=Color3.new(1,1,1),Thickness=1.4,Transparency=0,ApplyStrokeMode=Enum.ApplyStrokeMode.Border})
+    local borderGradient=frame('UIGradient',{Name='BorderGradient',Parent=border,Rotation=0,Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(80,80,88)),ColorSequenceKeypoint.new(0.3,Color3.fromRGB(185,185,194)),ColorSequenceKeypoint.new(0.5,Color3.new(1,1,1)),ColorSequenceKeypoint.new(0.7,Color3.fromRGB(185,185,194)),ColorSequenceKeypoint.new(1,Color3.fromRGB(80,80,88))})})
+    window.AnimatedBorder,window.BorderGradient=border,borderGradient
+    local borderElapsed=0
+    Library:GiveSignal(RenderStepped:Connect(function(delta)
+        if Library.Unloaded or not outer.Parent or not outer.Visible or Library.ReducedMotion then return end
+        borderElapsed+=delta
+        if borderElapsed<1/30 then return end
+        borderGradient.Rotation=(borderGradient.Rotation+borderElapsed*28)%360
+        borderElapsed=0
+    end))
     window.Holder, window.ScaleObject = outer, Library:ApplyScaleTo(outer)
     if config.Center then outer.Position = UDim2.fromOffset((viewport.X - outer.Size.X.Offset) / 2, (viewport.Y - outer.Size.Y.Offset) / 2) end
     local rainbow = frame('Frame', {Name = 'ClassicRainbow', Parent = outer, Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, ZIndex = 10})
     frame('UIGradient', {Parent = rainbow, Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.fromRGB(207, 91, 222)), ColorSequenceKeypoint.new(0.25, Color3.fromRGB(226, 204, 106)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(92, 215, 143)), ColorSequenceKeypoint.new(0.75, Color3.fromRGB(75, 183, 220)), ColorSequenceKeypoint.new(1, Color3.fromRGB(125, 94, 224))})})
     rainbow.Visible=false
-    local header = frame('Frame', {Name = 'ClassicHeader', Parent = outer, Position = UDim2.fromOffset(0, 1), Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, BorderSizePixel = 0, Active = true, ZIndex = 9})
+    local header = frame('Frame', {Name = 'ClassicHeader', Parent = outer, Position = UDim2.fromOffset(0, 1), Size = UDim2.new(1, 0, 0, 32), BackgroundTransparency = 1, BorderSizePixel = 0, Active = true, ZIndex = 9})
     local title = label(header, window.Title, UDim2.fromOffset(12, 0), UDim2.new(1, -330, 1, 0), 14)
     local searchOuter = frame('Frame', {Name = 'ClassicSearch', Parent = header, Position = UDim2.new(1, -274, 0, 6), Size = UDim2.fromOffset(230, 22), BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 5}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
     Library:StyleControl(searchOuter, searchOuter, 1)
@@ -7224,20 +7376,30 @@ function Library:CreateWindow(...)
     local close = button(header, utf8.char(215), UDim2.fromOffset(22, 22), function() Library:Toggle() end)
     close.Position = UDim2.new(1, -32, 0, 6)
     title.Visible=true
-    title.TextSize=12
-    title.TextXAlignment=Enum.TextXAlignment.Center
-    local notice=label(header,'Hood Customs Free For All',UDim2.new(0.58,0,0,0),UDim2.new(0.4,-10,1,0),11)
-    notice.TextColor3=Color3.fromRGB(167,35,40)
+    title.TextSize=16
+    title.TextXAlignment=Enum.TextXAlignment.Left
+    local notice=label(header,Library.GameNameCache or 'Loading game...',UDim2.new(0.48,0,0,0),UDim2.new(0.52,-16,1,0),14)
+    window.GameLabel=notice
+    notice.TextColor3=Library.FontColor
+    Library:AddToRegistry(notice,{TextColor3='FontColor'})
+    if not Library.GameNameCache then
+        task.spawn(function()
+            local ok,info=pcall(function()return game:GetService('MarketplaceService'):GetProductInfoAsync(game.PlaceId,Enum.InfoType.Asset)end)
+            local name=ok and type(info)=='table' and info.Name or game.Name
+            if type(name)~='string' or name=='' then name='Roblox' end
+            if not Library.Unloaded and notice.Parent then Library.GameNameCache=name;notice.Text=name end
+        end)
+    end
     notice.TextXAlignment=Enum.TextXAlignment.Right
     searchOuter.Visible=false
     close.Visible=false
-    local nav = frame('ScrollingFrame', {Name = 'ClassicNavigation', Parent = outer, Position = UDim2.fromOffset(12, 26), Size = UDim2.new(1, -24, 0, 22), BackgroundTransparency = 1, BorderSizePixel = 0, CanvasSize = UDim2.fromOffset(0, 0), ScrollBarThickness = 2, ScrollBarImageColor3 = Library.OutlineColor, ScrollingDirection = Enum.ScrollingDirection.X, ZIndex = 3}, {ScrollBarImageColor3 = 'OutlineColor'})
-    frame('Frame', {Parent = outer, Position = UDim2.fromOffset(12, 50), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'OutlineColor'})
+    local nav = frame('ScrollingFrame', {Name = 'ClassicNavigation', Parent = outer, Position = UDim2.fromOffset(14, 38), Size = UDim2.new(1, -28, 0, 30), BackgroundTransparency = 1, BorderSizePixel = 0, CanvasSize = UDim2.fromOffset(0, 0), ScrollBarThickness = 2, ScrollBarImageColor3 = Library.OutlineColor, ScrollingDirection = Enum.ScrollingDirection.X, ZIndex = 3}, {ScrollBarImageColor3 = 'OutlineColor'})
+    frame('Frame', {Parent = outer, Position = UDim2.fromOffset(14, 70), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'OutlineColor'})
     local navLayout = frame('UIListLayout', {Parent = nav, FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder})
-    local sectionHost = frame('Frame', {Name = 'ClassicSections', Parent = outer, Position = UDim2.fromOffset(12, 52), Size = UDim2.new(1, -24, 0, 20), BackgroundTransparency = 1, ZIndex = 4})
+    local sectionHost = frame('Frame', {Name = 'ClassicSections', Parent = outer, Position = UDim2.fromOffset(14, 74), Size = UDim2.new(1, -28, 0, 26), BackgroundTransparency = 1, ZIndex = 4})
     local utilityHeading = label(sectionHost, '', UDim2.fromOffset(4, 0), UDim2.fromScale(1, 1), 14)
     utilityHeading.Visible = false
-    frame('Frame', {Parent = outer, Position = UDim2.fromOffset(12, 74), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'OutlineColor'})
+    frame('Frame', {Parent = outer, Position = UDim2.fromOffset(14, 102), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'OutlineColor'})
     local function drawIcon(parent, kind)
         local icon = Library:CreateClassicIcon(parent, kind, 24)
         icon.Position = UDim2.new(0.5, -12, 0, 6)
@@ -7270,7 +7432,7 @@ function Library:CreateWindow(...)
         end
     end
     local function makeRootNav(name,callback,order)
-        local object=button(nav,'',UDim2.fromOffset(110,22),callback)
+        local object=button(nav,'',UDim2.fromOffset(110,30),callback)
         object.LayoutOrder=order
         local caption=label(object,tostring(name),UDim2.fromOffset(0,0),UDim2.fromScale(1,1),12)
         caption.Name,caption.TextXAlignment='NavigationLabel',Enum.TextXAlignment.Center
@@ -7324,7 +7486,7 @@ function Library:CreateWindow(...)
             end)
         end
         local width = math.clamp(select(1, Library:GetTextBounds(tostring(name), Library.Font, 14)) + 28, 72, 180)
-        local object = frame('TextButton', {Name = tostring(name), Parent = group.Strip, Text = tostring(name), Font = Library.Font, TextSize = 12, TextColor3 = Library.FontColor, BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false, LayoutOrder = order, Size = UDim2.fromOffset(width, 20), ZIndex = 9}, {TextColor3 = 'FontColor'})
+        local object = frame('TextButton', {Name = tostring(name), Parent = group.Strip, Text = tostring(name), Font = Library.Font, TextSize = 12, TextColor3 = Library.FontColor, BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false, LayoutOrder = order, Size = UDim2.fromOffset(width, 26), ZIndex = 9}, {TextColor3 = 'FontColor'})
         local caption = label(object, tostring(name), UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), 14)
         caption.Name, caption.Visible = 'NavigationLabel', false
         local marker = Library:CreateSelectionMarker(object)
@@ -7343,7 +7505,7 @@ function Library:CreateWindow(...)
     local profileStatus = label(footer, '', UDim2.new(1, -180, 0, 0), UDim2.fromOffset(164, 32), 11)
     profileStatus.Visible = false
     profileStatus.TextXAlignment = Enum.TextXAlignment.Right
-    local body = frame('Frame', {Name = 'ClassicBody', Parent = outer, Position = UDim2.fromOffset(12, 80), Size = UDim2.new(1, -24, 1, -92), BackgroundTransparency = 1, ZIndex = 2})
+    local body = frame('Frame', {Name = 'ClassicBody', Parent = outer, Position = UDim2.fromOffset(14, 110), Size = UDim2.new(1, -28, 1, -124), BackgroundTransparency = 1, ZIndex = 2})
     local rail = frame('Frame', {Name = 'ClassicWeaponRail', Parent = body, Size = UDim2.new(0, 120, 1, 0), BackgroundTransparency = 1, Visible = false, ZIndex = 3})
     local railTitle = label(rail, 'PROFILES', UDim2.fromOffset(2, 0), UDim2.new(1, -30, 0, 22), 10)
     local weaponList = frame('ScrollingFrame', {Name = 'WeaponProfiles', Parent = rail, Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, 0, 1, -28), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 2, ScrollBarImageColor3 = Library.OutlineColor, CanvasSize = UDim2.fromOffset(0, 0), ZIndex = 4}, {ScrollBarImageColor3 = 'OutlineColor'})
@@ -7594,7 +7756,8 @@ function Library:CreateWindow(...)
     function window:SetWindowTitle(value)
         local text = tostring(value or ''):gsub('%c', ''):match('^%s*(.-)%s*$')
         local length = utf8.len(text)
-        if not length or length == 0 then text = tostring(config.Title or 'Phowg') elseif length > 64 then text = text:sub(1, utf8.offset(text, 65) - 1) end
+        if text:lower()=='neuro.net' then text='phowg host' end
+        if not length or length == 0 then text = tostring(config.Title or 'phowg host') elseif length > 64 then text = text:sub(1, utf8.offset(text, 65) - 1) end
         self.Title, title.Text = text, text
         return text
     end
@@ -7679,24 +7842,24 @@ function Library:CreateWindow(...)
             local holder = frame('Frame', {Name = 'ClassicGroupbox', Parent = parent, Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
             holder.BackgroundTransparency=1
             frame('Frame',{Name='SectionRule',Parent=holder,Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,1),BackgroundColor3=Library.AccentColor,BorderSizePixel=0},{BackgroundColor3='AccentColor'})
-            local naturalWidth = select(1, Library:GetTextBounds(tostring(name), Library.Font, 13))
-            local sectionLabel = label(holder, tostring(name), UDim2.fromOffset(0,3), UDim2.new(1,0,0,16), 12)
+            local naturalWidth = select(1, Library:GetTextBounds(tostring(name), Library.Font, 14))
+            local sectionLabel = label(holder, tostring(name), UDim2.fromOffset(0,3), UDim2.new(1,0,0,20), 14)
             sectionLabel.AnchorPoint, sectionLabel.TextXAlignment = Vector2.zero, Enum.TextXAlignment.Left
             sectionLabel.BackgroundTransparency, sectionLabel.BackgroundColor3 = 0, Library.BackgroundColor
             Library:AddToRegistry(sectionLabel, {BackgroundColor3 = 'BackgroundColor', TextColor3 = 'FontColor'})
             local chroma = button(holder, 'RGB', UDim2.fromOffset(36, 18), function() Library:SetGroupChroma(section, not section.ChromaOn); Library:AttemptSave() end)
             chroma.Position, chroma.Visible = UDim2.new(1, -46, 0, -8), false
-            local container = frame('Frame', {Parent = holder, Position = UDim2.fromOffset(2, 21), Size = UDim2.new(1, -4, 0, 0), BackgroundTransparency = 1, ZIndex = 5})
+            local container = frame('Frame', {Parent = holder, Position = UDim2.fromOffset(2, 27), Size = UDim2.new(1, -4, 0, 0), BackgroundTransparency = 1, ZIndex = 5})
             local layout = frame('UIListLayout', {Parent = container, SortOrder = Enum.SortOrder.LayoutOrder})
             section.Container, section.Holder, section.TextLabel = container, holder, sectionLabel
             section.ChromaBtn, section.ChromaBtnInner, section.ChromaBtnLabel = chroma, chroma, chroma
             setmetatable(section, BaseGroupbox)
             function section:Resize()
                 if Library:DeferStartupLayout(self) then return end
-                sectionLabel.Size = UDim2.fromOffset(math.max(0, math.min(naturalWidth + 12, holder.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01) - (chroma.Visible and 100 or 24))), 18)
+                sectionLabel.Size = UDim2.fromOffset(math.max(0, math.min(naturalWidth + 12, holder.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01) - (chroma.Visible and 100 or 24))), 20)
                 local height = 0
                 for _, child in ipairs(container:GetChildren()) do if child:IsA('GuiObject') and child.Visible then height = height + child.Size.Y.Offset end end
-                container.Size, holder.Size = UDim2.new(1, -4, 0, height), UDim2.new(1, 0, 0, height + 26)
+                container.Size, holder.Size = UDim2.new(1, -4, 0, height), UDim2.new(1, 0, 0, height + 32)
                 if box then box:Resize() else tab:Resize() end
             end
             function section:Show()
@@ -7735,7 +7898,7 @@ function Library:CreateWindow(...)
                 item:AddDropdown('NotificationStyle', {Text = 'Notification style', Values = {'Default', 'Gamesense', 'Simple', 'Gamesensical', 'Progress'}, Default = Library.NotificationStyle or 'Default', Callback = function(value) Library:SetNotificationStyle(value) end})
                 item:AddDropdown('NotificationPosition', {Text = 'Notification position', Values = {'Bottom', 'Top', 'Bottom Left', 'Bottom Right', 'Top Left', 'Top Right'}, Default = Library.NotificationPosition or 'Bottom', Callback = function(value) Library:SetNotificationPosition(value) end})
                 item:AddToggle('KeybindIndicator', {Text = 'Keybind indicator', Default = true, Callback = function(value) Library:SetKeybindIndicator(value) end})
-                item:AddSlider('UIScale', {Text = 'UI scale', Default = 90, Min = 75, Max = 150, Rounding = 0, Suffix = '%', Callback = function(value) Library:SetUIScale(value / 100) end})
+                item:AddSlider('UIScale', {Text = 'UI scale', Default = 100, Min = 75, Max = 150, Rounding = 0, Suffix = '%', Callback = function(value) Library:SetUIScale(value / 100) end})
                 item:AddToggle('ReducedMotion', {Text = 'Reduced motion', Default = false, Callback = function(value) Library.ReducedMotion = value end})
                 item:AddButton('Copy JobId', function() pcall(setclipboard, tostring(game.JobId)); Library:Notify('Copied JobId', 2) end)
             end
@@ -7745,43 +7908,24 @@ function Library:CreateWindow(...)
         function tab:AddLeftGroupbox(name) return self:AddGroupbox({Name = name, Side = 1}) end
         function tab:AddRightGroupbox(name) return self:AddGroupbox({Name = name, Side = 2}) end
         function tab:AddTabbox(info)
-            local box: {[string]: any} = {Tabs = {}, RootTab = self, TabSequence = 0}
-            local holder = frame('Frame', {Name = 'ClassicTabbox', Parent = info.Side == 2 and right or left, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), ZIndex = 4})
-            local bar = frame('ScrollingFrame', {Name = 'Subtabs', Parent = holder, Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 2, ScrollingDirection = Enum.ScrollingDirection.X, CanvasSize = UDim2.fromOffset(0, 0), ZIndex = 5})
-            local barLayout = frame('UIListLayout', {Parent = bar, FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder})
-            local host = frame('Frame', {Parent = holder, Position = UDim2.fromOffset(0, 32), Size = UDim2.new(1, 0, 0, 0), BackgroundTransparency = 1, ZIndex = 4})
-            box.Holder, box.Container = holder, host
-            function box:Resize()
-                local height = self.ActiveTab and self.ActiveTab.Holder.Size.Y.Offset or 0
-                host.Size, holder.Size = UDim2.new(1, 0, 0, height), UDim2.new(1, 0, 0, height + 32)
-                tab:Resize()
-            end
+            local root=self
+            local box={Tabs={},RootTab=root,TabSequence=0,Flat=true}
+            box.Holder,box.Container=info.Side==2 and right or left,info.Side==2 and right or left
+            function box:Resize()root:Resize()end
             function box:Select(selected)
-                Library:ClosePopups()
-                for _, item in pairs(self.Tabs) do
-                    item.Holder.Visible, item.Marker.Visible = item == selected, item == selected
-                    Library:AnimateControl(item.Button, {BackgroundTransparency = item == selected and 0 or 1})
-                end
-                self.ActiveTab = selected
-                selected:Resize()
+                self.ActiveTab=selected
+                if selected then selected.Holder.Visible=true;selected:Resize() end
             end
             function box:AddTab(name)
-                self.TabSequence = self.TabSequence + 1
-                local item = group(name, host, self)
-                item.Holder.Visible = false
-                local width = math.clamp(select(1, Library:GetTextBounds(tostring(name), Library.Font, 12)) + 24, 70, 180)
-                item.Button = button(bar, tostring(name), UDim2.fromOffset(width, 26), function() self:Select(item) end)
-                item.Button.LayoutOrder = self.TabSequence
-                item.Marker = Library:CreateSelectionMarker(item.Button)
-                item.Marker.Position, item.Marker.Size, item.Marker.Visible = UDim2.new(0, 6, 1, -2), UDim2.new(1, -12, 0, 2), false
-                self.Tabs[name] = item
-                if not self.ActiveTab then self:Select(item) end
-                bar.CanvasSize = UDim2.fromOffset(barLayout.AbsoluteContentSize.X / math.max(Library.UIScale or 1, 0.01), 0)
+                self.TabSequence+=1
+                local item=root:AddGroupbox({Name=name,Side=info.Side})
+                item.FlatSection=true
+                self.Tabs[name]=item
+                self.ActiveTab=self.ActiveTab or item
                 return item
             end
-            barLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function() bar.CanvasSize = UDim2.fromOffset(barLayout.AbsoluteContentSize.X / math.max(Library.UIScale or 1, 0.01), 0) end)
-            self.Tabboxes[info.Name or ''] = box
-            self.Boxes[#self.Boxes + 1] = box
+            root.Tabboxes[info.Name or '']=box
+            root.Boxes[#root.Boxes+1]=box
             return box
         end
         function tab:AddLeftTabbox(name) return self:AddTabbox({Name = name, Side = 1}) end
@@ -7859,13 +8003,13 @@ function Library:CreateWindow(...)
         local searchWidth = math.min(230, math.max(130, width * 0.24))
         local stackedFooter=false
         footer.Visible=false
-        body.Position,body.Size=UDim2.fromOffset(12,80),UDim2.new(1,-24,1,-92)
+        body.Position,body.Size=UDim2.fromOffset(14,110),UDim2.new(1,-28,1,-124)
         searchOuter.Visible,close.Visible,profileStatus.Visible=false,false,false
-        title.Position,title.Size=UDim2.fromOffset(0,0),UDim2.fromScale(1,1)
+        title.Position,title.Size=UDim2.fromOffset(16,0),UDim2.new(0.47,-16,1,0)
         local navButtons = {}
         for _, child in ipairs(nav:GetChildren()) do if child:IsA('TextButton') then navButtons[#navButtons + 1] = child end end
         local tabWidth = math.clamp((width - 20 - math.max(0, #navButtons - 1) * 2) / math.max(1, #navButtons), 60, 180)
-        for _, object in ipairs(navButtons) do object.Size = UDim2.fromOffset(tabWidth, 22) end
+        for _, object in ipairs(navButtons) do object.Size = UDim2.fromOffset(tabWidth, 30) end
         updateCanvas(nav, navLayout)
         weaponList.CanvasSize = UDim2.fromOffset(0, weaponLayout.AbsoluteContentSize.Y / scale + 4)
         if width ~= lastWidth or height~=lastHeight or scale ~= lastScale or inset ~= lastSidebar or stackedFooter~=lastStacked then
@@ -7963,5 +8107,6 @@ Library:GiveSignal(Players.PlayerAdded:Connect(function(player)
 end));
 Library:GiveSignal(Players.PlayerRemoving:Connect(OnPlayerChange));
 
+task.defer(function()if not Library.Unloaded then Library:LoadNerdFont() end end)
 getgenv().Library = Library
 return Library
