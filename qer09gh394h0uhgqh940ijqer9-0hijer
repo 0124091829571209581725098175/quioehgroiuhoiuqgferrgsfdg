@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 26;
+Library.PhowgRevision = 27;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -1136,33 +1136,38 @@ function Library:SetCustomCursorColor(Color)
     self.CustomCursorColor = Color;
     self:RefreshCustomCursor();
 end;
+function Library:StyleIndicator(Panel)
+    Panel.BackgroundColor3 = Color3.fromRGB(16, 16, 22);
+    Panel.BorderSizePixel = 0;
+    for _, Layer in ipairs({{5, 0.94}, {3, 0.85}, {1, 0.35}}) do
+        local Glow = self:Create('Frame', {Name = 'BorderGlow'; BackgroundTransparency = 1; BorderSizePixel = 0; Size = UDim2.fromScale(1, 1); ZIndex = Panel.ZIndex; Parent = Panel;});
+        self:Create('UIStroke', {Color = Color3.fromRGB(145, 153, 177); Thickness = Layer[1]; Transparency = Layer[2]; ApplyStrokeMode = Enum.ApplyStrokeMode.Border; Parent = Glow;});
+    end;
+    local Edge = self:Create('UIStroke', {Color = Color3.new(1, 1, 1); Thickness = 1; ApplyStrokeMode = Enum.ApplyStrokeMode.Border; Parent = Panel;});
+    local Gradient = self:Create('UIGradient', {
+        Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.fromRGB(36, 37, 48)), ColorSequenceKeypoint.new(0.4, Color3.fromRGB(42, 43, 55)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(177, 189, 215)), ColorSequenceKeypoint.new(0.6, Color3.fromRGB(42, 43, 55)), ColorSequenceKeypoint.new(1, Color3.fromRGB(36, 37, 48))});
+        Parent = Edge;
+    });
+    self:Create('Frame', {Name = 'InsetBorder'; BackgroundTransparency = 1; BorderColor3 = Color3.fromRGB(38, 38, 48); Position = UDim2.fromOffset(3, 3); Size = UDim2.new(1, -6, 1, -6); ZIndex = Panel.ZIndex; Parent = Panel;});
+    return Gradient;
+end;
+
 function Library:QueueKeybindLayout()
     if Library.KeybindLayoutPending or Library.Unloaded then return end;
     Library.KeybindLayoutPending = true;
     task.defer(function()
         Library.KeybindLayoutPending = false;
         if Library.Unloaded or not Library.KeybindFrame or not Library.KeybindFrame.Parent then return end;
-        local Height, Width = 0, 0;
+        local Height, Width, Count = 0, 136, 0;
         for _, Row in ipairs(Library.KeybindContainer:GetChildren()) do
             if Row:IsA('Frame') and Row.Visible then
-                Height = Height + 18;
-                local RowWidth = 0;
-                for _, Label in ipairs(Row:GetChildren()) do
-                    if Label:IsA('TextLabel') then
-                        RowWidth = RowWidth + Label.TextBounds.X;
-                        if Label.Name == 'State' then
-                            local StateWidth = math.ceil(Label.TextBounds.X) + 5;
-                            Label.Position = UDim2.new(1, -StateWidth - 5, 0, 0);
-                            Label.Size = UDim2.new(0, StateWidth, 1, 0);
-                            local NameLabel = Row:FindFirstChild('Name');
-                            if NameLabel then NameLabel.Size = UDim2.new(1, -StateWidth - 15, 1, 0) end;
-                        end;
-                    end;
-                end;
-                Width = math.max(Width, RowWidth);
+                Count = Count + 1;
+                Height = Height + 14;
+                Width = math.max(Width, Row:FindFirstChild('Name').TextBounds.X + 18);
             end;
         end;
-        Library.KeybindFrame.Size = UDim2.new(0, math.max(Width + 20, 210), 0, Height + 22);
+        Library.KeybindVisibleRows = Count;
+        Library.KeybindFrame.Size = UDim2.fromOffset(math.ceil(Width), Height + 30);
         Library:RefreshKeybindVisibility();
     end);
 end;
@@ -2207,7 +2212,7 @@ do
         local KeyRow = Library:Create('Frame', {
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
-            Size = UDim2.new(1, 0, 0, 18);
+            Size = UDim2.new(1, 0, 0, 14);
             Visible = false;
             ZIndex = 110;
             Parent = Library.KeybindContainer;
@@ -2216,34 +2221,20 @@ do
             Name = 'Name';
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
-            Position = UDim2.new(0, 5, 0, 0);
-            Size = UDim2.new(1, -80, 1, 0);
+            Position = UDim2.new(0, 0, 0, 0);
+            Size = UDim2.new(1, 0, 1, 0);
             TextColor3 = Color3.fromRGB(255, 255, 255);
-            TextSize = 13;
+            TextSize = 10;
             TextXAlignment = Enum.TextXAlignment.Left;
             TextTruncate = Enum.TextTruncate.AtEnd;
             ZIndex = 111;
             Parent = KeyRow;
         }, true);
-        local KeyState = Library:CreateLabel({
-            Name = 'State';
-            BackgroundTransparency = 1;
-            BorderSizePixel = 0;
-            Position = UDim2.new(1, -70, 0, 0);
-            Size = UDim2.new(0, 65, 1, 0);
-            TextColor3 = Color3.fromRGB(255, 255, 255);
-            TextSize = 13;
-            TextXAlignment = Enum.TextXAlignment.Right;
-            ZIndex = 111;
-            Parent = KeyRow;
-        }, true);
         Library:RemoveFromRegistry(KeyName);
-        KeyName.TextColor3 = Color3.fromRGB(255, 255, 255);
-        Library:RemoveFromRegistry(KeyState);
-        KeyState.TextColor3 = Color3.fromRGB(255, 255, 255);
+        KeyName.Font = Enum.Font.SourceSans;
+        KeyName.TextColor3 = Color3.fromRGB(225, 225, 230);
         KeyPicker.Row = KeyRow;
         KeyPicker.NameLabel = KeyName;
-        KeyPicker.StateLabel = KeyState;
 
         local Modes = Info.Modes or { 'Always', 'Toggle', 'Hold' };
         local ModeButtons = {};
@@ -2303,10 +2294,8 @@ do
             local Key = tostring(KeyPicker.Value or 'None');
             if KeyPicker.DisplayState == State and KeyPicker.DisplayMode == KeyPicker.Mode and KeyPicker.DisplayName == RawName and KeyPicker.DisplayKey == Key then return end;
             KeyPicker.DisplayState, KeyPicker.DisplayMode, KeyPicker.DisplayName, KeyPicker.DisplayKey = State, KeyPicker.Mode, RawName, Key;
-            local ModeText = KeyPicker.Mode == 'Always' and 'On' or KeyPicker.Mode == 'Hold' and 'Holding' or 'Toggled';
-            KeyName.Text = string.upper(RawName:sub(1, 1)) .. RawName:sub(2);
-            KeyState.Text = '[' .. Key .. '] [' .. ModeText .. ']';
-            KeyRow.Visible = State and true or false;
+            KeyName.Text = '(' .. KeyPicker.Mode .. ') ' .. string.upper(RawName:sub(1, 1)) .. RawName:sub(2) .. ' - ' .. Key;
+            KeyRow.Visible = State and Key ~= 'None' and Key ~= '';
             Library:QueueKeybindLayout();
         end;
 
@@ -5168,80 +5157,26 @@ do
 
 
     local KeybindOuter = Library:Create('Frame', {
-        AnchorPoint = Vector2.new(0, 0.5);
-        BackgroundTransparency = 1;
-        BorderSizePixel = 0;
-        Position = UDim2.new(0, 10, 0.5, 0);
-        Size = UDim2.new(0, 210, 0, 22);
-        Visible = false;
-        ZIndex = 100;
-        Parent = ScreenGui;
+        AnchorPoint = Vector2.new(0, 0.5); Position = UDim2.new(0, 10, 0.5, 0);
+        Size = UDim2.fromOffset(136, 30); Visible = false; ZIndex = 100; Parent = ScreenGui;
     });
-
-    local KeybindInner = Library:Create('Frame', {
-        BackgroundColor3 = Library.MainColor;
-        BorderColor3 = Library.OutlineColor;
-        BorderMode = Enum.BorderMode.Inset;
-        Position = UDim2.new(0, 0, 0, 0);
-        Size = UDim2.new(1, 0, 0, 22);
-        ZIndex = 101;
-        Parent = KeybindOuter;
-    });
-    Library:StyleControl(KeybindOuter, KeybindInner, 7);
-
-    Library:AddToRegistry(KeybindInner, {
-        BackgroundColor3 = 'MainColor';
-        BorderColor3 = 'OutlineColor';
-    }, true);
-
-    local ColorFrame = Library:Create('Frame', {
-        BackgroundColor3 = Library.AccentColor;
-        BorderSizePixel = 0;
-        Size = UDim2.new(1, -12, 0, 2);
-        Position = UDim2.fromOffset(6, 0);
-        ZIndex = 102;
-        Parent = KeybindInner;
-    });
-
-    Library:AddToRegistry(ColorFrame, {
-        BackgroundColor3 = 'AccentColor';
-    }, true);
-
-    local _KeybindLabel = Library:CreateLabel({
-        Size = UDim2.new(1, -24, 0, 20);
-        Position = UDim2.new(0, 12, 0, 2),
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextSize = 13,
-
-        Text = 'keybinds';
-        ZIndex = 104;
-        Parent = KeybindInner;
-    });
-
-    local KeybindContainer = Library:Create('Frame', {
-        BackgroundTransparency = 1;
-        BorderSizePixel = 0;
-        Size = UDim2.new(1, 0, 1, -22);
-        Position = UDim2.new(0, 0, 0, 22);
-        ZIndex = 103;
-        Parent = KeybindOuter;
-    });
-
-    Library:Create('UIListLayout', {
-        FillDirection = Enum.FillDirection.Vertical;
-        SortOrder = Enum.SortOrder.LayoutOrder;
-        Parent = KeybindContainer;
-    });
-
-    Library:Create('UIPadding', {
-        PaddingLeft = UDim.new(0, 5),
-        Parent = KeybindContainer,
-    })
-
-    Library.KeybindFrame = KeybindOuter;
-    Library.KeybindContainer = KeybindContainer;
+    local BorderGradient = Library:StyleIndicator(KeybindOuter);
+    local Line = Library:Create('Frame', {BackgroundColor3 = Color3.new(1, 1, 1); BorderSizePixel = 0; Position = UDim2.fromOffset(8, 9); Size = UDim2.new(1, -16, 0, 1); ZIndex = 102; Parent = KeybindOuter;});
+    Library:Create('UIGradient', {Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 26, 33)), ColorSequenceKeypoint.new(0.25, Color3.fromRGB(182, 193, 215)), ColorSequenceKeypoint.new(0.75, Color3.fromRGB(182, 193, 215)), ColorSequenceKeypoint.new(1, Color3.fromRGB(25, 26, 33))}); Parent = Line;});
+    Library:Create('TextLabel', {BackgroundTransparency = 1; Position = UDim2.fromOffset(6, 13); Size = UDim2.new(1, -12, 0, 13); Font = Enum.Font.SourceSans; TextSize = 10; TextColor3 = Color3.fromRGB(225, 225, 230); TextXAlignment = Enum.TextXAlignment.Left; Text = 'Keybinds'; ZIndex = 104; Parent = KeybindOuter;});
+    local KeybindContainer = Library:Create('Frame', {BackgroundTransparency = 1; BorderSizePixel = 0; Position = UDim2.fromOffset(6, 27); Size = UDim2.new(1, -12, 1, -30); ZIndex = 103; Parent = KeybindOuter;});
+    Library:Create('UIListLayout', {FillDirection = Enum.FillDirection.Vertical; SortOrder = Enum.SortOrder.LayoutOrder; Parent = KeybindContainer;});
+    Library.KeybindFrame, Library.KeybindContainer = KeybindOuter, KeybindContainer;
     Library:MakeDraggable(KeybindOuter);
     Library:ApplyScaleTo(KeybindOuter);
+    local LastFrame = -1;
+    table.insert(Library.Signals, RenderStepped:Connect(function()
+        if not KeybindOuter.Visible or Library.ReducedMotion then return end;
+        local Frame = math.floor(os.clock() * 24);
+        if Frame == LastFrame then return end;
+        LastFrame = Frame;
+        BorderGradient.Rotation = (Frame * 2) % 360;
+    end));
 end;
 
 Library.ToolbarPanels = {}
@@ -5284,16 +5219,7 @@ function Library:RefreshKeybindVisibility()
         return;
     end;
 
-    local Any = false;
-
-    for _, Row in next, Library.KeybindContainer:GetChildren() do
-        if Row:IsA('Frame') and Row.Visible then
-            Any = true;
-            break;
-        end;
-    end;
-
-    Library.KeybindFrame.Visible = Any;
+    Library.KeybindFrame.Visible = (Library.KeybindVisibleRows or 0) > 0;
 end;
 
 function Library:SetNotificationStyle(Style)
@@ -5620,42 +5546,16 @@ function Library:NotifyGamesensical(Text, Time)
     end);
 end;
 
-Library.WorkspaceNotifications = {}
-function Library:NotifyWorkspace(text, duration)
-    if self.Unloaded then return end
-    text = tostring(text)
-    local existing = self.WorkspaceNotifications[text]
-    if existing and existing.Frame.Parent then
-        existing.Count = existing.Count + 1
-        existing.Label.Text = text .. ' ×' .. existing.Count
-        existing.Revision = existing.Revision + 1
-        self:AnimateControl(existing.Frame, {GroupTransparency = 0})
-    else
-        local width = math.min(420, math.max(180, ScreenGui.AbsoluteSize.X / math.max(self.UIScale or 1, 0.01) - 24))
-        local _, height = self:GetTextBounds(text, self.Font, 13, Vector2.new(width - 36, math.huge))
-        local holder = self:Create('CanvasGroup', {Name = 'WorkspaceNotification', Parent = self.NotificationArea, BackgroundColor3 = self.MainColor, BorderColor3 = self.OutlineColor, BorderSizePixel = 0, Size = UDim2.fromOffset(width, math.max(44, height + 22)), GroupTransparency = self.ReducedMotion and 0 or 1, ZIndex = 100})
-        self:AddToRegistry(holder, {BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor'}, true)
-        self:StyleControl(holder, holder, 8)
-        local message = self:CreateLabel({Parent = holder, Position = UDim2.fromOffset(14, 10), Size = UDim2.new(1, -28, 1, -20), Text = text, TextSize = 13, TextWrapped = true, TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 102}, true)
-        existing = {Frame = holder, Label = message, Count = 1, Revision = 1}
-        self.WorkspaceNotifications[text] = existing
-        self:AnimateControl(holder, {GroupTransparency = 0})
-        holder.Destroying:Connect(function() if self.WorkspaceNotifications[text] == existing then self.WorkspaceNotifications[text] = nil end end)
-        local count, oldest = 0, nil
-        for _, child in ipairs(self.NotificationArea:GetChildren()) do
-            if child:IsA('GuiObject') then count = count + 1; oldest = oldest or child end
-        end
-        if count > 5 and oldest and oldest ~= holder then oldest:Destroy() end
-    end
-    local revision = existing.Revision
-    task.delay(math.max(0.2, tonumber(duration) or self.NotifyDuration or 5), function()
-        if self.Unloaded or existing.Revision ~= revision or not existing.Frame.Parent then return end
-        self:AnimateControl(existing.Frame, {GroupTransparency = 1})
-        task.delay(self.ReducedMotion and 0 or 0.13, function()
-            if existing.Revision == revision and existing.Frame.Parent then existing.Frame:Destroy() end
-        end)
-    end)
-end
+local function NotificationText(Text)
+    local Plain = tostring(Text);
+    if not Plain:match('^%[[^%]]+%]') then Plain = '[neuro.net] ' .. Plain end;
+    local Safe = Plain:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;');
+    local Prefix, Body = Safe:match('^(%[[^%]]+%])%s*(.*)$');
+    Body = Body:gsub('UNSYNCED', '<font color="#C86173">UNSYNCED</font>');
+    Body = Body:gsub('(landed on )(.+)( for [%d%.]+ damage)', '%1<font color="#83BD80">%2</font>%3');
+    Body = Body:gsub('^(hit )(.+)( for [%d%.]+ damage)', '%1<font color="#83BD80">%2</font>%3');
+    return '<font color="#8C8C94">' .. Prefix .. '</font> ' .. Body, Plain;
+end;
 
 function Library:Notify(Text, Time)
     local Style = Library.NotificationStyle;
@@ -5669,101 +5569,22 @@ function Library:Notify(Text, Time)
     elseif Style == 'Progress' then
         return Library:NotifyProgress(Text, nil, true);
     end;
-    if Library.WorkspaceEnabled then return Library:NotifyWorkspace(Text, Time) end;
-
-    local XSize, YSize = Library:GetTextBounds(Text, Library.Font, 14);
-    local D = Library.ReducedMotion and 0 or 0.4;
-
-    YSize = YSize + 7
-
-    local NotifyOuter = Library:Create('Frame', {
-        BorderColor3 = Color3.new(0, 0, 0);
-        Position = UDim2.new(0, 100, 0, 10);
-        Size = UDim2.new(0, 0, 0, YSize);
-        ClipsDescendants = true;
-        ZIndex = 100;
-        Parent = Library.NotificationArea;
-    });
-
-    local NotifyInner = Library:Create('Frame', {
-        BackgroundColor3 = Library.MainColor;
-        BorderColor3 = Library.OutlineColor;
-        BorderMode = Enum.BorderMode.Inset;
-        Size = UDim2.new(1, 0, 1, 0);
-        ZIndex = 101;
-        Parent = NotifyOuter;
-    });
-    Library:StyleControl(NotifyOuter, NotifyInner, 4);
-
-    Library:AddToRegistry(NotifyInner, {
-        BackgroundColor3 = 'MainColor';
-        BorderColor3 = 'OutlineColor';
-    }, true);
-
-    local InnerFrame = Library:Create('Frame', {
-        BackgroundColor3 = Color3.new(1, 1, 1);
-        BorderSizePixel = 0;
-        Position = UDim2.new(0, 1, 0, 1);
-        Size = UDim2.new(1, -2, 1, -2);
-        ZIndex = 102;
-        Parent = NotifyInner;
-    });
-
-    local Gradient = Library:Create('UIGradient', {
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Library:GetDarkerColor(Library.MainColor)),
-            ColorSequenceKeypoint.new(1, Library.MainColor),
-        });
-        Rotation = -90;
-        Parent = InnerFrame;
-    });
-
-    Library:AddToRegistry(Gradient, {
-        Color = function()
-            return ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Library:GetDarkerColor(Library.MainColor)),
-                ColorSequenceKeypoint.new(1, Library.MainColor),
-            });
-        end
-    });
-
-    local _NotifyLabel = Library:CreateLabel({
-        Position = UDim2.new(0, 4, 0, 0);
-        Size = UDim2.new(1, -4, 1, 0);
-        Text = Text;
-        TextXAlignment = Enum.TextXAlignment.Left;
-        TextSize = 14;
-        ZIndex = 103;
-        Parent = InnerFrame;
-    });
-
-    local LeftColor = Library:Create('Frame', {
-        BackgroundColor3 = Library.AccentColor;
-        BorderSizePixel = 0;
-        Position = UDim2.new(0, -1, 0, -1);
-        Size = UDim2.new(0, 3, 1, 2);
-        ZIndex = 104;
-        Parent = NotifyOuter;
-    });
-
-    Library:AddToRegistry(LeftColor, {
-        BackgroundColor3 = 'AccentColor';
-    }, true);
-
-    TweenService:Create(NotifyOuter, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, XSize + 8 + 4, 0, YSize) }):Play();
-
-    Library:AddNotificationBorder(NotifyOuter);
-
-    task.spawn(function()
-        task.wait(Time or Library.NotifyDuration or 5);
-
-        TweenService:Create(NotifyOuter, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, 0, 0, YSize) }):Play();
-
-        task.wait(D);
-
-        NotifyOuter:Destroy();
+    if Library.Unloaded then return end;
+    local Rich, Plain = NotificationText(Text);
+    local Width = math.ceil((Library:GetTextBounds(Plain, Enum.Font.SourceSans, 10))) + 10;
+    local Holder = Library:Create('CanvasGroup', {Name = 'Notification'; BackgroundColor3 = Color3.fromRGB(10, 10, 12); BorderSizePixel = 0; Size = UDim2.fromOffset(Width, 17); GroupTransparency = Library.ReducedMotion and 0 or 1; ZIndex = 100; Parent = Library.NotificationArea;});
+    Library:Create('UIStroke', {Color = Color3.fromRGB(49, 49, 55); Thickness = 1; ApplyStrokeMode = Enum.ApplyStrokeMode.Border; Parent = Holder;});
+    Library:Create('Frame', {BackgroundColor3 = Color3.fromRGB(195, 195, 205); BorderSizePixel = 0; Size = UDim2.new(0, 1, 1, 0); ZIndex = 101; Parent = Holder;});
+    Library:Create('TextLabel', {BackgroundTransparency = 1; Position = UDim2.fromOffset(5, 0); Size = UDim2.new(1, -10, 1, 0); Font = Enum.Font.SourceSans; TextSize = 10; TextColor3 = Color3.fromRGB(225, 225, 230); TextXAlignment = Enum.TextXAlignment.Center; RichText = true; Text = Rich; ZIndex = 102; Parent = Holder;});
+    local Duration = Library.ReducedMotion and 0 or 0.18;
+    if Duration > 0 then TweenService:Create(Holder, TweenInfo.new(Duration), {GroupTransparency = 0}):Play() end;
+    task.delay(math.max(0.2, tonumber(Time) or Library.NotifyDuration or 5), function()
+        if not Holder.Parent then return end;
+        if Library.ReducedMotion then Holder:Destroy(); return end;
+        TweenService:Create(Holder, TweenInfo.new(0.18), {GroupTransparency = 1}):Play();
+        task.delay(0.18, function() Holder:Destroy() end);
     end);
-    return nil;
+    return Holder;
 end;
 
 
