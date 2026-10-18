@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 29;
+Library.PhowgRevision = 30;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -7443,11 +7443,11 @@ function Library:CreateWindow(...)
         return object,marker
     end
     local groupInfo={
-        main={'Combat','Combat',1},ragebot={'Combat','Combat',1},
+        main={'Combat','Combat',1},ragebot={'Combat','Combat',1},character={'Combat','Combat',1},
         visuals={'Visuals','Visuals',2},world={'Visuals','Visuals',2},
         items={'Utility','Utility',3},shop={'Utility','Utility',3},loadout={'Utility','Utility',3},avatar={'Utility','Utility',3},
         miscellaneous={'Utility','Utility',3},players={'Utility','Utility',3},servers={'Utility','Utility',3},executor={'Utility','Utility',3},
-        character={'Legit','Legit',4},protection={'Legit','Legit',4},
+        protection={'Legit','Legit',4},
         ['ui settings']={'Settings','Settings',5},profiles={'Settings','Settings',5},
     }
     function window:SelectNavigationPage(object)
