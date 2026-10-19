@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 31;
+Library.PhowgRevision = 33;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -5114,6 +5114,106 @@ do
     end
 end
 
+Library.GameNameLabels = setmetatable({}, {__mode='k'});
+local function GameNameIdentity()
+    return tostring(game.GameId or 0) .. ':' .. tostring(game.PlaceId or 0);
+end;
+local function CleanGameName(Name)
+    if type(Name)~='string' then return end;
+    Name=Name:gsub('%c',' '):match('^%s*(.-)%s*$');
+    local lower=Name:lower();
+    if Name=='' or lower=='ugc' or lower=='game' or lower=='datamodel' or lower=='roblox' or lower=='loading game...' then return end;
+    return Name;
+end;
+function Library:UpdateGameNameLabels(Name)
+    for label,prefix in pairs(self.GameNameLabels) do
+        if label.Parent then label.Text=prefix..Name else self.GameNameLabels[label]=nil end;
+    end;
+end;
+function Library:GetGameName()
+    local key=GameNameIdentity();
+    local state=self.GameNameState;
+    if not state or state.Key~=key then
+        local name;
+        if self.GameNameCacheKey==key or not self.GameNameCacheKey and not state then name=CleanGameName(self.GameNameCache) end;
+        state={Key=key,Name=name,Priority=0,Attempts=0,RetryAt=0,Loading=false,Complete=false};
+        self.GameNameState=state;
+        self.GameNameCache,self.GameNameCacheKey,self.GameNameSource=name,key,nil;
+    end;
+    local function fallback()
+        if state.Name then return state.Name end;
+        if (tonumber(game.PlaceId) or 0)<=0 then return 'Roblox Studio' end;
+        return (state.Attempts==0 or state.Loading and state.Attempts==1) and 'Loading game...' or ('Game #'..tostring(game.PlaceId));
+    end;
+    if self.Unloaded or state.Loading or state.Complete or state.Attempts>=3 or os.clock()<state.RetryAt then return fallback() end;
+    local placeId,universeId=tonumber(game.PlaceId) or 0,tonumber(game.GameId) or 0;
+    if placeId<=0 then state.Complete=true;return fallback() end;
+    state.Loading=true;
+    state.Attempts+=1;
+    task.spawn(function()
+        local function current()return not self.Unloaded and self.GameNameState==state and GameNameIdentity()==key end;
+        local function publish(name,priority,source)
+            name=CleanGameName(name);
+            if not name or not current() or priority<state.Priority then return false end;
+            state.Name,state.Priority=name,priority;
+            self.GameNameCache,self.GameNameCacheKey,self.GameNameSource=name,key,source;
+            self:UpdateGameNameLabels(name);
+            return true;
+        end;
+        local function placeName(id)
+            local market=game:GetService('MarketplaceService');
+            for _,method in ipairs({'GetProductInfoAsync','GetProductInfo'}) do
+                if not current() then return end;
+                local ok,info=pcall(function()return market[method](market,id,Enum.InfoType.Asset)end);
+                local name=ok and type(info)=='table' and CleanGameName(info.Name);
+                if name then return name end;
+            end;
+        end;
+        local ok,name=pcall(placeName,placeId);
+        if ok then publish(name,1,'place') end;
+        if universeId>0 and current() then
+            local url='https://games.roblox.com/v1/games?universeIds='..string.format('%.0f',universeId);
+            local fetched,body=pcall(function()return game:HttpGet(url)end);
+            if not fetched or type(body)~='string' then
+                local send=request or http_request or (syn and syn.request);
+                if type(send)=='function' then
+                    local sent,response=pcall(send,{Url=url,Method='GET'});
+                    local status=sent and type(response)=='table' and tonumber(response.StatusCode or response.Status);
+                    if status and status>=200 and status<300 and type(response.Body)=='string' then body=response.Body;fetched=true end;
+                end;
+            end;
+            if fetched and type(body)=='string' and current() then
+                local decoded,data=pcall(function()return game:GetService('HttpService'):JSONDecode(body)end);
+                if decoded and type(data)=='table' and type(data.data)=='table' then
+                    for _,experience in ipairs(data.data) do
+                        if type(experience)=='table' and tonumber(experience.id)==universeId then
+                            if publish(experience.name,2,'experience') then state.Complete=true;
+                            else
+                                local rootId=tonumber(experience.rootPlaceId) or (type(experience.rootPlace)=='table' and tonumber(experience.rootPlace.id));
+                                if rootId and rootId>0 and rootId~=placeId then
+                                    local rootOk,rootName=pcall(placeName,rootId);
+                                    if rootOk and publish(rootName,2,'root place') then state.Complete=true end;
+                                end;
+                            end;
+                            break;
+                        end;
+                    end;
+                end;
+            end;
+        elseif state.Name then state.Complete=true end;
+        if not current() then return end;
+        state.Loading=false;
+        state.RetryAt=os.clock()+(state.Attempts==1 and 5 or 20);
+        self:UpdateGameNameLabels(fallback());
+    end);
+    return fallback();
+end;
+function Library:BindGameName(Label, Prefix)
+    self.GameNameLabels[Label]=Prefix or '';
+    Label.Text=(Prefix or '')..self:GetGameName();
+    return Label;
+end;
+
 function Library:PlayerDisplayName(Target)
     if Library.StreamerMode == 'Off' then
         return Target.DisplayName .. ' (@' .. Target.Name .. ')';
@@ -5142,6 +5242,7 @@ function Library:SetUIFont(Name)
     if self.WorkspaceWindow and self.WorkspaceWindow.RefreshTabLayout then self.WorkspaceWindow.RefreshTabLayout() end
     if self.KeybindContainer then self:QueueKeybindLayout() end
     if self.WatermarkText then self:SetWatermark(self.WatermarkText.Text) end
+    if self.RefreshNotifications then self:RefreshNotifications() end
     if nerd and not self.NerdFontFace then task.defer(function() if not self.Unloaded then self:LoadNerdFont() end end) end
 end
 function Library:LoadNerdFont()
@@ -5280,6 +5381,7 @@ function Library:SetUIScale(Scale)
         S.Scale = Scale;
     end;
     if Library.PlayerInspector and Library.PlayerInspector.Resize then Library.PlayerInspector.Resize() end;
+    if Library.RefreshNotifications then Library:RefreshNotifications() end;
 end;
 
 function Library:ApplyScaleTo(Gui)
@@ -5410,57 +5512,9 @@ function Library:SetNotificationStyle(Style)
 end;
 
 function Library:SetNotificationPosition(Position)
-    Library.NotificationPosition = Position;
-
-    local Area = Library.NotificationArea;
-    local Layout = Library.NotificationLayout;
-
-    if not Area or not Layout then
-        return;
-    end;
-
-    if Position == 'Top' then
-        Area.AnchorPoint = Vector2.new(0.5, 0);
-        Area.Position = UDim2.new(0.5, 0, 0, 60);
-        Layout.HorizontalAlignment = Enum.HorizontalAlignment.Center;
-        Layout.VerticalAlignment = Enum.VerticalAlignment.Top;
-    elseif Position == 'Top Left' then
-        Area.AnchorPoint = Vector2.new(0, 0);
-        Area.Position = UDim2.new(0, 10, 0, 60);
-        Layout.HorizontalAlignment = Enum.HorizontalAlignment.Left;
-        Layout.VerticalAlignment = Enum.VerticalAlignment.Top;
-    elseif Position == 'Top Right' then
-        Area.AnchorPoint = Vector2.new(1, 0);
-        Area.Position = UDim2.new(1, -10, 0, 60);
-        Layout.HorizontalAlignment = Enum.HorizontalAlignment.Right;
-        Layout.VerticalAlignment = Enum.VerticalAlignment.Top;
-    elseif Position == 'Bottom Left' then
-        Area.AnchorPoint = Vector2.new(0, 1);
-        Area.Position = UDim2.new(0, 10, 1, -200);
-        Layout.HorizontalAlignment = Enum.HorizontalAlignment.Left;
-        Layout.VerticalAlignment = Enum.VerticalAlignment.Bottom;
-    elseif Position == 'Bottom Right' then
-        Area.AnchorPoint = Vector2.new(1, 1);
-        Area.Position = UDim2.new(1, -10, 1, -200);
-        Layout.HorizontalAlignment = Enum.HorizontalAlignment.Right;
-        Layout.VerticalAlignment = Enum.VerticalAlignment.Bottom;
-    else
-        Area.AnchorPoint = Vector2.new(0.5, 1);
-        Area.Position = UDim2.new(0.5, 0, 1, -200);
-        Layout.HorizontalAlignment = Enum.HorizontalAlignment.Center;
-        Layout.VerticalAlignment = Enum.VerticalAlignment.Bottom;
-    end;
-end;
-
-local function SplitNotifyWords(Text)
-    local Safe = Text:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;');
-    local Words = {};
-
-    for Word in Safe:gmatch('%S+') do
-        table.insert(Words, Word);
-    end;
-
-    return Words;
+    local choices = {'Bottom','Top','Bottom Left','Bottom Right','Top Left','Top Right'};
+    self.NotificationPosition = table.find(choices, Position) and Position or 'Bottom';
+    if self.RefreshNotifications then self:RefreshNotifications() end;
 end;
 
 local function NotifyAccentHex()
@@ -5478,306 +5532,201 @@ function Library:NotificationMessage(text)
     local plain=tostring(text or ''):gsub('^%[neuro%.net%]%s*',''):gsub('^%[phowg host%]%s*','')
     return '[phowg host] '..plain
 end
-function Library:NotifyProgress(Text, Progress, CanDismiss)
-    Text=Library:NotificationMessage(Text)
-    local Handle = {Closed = false;};
-    local Outer = Library:Create('Frame', {
-        Name = 'ProgressNotification';
-        BackgroundColor3 = Library.MainColor;
-        BorderSizePixel = 0;
-        Size = UDim2.fromOffset(320, 44);
-        ZIndex = 100;
-        Parent = Library.NotificationArea;
-    });
-    Library:AddToRegistry(Outer, {BackgroundColor3 = 'MainColor';}, true);
-    Library:StyleIndicator(Outer);
-    local Label = Library:CreateLabel({
-        Position = UDim2.fromOffset(10, 5);
-        Size = UDim2.new(1, CanDismiss and -36 or -20, 0, 24);
-        Text = '';
-        TextSize = 13;
-        TextXAlignment = Enum.TextXAlignment.Left;
-        TextTruncate = Enum.TextTruncate.AtEnd;
-        ZIndex = 102;
-        Parent = Outer;
-    });
-    local Track = Library:Create('Frame', {
-        BackgroundColor3 = Library.BackgroundColor;
-        BorderSizePixel = 0;
-        Position = UDim2.new(0, 10, 1, -10);
-        Size = UDim2.new(1, -20, 0, 3);
-        ZIndex = 101;
-        Parent = Outer;
-    });
-    Library:AddToRegistry(Track, {BackgroundColor3 = 'BackgroundColor';}, true);
-    local Fill = Library:Create('Frame', {
-        BackgroundColor3 = Library.AccentColor;
-        BorderSizePixel = 0;
-        Size = UDim2.fromScale(0, 1);
-        ZIndex = 102;
-        Parent = Track;
-    });
-    Library:AddToRegistry(Fill, {BackgroundColor3 = 'AccentColor';}, true);
-    local Border = Library:AddNotificationBorder(Outer);
-    Handle.Frame, Handle.Label, Handle.Fill = Outer, Label, Fill;
-    function Handle:Update(NewText, Fraction)
-        if self.Closed or not Outer.Parent or Library.Unloaded then return end;
-        Label.Text = Library:NotificationMessage(NewText);
-        local Width = Library:GetTextBounds(Label.Text, Library.Font, 13);
-        Outer.Size = UDim2.fromOffset(math.clamp(Width + (CanDismiss and 46 or 24), 220, 600), type(Fraction) == 'number' and 44 or 34);
-        Track.Visible = type(Fraction) == 'number';
-        if Track.Visible then Fill.Size = UDim2.fromScale(math.clamp(Fraction, 0, 1), 1) end;
+Library.NotificationEntries = {};
+Library.NotificationSequence = 0;
+local function NotificationText(Text, Style)
+    local Plain = Library:NotificationMessage(Text);
+    if Style == 'Simple' or Style == 'Gamesensical' then
+        local index, hex = 0, NotifyAccentHex();
+        local rich = Plain:gsub('%S+',function(word)
+            index += 1;
+            local safe = word:gsub('&','&amp;'):gsub('<','&lt;'):gsub('>','&gt;');
+            local colored = Style == 'Simple' and index % 2 == 0 or Style == 'Gamesensical' and (index == 2 or index == 5 or index == 7);
+            return colored and ('<font color="#' .. hex .. '">' .. safe .. '</font>') or safe;
+        end);
+        return rich, Plain;
     end;
-    function Handle:Complete()
-        if self.Closed then return end;
-        self.Closed = true;
-        Library.ProgressNotifications[self] = nil;
-        Library:DestroyNeonBorder(Border);
-        Outer:Destroy();
-    end;
-    Handle.Destroy = Handle.Complete;
-    if CanDismiss then
-        local Close = Library:Create('TextButton', {
-            BackgroundTransparency = 1;
-            Position = UDim2.new(1, -26, 0, 6);
-            Size = UDim2.fromOffset(20, 20);
-            Text = '×';
-            Font = Library.Font;
-            TextSize = 18;
-            TextColor3 = Library.FontColor;
-            ZIndex = 103;
-            Parent = Outer;
-        });
-        Library:AddToRegistry(Close, {TextColor3 = 'FontColor';}, true);
-        Close.Activated:Connect(function() Handle:Complete() end);
-    end;
-    Library.ProgressNotifications[Handle] = true;
-    Handle:Update(Text, Progress);
-    return Handle;
-end;
-
-function Library:NotifyGamesense(Text, Time)
-    Text=Library:NotificationMessage(Text)
-    local XSize, YSize = Library:GetTextBounds(Text, Library.Font, 14);
-
-    YSize = 26;
-    local D = Library.ReducedMotion and 0 or 0.3;
-
-    local Outer = Library:Create('Frame', {
-        BorderColor3 = Color3.new(0, 0, 0);
-        Size = UDim2.new(0, 0, 0, YSize);
-        ClipsDescendants = true;
-        ZIndex = 100;
-        Parent = Library.NotificationArea;
-    });
-
-    Library:Create('Frame', {
-        BackgroundColor3 = Color3.fromRGB(20, 20, 28);
-        BorderSizePixel = 0;
-        Size = UDim2.new(1, 0, 1, 0);
-        ZIndex = 101;
-        Parent = Outer;
-    });
-
-    local Line = Library:Create('Frame', {
-        BackgroundColor3 = Library.AccentColor;
-        BorderSizePixel = 0;
-        Size = UDim2.new(1, 0, 0, 2);
-        ZIndex = 102;
-        Parent = Outer;
-    });
-
-    Library:AddToRegistry(Line, {
-        BackgroundColor3 = 'AccentColor';
-    }, true);
-
-    Library:CreateLabel({
-        Position = UDim2.new(0, 8, 0, 2);
-        Size = UDim2.new(1, -12, 1, -2);
-        Text = Text;
-        TextSize = 13;
-        TextXAlignment = Enum.TextXAlignment.Left;
-        TextTruncate = Enum.TextTruncate.AtEnd;
-        ZIndex = 102;
-        Parent = Outer;
-    });
-
-    TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, XSize + 20, 0, YSize) }):Play();
-
-    Library:AddNotificationBorder(Outer);
-
-    task.spawn(function()
-        task.wait(Time or Library.NotifyDuration or 5);
-        TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, 0, 0, YSize) }):Play();
-        task.wait(D + 0.05);
-        Outer:Destroy();
-    end);
-end;
-
-function Library:NotifySimple(Text, Time)
-    Text=Library:NotificationMessage(Text)
-    local Words = SplitNotifyWords(Text);
-    local Hex = NotifyAccentHex();
-    local Rich = '';
-
-    for i, Word in next, Words do
-        if i % 2 == 0 then
-            Rich = Rich .. '<font color="#' .. Hex .. '">' .. Word .. '</font>';
-        else
-            Rich = Rich .. Word;
-        end;
-
-        if i < #Words then
-            Rich = Rich .. ' ';
-        end;
-    end;
-
-    local XSize, YSize = Library:GetTextBounds(Text, Library.Font, 14);
-
-    local Label = Library:CreateLabel({
-        Size = UDim2.new(0, XSize + 8, 0, YSize + 4);
-        TextSize = 13;
-        Text = Rich;
-        TextXAlignment = Enum.TextXAlignment.Center;
-        ZIndex = 100;
-        Parent = Library.NotificationArea;
-    });
-
-    Label.RichText = true;
-    Label.TextTransparency = 1;
-
-    local Stroke = Label:FindFirstChildOfClass('UIStroke');
-    local Din = Library.ReducedMotion and 0 or 0.25;
-    local Dout = Library.ReducedMotion and 0 or 0.4;
-
-    if Stroke then
-        Stroke.Transparency = 1;
-    end;
-
-    TweenService:Create(Label, TweenInfo.new(Din, Enum.EasingStyle.Linear), { TextTransparency = 0 }):Play();
-
-    if Stroke then
-        TweenService:Create(Stroke, TweenInfo.new(Din, Enum.EasingStyle.Linear), { Transparency = 0 }):Play();
-    end;
-
-    Library:AddNotificationBorder(Label);
-
-    task.spawn(function()
-        task.wait(Time or Library.NotifyDuration or 5);
-        TweenService:Create(Label, TweenInfo.new(Dout, Enum.EasingStyle.Linear), { TextTransparency = 1 }):Play();
-
-        if Stroke then
-            TweenService:Create(Stroke, TweenInfo.new(Dout, Enum.EasingStyle.Linear), { Transparency = 1 }):Play();
-        end;
-
-        task.wait(Dout + 0.05);
-        Label:Destroy();
-    end);
-end;
-
-function Library:NotifyGamesensical(Text, Time)
-    Text=Library:NotificationMessage(Text)
-    local Words = SplitNotifyWords(Text);
-    local Hex = NotifyAccentHex();
-    local Rich = '';
-    local Colored = { [2] = true, [5] = true, [7] = true };
-
-    for i, Word in next, Words do
-        if Colored[i] then
-            Rich = Rich .. '<font color="#' .. Hex .. '">' .. Word .. '</font>';
-        else
-            Rich = Rich .. Word;
-        end;
-
-        if i < #Words then
-            Rich = Rich .. ' ';
-        end;
-    end;
-
-    local XSize = Library:GetTextBounds(Text, Library.Font, 14);
-
-    local Outer = Library:Create('Frame', {
-        BorderColor3 = Color3.new(0, 0, 0);
-        Size = UDim2.new(0, 0, 0, 28);
-        ClipsDescendants = true;
-        ZIndex = 100;
-        Parent = Library.NotificationArea;
-    });
-
-    Library:Create('Frame', {
-        BackgroundColor3 = Color3.fromRGB(24, 24, 24);
-        BorderSizePixel = 0;
-        Size = UDim2.new(1, 0, 1, 0);
-        ZIndex = 101;
-        Parent = Outer;
-    });
-
-    local Label = Library:CreateLabel({
-        Position = UDim2.new(0, 5, 0, 0);
-        Size = UDim2.new(1, -10, 1, 0);
-        TextSize = 13;
-        Text = Rich;
-        TextXAlignment = Enum.TextXAlignment.Center;
-        ZIndex = 102;
-        Parent = Outer;
-    });
-
-    Label.RichText = true;
-
-    local D = Library.ReducedMotion and 0 or 0.25;
-    TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, XSize + 20, 0, 28) }):Play();
-
-    Library:AddNotificationBorder(Outer);
-
-    task.spawn(function()
-        task.wait(Time or Library.NotifyDuration or 5);
-        TweenService:Create(Outer, TweenInfo.new(D, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, 0, 0, 28) }):Play();
-        task.wait(D + 0.05);
-        Outer:Destroy();
-    end);
-end;
-
-local function NotificationText(Text)
-    local Plain=Library:NotificationMessage(Text);
     local Safe = Plain:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;');
     local Prefix, Body = Safe:match('^(%[[^%]]+%])%s*(.*)$');
+    Prefix, Body = Prefix or '', Body or Safe;
     Body = Body:gsub('UNSYNCED', '<font color="#C86173">UNSYNCED</font>');
     Body = Body:gsub('(landed on )(.+)( for [%d%.]+ damage)', '%1<font color="#83BD80">%2</font>%3');
     Body = Body:gsub('^(hit )(.+)( for [%d%.]+ damage)', '%1<font color="#83BD80">%2</font>%3');
     return '<font color="#8C8C94">' .. Prefix .. '</font> ' .. Body, Plain;
 end;
-
-function Library:Notify(Text, Time)
-    Text=Library:NotificationMessage(Text)
-    local Style = Library.NotificationStyle;
-
-    if Style == 'Gamesense' then
-        return Library:NotifyGamesense(Text, Time);
-    elseif Style == 'Simple' then
-        return Library:NotifySimple(Text, Time);
-    elseif Style == 'Gamesensical' then
-        return Library:NotifyGamesensical(Text, Time);
-    elseif Style == 'Progress' then
-        return Library:NotifyProgress(Text, nil, true);
+function Library:RefreshNotifications()
+    if self.Unloaded or self.NotificationReflowing or not self.NotificationArea then return end;
+    self.NotificationReflowing = true;
+    local screen = ScreenGui.AbsoluteSize;
+    if screen.X < 100 or screen.Y < 100 then screen = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280,720) end;
+    local scale = math.max(self.UIScale or 1, 0.01);
+    local position = self.NotificationPosition or 'Bottom';
+    local top = position:find('Top',1,true) ~= nil;
+    local margin = top and math.min(60,screen.Y*0.1) or math.min(200,screen.Y*0.25);
+    local maxWidth = math.max(80, math.min(480, (screen.X-32)/scale));
+    local maxHeight = math.max(40, (screen.Y-margin-16)/scale);
+    local left, right = position:find('Left',1,true), position:find('Right',1,true);
+    local area, layout = self.NotificationArea, self.NotificationLayout;
+    area.AnchorPoint = Vector2.new(left and 0 or right and 1 or 0.5, top and 0 or 1);
+    area.Position = UDim2.new(left and 0 or right and 1 or 0.5, left and 16 or right and -16 or 0, top and 0 or 1, top and margin or -margin);
+    area.Size = UDim2.fromOffset(maxWidth, maxHeight);
+    layout.HorizontalAlignment = left and Enum.HorizontalAlignment.Left or right and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Center;
+    layout.VerticalAlignment = top and Enum.VerticalAlignment.Top or Enum.VerticalAlignment.Bottom;
+    layout.Padding = UDim.new(0,8);
+    local entries = {};
+    for entry in pairs(self.NotificationEntries) do
+        if entry.Closed or not entry.Frame.Parent then self.NotificationEntries[entry] = nil;
+        else entries[#entries+1] = entry end;
     end;
-    if Library.Unloaded then return end;
-    local Rich, Plain = NotificationText(Text);
-    local Width = math.ceil((Library:GetTextBounds(Plain, Library.Font, 14))) + 10;
-    local Holder = Library:Create('CanvasGroup', {Name = 'Notification'; BackgroundColor3 = Color3.fromRGB(10, 10, 12); BorderSizePixel = 0; Size = UDim2.fromOffset(Width, 28); GroupTransparency = Library.ReducedMotion and 0 or 1; ZIndex = 100; Parent = Library.NotificationArea;});
-    Library:StyleIndicator(Holder);
-    Library:Create('Frame', {BackgroundColor3 = Color3.fromRGB(195, 195, 205); BorderSizePixel = 0; Size = UDim2.new(0, 1, 1, 0); ZIndex = 101; Parent = Holder;});
-    Library:Create('TextLabel', {BackgroundTransparency = 1; Position = UDim2.fromOffset(5, 0); Size = UDim2.new(1, -10, 1, 0); Font = Library.Font; TextSize = 14; TextColor3 = Color3.fromRGB(225, 225, 230); TextXAlignment = Enum.TextXAlignment.Center; RichText = true; Text = Rich; ZIndex = 102; Parent = Holder;});
-    local Duration = Library.ReducedMotion and 0 or 0.18;
-    if Duration > 0 then TweenService:Create(Holder, TweenInfo.new(Duration), {GroupTransparency = 0}):Play() end;
-    task.delay(math.max(0.2, tonumber(Time) or Library.NotifyDuration or 5), function()
-        if not Holder.Parent then return end;
-        if Library.ReducedMotion then Holder:Destroy(); return end;
-        TweenService:Create(Holder, TweenInfo.new(0.18), {GroupTransparency = 1}):Play();
-        task.delay(0.18, function() Holder:Destroy() end);
-    end);
-    return Holder;
+    table.sort(entries,function(a,b)return a.Order>b.Order end);
+    local transient = 0;
+    for _, entry in ipairs(entries) do
+        if not entry.Persistent then
+            transient += 1;
+            if transient > 32 then entry:Destroy() end;
+        end;
+    end;
+    local used, visible = 0, 0;
+    for _, entry in ipairs(entries) do
+        if not entry.Closed then
+            local hasProgress = type(entry.Fraction)=='number';
+            if entry.Dirty or entry.LayoutWidth~=maxWidth or entry.LayoutHeight~=maxHeight or entry.MeasuredFont~=entry.Label.Font or entry.MeasuredSize~=entry.Label.TextSize then
+                local extra = entry.CanDismiss and 24 or 0;
+                local natural = self:GetTextBounds(entry.Plain, entry.Label.Font, entry.Label.TextSize);
+                local width = math.clamp(math.ceil(natural)+24+extra, math.min(220,maxWidth), maxWidth);
+                local footer = (hasProgress and 10 or 0) + (entry.Actions and 36 or 0);
+                local _, measured = self:GetTextBounds(entry.Plain, entry.Label.Font, entry.Label.TextSize, Vector2.new(math.max(20,width-24-extra),100000));
+                local body = math.clamp(math.ceil(measured)+2, 20, math.max(20,maxHeight-footer-16));
+                local height = body+16+footer;
+                entry.Frame.Size = UDim2.fromOffset(width,height);
+                entry.Label.Position, entry.Label.Size = UDim2.fromOffset(12,8), UDim2.new(1,-24-extra,0,body);
+                if entry.Track then
+                    entry.Track.Visible = hasProgress;
+                    entry.Track.Position = UDim2.fromOffset(12,body+14);
+                end;
+                if entry.Actions then entry.Actions.Position = UDim2.fromOffset(12,body+16+(hasProgress and 10 or 0)) end;
+                entry.Height,entry.LayoutWidth,entry.LayoutHeight,entry.MeasuredFont,entry.MeasuredSize,entry.Dirty=height,maxWidth,maxHeight,entry.Label.Font,entry.Label.TextSize,false;
+            end;
+            if hasProgress then entry.Fill.Size = UDim2.fromScale(entry.Fraction,1) end;
+            local gap = visible>0 and 8 or 0;
+            local show = visible<6 and used+gap+entry.Height<=maxHeight;
+            entry.Frame.Visible = show;
+            if show then used += entry.Height+gap; visible += 1 end;
+        end;
+    end;
+    self.NotificationReflowing = false;
 end;
-
+function Library:BuildNotification(Text, Style, CanDismiss, WithActions)
+    if self.Unloaded then return end;
+    local entry: {[string]: any} = {Closed=false,Closing=false,Style=Style or 'Default',CanDismiss=CanDismiss==true,Persistent=Style=='Progress' or WithActions==true};
+    self.NotificationSequence += 1;
+    entry.Order = self.NotificationSequence;
+    local outer = self:Create('Frame', {Name='Notification'; Parent=self.NotificationArea; Size=UDim2.fromOffset(220,36); BackgroundColor3=Color3.fromRGB(17,17,22); BorderSizePixel=0; ClipsDescendants=false; ZIndex=100; LayoutOrder=entry.Order;});
+    entry.Frame = outer;
+    self:StyleIndicator(outer);
+    local inset = outer:FindFirstChild('InsetBorder');
+    if inset then inset:Destroy() end;
+    entry.Edge = outer:FindFirstChild('IndicatorBorder');
+    if entry.Style=='Simple' then outer.BackgroundTransparency=1; entry.Edge.Enabled=false end;
+    entry.Label = self:CreateLabel({Name='Message'; Parent=outer; BackgroundTransparency=1; Position=UDim2.fromOffset(12,8); Size=UDim2.new(1,-24,0,20); TextSize=14; TextColor3=Color3.fromRGB(225,225,230); RichText=true; TextWrapped=true; TextTruncate=Enum.TextTruncate.AtEnd; TextXAlignment=Enum.TextXAlignment.Left; TextYAlignment=Enum.TextYAlignment.Center; ZIndex=102;});
+    entry.Label.TextSize = 14;
+    if entry.Style=='Gamesense' or entry.Style=='Gamesensical' then
+        entry.Accent = self:Create('Frame',{Parent=outer; Position=UDim2.fromOffset(1,1); Size=UDim2.new(1,-2,0,2); BorderSizePixel=0; BackgroundColor3=self.AccentColor; ZIndex=101;});
+        self:AddToRegistry(entry.Accent,{BackgroundColor3='AccentColor'},true);
+    end;
+    entry.Track = self:Create('Frame',{Name='Progress'; Parent=outer; Position=UDim2.fromOffset(12,30); Size=UDim2.new(1,-24,0,3); BackgroundColor3=self.MainColor; BorderSizePixel=0; Visible=false; ZIndex=101;});
+    entry.Fill = self:Create('Frame',{Parent=entry.Track; Size=UDim2.fromScale(0,1); BackgroundColor3=self.AccentColor; BorderSizePixel=0; ZIndex=102;});
+    self:AddToRegistry(entry.Track,{BackgroundColor3='MainColor'},true);
+    self:AddToRegistry(entry.Fill,{BackgroundColor3='AccentColor'},true);
+    if WithActions then entry.Actions=self:Create('Frame',{Name='Actions'; Parent=outer; BackgroundTransparency=1; BorderSizePixel=0; Size=UDim2.new(1,-24,0,28); ZIndex=103;}) end;
+    function entry:Update(NewText, Fraction)
+        if self.Closed or not outer.Parent or Library.Unloaded then return end;
+        local rich, plain = NotificationText(NewText,self.Style);
+        local fraction = type(Fraction)=='number' and Fraction==Fraction and math.abs(Fraction)<math.huge and math.clamp(Fraction,0,1) or nil;
+        self.Dirty = self.Dirty or self.Plain~=plain or (self.Fraction~=nil)~=(fraction~=nil);
+        self.Label.RichText = self.Style~='Progress';
+        self.Label.Text, self.Plain, self.Fraction = self.Style=='Progress' and plain or rich, plain, fraction;
+        Library:RefreshNotifications();
+    end;
+    function entry:Destroy()
+        if self.Closed then return end;
+        self.Closed = true;
+        if self.Timer and self.Timer~=coroutine.running() then pcall(task.cancel,self.Timer) end;
+        self.Timer = nil;
+        outer:Destroy();
+    end;
+    function entry:Close()
+        if self.Closed or self.Closing then return end;
+        self.Closing = true;
+        if Library.ReducedMotion or not outer.Visible then self:Destroy(); return end;
+        TweenService:Create(outer,TweenInfo.new(0.12),{BackgroundTransparency=1}):Play();
+        TweenService:Create(self.Label,TweenInfo.new(0.12),{TextTransparency=1}):Play();
+        TweenService:Create(self.Edge,TweenInfo.new(0.12),{Transparency=1}):Play();
+        self.Timer=task.delay(0.12,function()self.Timer=nil;self:Destroy()end);
+    end;
+    function entry:Expire(Time)
+        local seconds = tonumber(Time) or Library.NotifyDuration or 5;
+        if seconds~=seconds or math.abs(seconds)==math.huge then seconds=5 end;
+        self.Timer=task.delay(math.clamp(seconds,0.2,120),function()self.Timer=nil;self:Close()end);
+    end;
+    if entry.CanDismiss then
+        entry.CloseButton=self:Create('TextButton',{Name='Dismiss'; Parent=outer; Position=UDim2.new(1,-28,0,6); Size=UDim2.fromOffset(20,20); Text='×'; TextSize=16; Font=self.Font; TextColor3=self.FontColor; BackgroundTransparency=1; BorderSizePixel=0; ZIndex=104;});
+        entry.CloseButton.TextSize=16;
+        entry.CloseButton.Activated:Connect(function()entry:Destroy()end);
+    end;
+    outer.Destroying:Connect(function()
+        entry.Closed=true;
+        if entry.Timer and entry.Timer~=coroutine.running() then pcall(task.cancel,entry.Timer) end;
+        entry.Timer=nil;
+        Library.NotificationEntries[entry]=nil;
+        Library:RefreshNotifications();
+    end);
+    self.NotificationEntries[entry]=true;
+    entry:Update(Text);
+    return entry;
+end;
+function Library:NotifyProgress(Text, Progress, CanDismiss)
+    local entry = self:BuildNotification(Text,'Progress',CanDismiss);
+    if not entry then return end;
+    entry.Frame.Name='ProgressNotification';
+    local Handle = {Closed=false,Frame=entry.Frame,Label=entry.Label,Fill=entry.Fill,Entry=entry};
+    function Handle:Update(NewText,Fraction)if not self.Closed then entry:Update(NewText,Fraction) end end;
+    function Handle:Complete()
+        if self.Closed then return end;
+        self.Closed=true;
+        Library.ProgressNotifications[self]=nil;
+        entry:Destroy();
+    end;
+    Handle.Destroy=Handle.Complete;
+    entry.Frame.Destroying:Connect(function()Handle.Closed=true;Library.ProgressNotifications[Handle]=nil end);
+    self.ProgressNotifications[Handle]=true;
+    Handle:Update(Text,Progress);
+    return Handle;
+end;
+function Library:NotifyGamesense(Text,Time)
+    local entry=self:BuildNotification(Text,'Gamesense');
+    if entry then entry:Expire(Time);return entry.Frame end;
+end;
+function Library:NotifySimple(Text,Time)
+    local entry=self:BuildNotification(Text,'Simple');
+    if entry then entry:Expire(Time);return entry.Frame end;
+end;
+function Library:NotifyGamesensical(Text,Time)
+    local entry=self:BuildNotification(Text,'Gamesensical');
+    if entry then entry:Expire(Time);return entry.Frame end;
+end;
+function Library:Notify(Text, Time)
+    if self.Unloaded then return end;
+    if self.NotificationStyle=='Progress' then
+        local handle=self:NotifyProgress(Text,nil,true);
+        if handle then handle.Entry.Persistent=false;handle.Entry:Expire(Time) end;
+        return handle;
+    end;
+    local entry=self:BuildNotification(Text,self.NotificationStyle);
+    if entry then entry:Expire(Time);return entry.Frame end;
+end;
+Library:GiveSignal(ScreenGui:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()Library:RefreshNotifications()end));
+Library:RefreshNotifications();
 
 Library.ThumbnailCache = Library.ThumbnailCache or {}
 Library.ThumbActive = 0
@@ -6813,19 +6762,12 @@ function Library:BuildCustomPanels(Window, TabContainer)
     end
     builders.Executor = function()
     local info, resizeInfo = list(executor, 'ExecutorInfo', 0, 0, 5)
-    local gameName = self.GameNameCache or game.Name
     local function infoRow(name, value)
         local label = text(info, name, value, UDim2.fromOffset(0, 0), UDim2.new(1, -6, 0, 26))
         label.TextWrapped = true
         return label
     end
-    local gameLabel = infoRow('Game', 'Game: ' .. gameName)
-    if not self.GameNameCache then
-        task.spawn(function()
-            local ok, result = pcall(function() return game:GetService('MarketplaceService'):GetProductInfoAsync(game.PlaceId, Enum.InfoType.Asset).Name end)
-            if ok and not self.Unloaded and gameLabel.Parent then self.GameNameCache = tostring(result); gameLabel.Text = 'Game: ' .. self.GameNameCache end
-        end)
-    end
+    self:BindGameName(infoRow('Game',''), 'Game: ')
     infoRow('PlaceId', 'Place ID: ' .. game.PlaceId)
     local job = infoRow('JobId', 'Job ID: ' .. tostring(game.JobId)); job.Size = UDim2.new(1, -6, 0, 42)
     local playerCount = infoRow('PlayerCount', 'Players: ...')
@@ -7439,19 +7381,11 @@ function Library:CreateWindow(...)
     title.Visible=true
     title.TextSize=12
     title.TextXAlignment=Enum.TextXAlignment.Center
-    local notice=label(header,Library.GameNameCache or 'Loading game...',UDim2.new(0.60,0,0,0),UDim2.new(0.40,-10,1,0),12)
+    local notice=label(header,'',UDim2.new(0.60,0,0,0),UDim2.new(0.40,-10,1,0),12)
     window.GameLabel=notice
     notice.TextColor3=Color3.fromRGB(211,66,72)
     Library:RemoveFromRegistry(notice)
-    
-    if not Library.GameNameCache then
-        task.spawn(function()
-            local ok,info=pcall(function()return game:GetService('MarketplaceService'):GetProductInfoAsync(game.PlaceId,Enum.InfoType.Asset)end)
-            local name=ok and type(info)=='table' and info.Name or game.Name
-            if type(name)~='string' or name=='' then name='Roblox' end
-            if not Library.Unloaded and notice.Parent then Library.GameNameCache=name;notice.Text=name end
-        end)
-    end
+    Library:BindGameName(notice)
     notice.TextXAlignment=Enum.TextXAlignment.Right
     searchOuter.Visible=false
     close.Visible=false
