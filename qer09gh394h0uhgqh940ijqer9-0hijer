@@ -37,14 +37,14 @@ local Library: {[string]: any} = {
     Registry = {};
     RegistryMap = {};
     HudRegistry = {};
-    FontColor = Color3.fromRGB(177, 177, 185);
-    MainColor = Color3.fromRGB(23, 23, 28);
-    BackgroundColor = Color3.fromRGB(15, 15, 19);
+    FontColor = Color3.fromRGB(177, 177, 184);
+    MainColor = Color3.fromRGB(26, 26, 32);
+    BackgroundColor = Color3.fromRGB(17, 17, 22);
     AccentColor = Color3.fromRGB(154, 177, 207);
-    OutlineColor = Color3.fromRGB(69, 73, 86);
+    OutlineColor = Color3.fromRGB(49, 49, 59);
     RiskColor = Color3.fromRGB(255, 50, 50),
     Black = Color3.new(0, 0, 0);
-    Font = Enum.Font.RobotoMono,
+    Font = Enum.Font.SourceSans,
     OpenedFrames = {};
     DependencyBoxes = {};
     Signals = {};
@@ -52,11 +52,12 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 30;
+Library.PhowgRevision = 31;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
 Library.ReferenceStyle = true;
+Library.KeybindShowInactive = false;
 Library.ChromaPickers = {};
 Library.ChromaSet = {};
 Library.ChromaConn = nil;
@@ -358,10 +359,12 @@ function Library:Create(Class, Properties)
     if layer > 0 and not Properties.ZIndex and _Instance:IsA('GuiObject') then _Instance.ZIndex = layer + 1 end
 
     if _Instance:IsA('TextLabel') or _Instance:IsA('TextButton') or _Instance:IsA('TextBox') then
-        _Instance.TextSize=math.max(14,_Instance.TextSize)
+        _Instance.TextSize=math.max(10,_Instance.TextSize <= 16 and math.min(12,_Instance.TextSize) or _Instance.TextSize)
         if Library.UIFontName=='JetBrains Mono Nerd' then
             _Instance.Font=Enum.Font.RobotoMono
             if Library.NerdFontFace then pcall(function()_Instance.FontFace=Library.NerdFontFace end) end
+        else
+            _Instance.Font=Library.Font
         end
     end
     return _Instance;
@@ -581,7 +584,7 @@ function Library:CreateLabel(Properties, IsHud)
         BackgroundTransparency = 1;
         Font = Library.Font;
         TextColor3 = Library.FontColor;
-        TextSize = 16;
+        TextSize = 12;
         TextStrokeTransparency = 0;
     });
 
@@ -958,6 +961,8 @@ function Library:Unload()
         local Connection = table.remove(Library.Signals, Idx)
         Connection:Disconnect()
     end
+    if Library.AnimatedGradients then table.clear(Library.AnimatedGradients) end
+    Library.GradientConnection = nil
 
      -- Call our unload callback, maybe to undo some hooks etc
     if Library.OnUnload then
@@ -1147,18 +1152,80 @@ function Library:SetCustomCursorColor(Color)
     self.CustomCursorColor = Color;
     self:RefreshCustomCursor();
 end;
-function Library:StyleIndicator(Panel)
-    Panel.BackgroundColor3 = Color3.fromRGB(16, 16, 22);
-    Panel.BorderSizePixel = 0;
-    for _, Layer in ipairs({{5, 0.94}, {3, 0.85}, {1, 0.35}}) do
-        local Glow = self:Create('Frame', {Name = 'BorderGlow'; BackgroundTransparency = 1; BorderSizePixel = 0; Size = UDim2.fromScale(1, 1); ZIndex = Panel.ZIndex; Parent = Panel;});
-        self:Create('UIStroke', {Color = Color3.fromRGB(145, 153, 177); Thickness = Layer[1]; Transparency = Layer[2]; ApplyStrokeMode = Enum.ApplyStrokeMode.Border; Parent = Glow;});
-    end;
-    local Edge = self:Create('UIStroke', {Color = Color3.new(1, 1, 1); Thickness = 1; ApplyStrokeMode = Enum.ApplyStrokeMode.Border; Parent = Panel;});
-    local Gradient = self:Create('UIGradient', {
-        Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.fromRGB(36, 37, 48)), ColorSequenceKeypoint.new(0.4, Color3.fromRGB(42, 43, 55)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(177, 189, 215)), ColorSequenceKeypoint.new(0.6, Color3.fromRGB(42, 43, 55)), ColorSequenceKeypoint.new(1, Color3.fromRGB(36, 37, 48))});
-        Parent = Edge;
+Library.AnimatedGradients = setmetatable({}, {__mode = 'k'});
+Library.GradientColors = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 33, 44)),
+    ColorSequenceKeypoint.new(0.25, Color3.fromRGB(88, 104, 144)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(222, 232, 255)),
+    ColorSequenceKeypoint.new(0.75, Color3.fromRGB(118, 113, 165)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(32, 33, 44)),
+});
+function Library:SetGradientColors(First, Second, Highlight)
+    if typeof(First) ~= 'Color3' or typeof(Second) ~= 'Color3' or typeof(Highlight) ~= 'Color3' then return end;
+    self.GradientColors = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(32,33,44)),
+        ColorSequenceKeypoint.new(0.25, First),
+        ColorSequenceKeypoint.new(0.5, Highlight),
+        ColorSequenceKeypoint.new(0.75, Second),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(32,33,44)),
     });
+    for gradient in pairs(self.AnimatedGradients) do
+        if gradient.Parent then gradient.Color = self.GradientColors end;
+    end;
+end;
+function Library:RegisterAnimatedGradient(Gradient, Surface, Border)
+    self.AnimatedGradients[Gradient] = {Surface = Surface, Border = Border == true};
+    Gradient.Color = self.GradientColors;
+    if self.GradientConnection then return Gradient end;
+    local elapsed, sampleTime, sampleFrames = 0, 0, 0;
+    self.GradientConnection = RenderStepped:Connect(function(delta)
+        if Library.Unloaded then return end;
+        if Library.TrackIndicatorFPS then
+            sampleTime += delta;
+            sampleFrames += 1;
+            if sampleTime >= 0.5 then
+                Library.IndicatorFPS = sampleFrames / sampleTime;
+                sampleTime, sampleFrames = 0, 0;
+            end;
+        else
+            sampleTime, sampleFrames = 0, 0;
+        end;
+        elapsed += delta;
+        if elapsed < 1 / 30 then return end;
+        elapsed = 0;
+        local phase = os.clock() * (Library.GradientSpeed or 0.35);
+        for gradient, entry in pairs(Library.AnimatedGradients) do
+            local surface = entry.Surface;
+            if not gradient.Parent or not surface.Parent then
+                Library.AnimatedGradients[gradient] = nil;
+            else
+                local visible, ancestor = true, surface;
+                while ancestor and ancestor ~= ScreenGui do
+                    if ancestor:IsA('GuiObject') and not ancestor.Visible then visible = false; break end;
+                    ancestor = ancestor.Parent;
+                end;
+                if visible then
+                    local animate = not Library.ReducedMotion and Library.GradientAnimation ~= false;
+                    if entry.Border then
+                        local rotation = animate and (phase * 45) % 360 or 0;
+                        if gradient.Rotation ~= rotation then gradient.Rotation = rotation end;
+                    else
+                        local offset = Vector2.new(animate and math.sin(phase) * 0.45 or 0, 0);
+                        if gradient.Offset ~= offset then gradient.Offset = offset end;
+                    end;
+                end;
+            end;
+        end;
+    end);
+    self:GiveSignal(self.GradientConnection);
+    return Gradient;
+end;
+function Library:StyleIndicator(Panel)
+    Panel.BackgroundColor3 = Color3.fromRGB(17, 17, 22);
+    Panel.BorderSizePixel = 0;
+    local Edge = self:Create('UIStroke', {Name = 'IndicatorBorder'; Color = Color3.new(1, 1, 1); Thickness = 1; ApplyStrokeMode = Enum.ApplyStrokeMode.Border; Parent = Panel;});
+    local Gradient = self:Create('UIGradient', {Parent = Edge;});
+    self:RegisterAnimatedGradient(Gradient, Panel, true);
     self:Create('Frame', {Name = 'InsetBorder'; BackgroundTransparency = 1; BorderColor3 = Color3.fromRGB(38, 38, 48); Position = UDim2.fromOffset(3, 3); Size = UDim2.new(1, -6, 1, -6); ZIndex = Panel.ZIndex; Parent = Panel;});
     return Gradient;
 end;
@@ -1169,16 +1236,17 @@ function Library:QueueKeybindLayout()
     task.defer(function()
         Library.KeybindLayoutPending = false;
         if Library.Unloaded or not Library.KeybindFrame or not Library.KeybindFrame.Parent then return end;
-        local Height, Width, Count = 0, 136, 0;
+        local Height, Width, Count = 0, Library.KeybindMinimumWidth or 176, 0;
         for _, Row in ipairs(Library.KeybindContainer:GetChildren()) do
             if Row:IsA('Frame') and Row.Visible then
                 Count = Count + 1;
-                Height = Height + 14;
-                Width = math.max(Width, Row:FindFirstChild('Name').TextBounds.X + 18);
+                Height = Height + 18;
+                local name = Row:FindFirstChild('Name');
+                if name then Width = math.max(Width, name.TextBounds.X + 20) end;
             end;
         end;
         Library.KeybindVisibleRows = Count;
-        Library.KeybindFrame.Size = UDim2.fromOffset(math.ceil(Width), Height + 30);
+        Library.KeybindFrame.Size = UDim2.fromOffset(math.ceil(Width), Height + 28);
         Library:RefreshKeybindVisibility();
     end);
 end;
@@ -2223,7 +2291,7 @@ do
         local KeyRow = Library:Create('Frame', {
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
-            Size = UDim2.new(1, 0, 0, 14);
+            Size = UDim2.new(1, 0, 0, 18);
             Visible = false;
             ZIndex = 110;
             Parent = Library.KeybindContainer;
@@ -2235,7 +2303,7 @@ do
             Position = UDim2.new(0, 0, 0, 0);
             Size = UDim2.new(1, 0, 1, 0);
             TextColor3 = Color3.fromRGB(255, 255, 255);
-            TextSize = 10;
+            TextSize = 12;
             TextXAlignment = Enum.TextXAlignment.Left;
             TextTruncate = Enum.TextTruncate.AtEnd;
             ZIndex = 111;
@@ -2304,10 +2372,12 @@ do
             local State = KeyPicker:GetState();
             local RawName = tostring(Info.Text or 'bind');
             local Key = tostring(KeyPicker.Value or 'None');
-            if KeyPicker.DisplayState == State and KeyPicker.DisplayMode == KeyPicker.Mode and KeyPicker.DisplayName == RawName and KeyPicker.DisplayKey == Key then return end;
+            if KeyPicker.DisplayState == State and KeyPicker.DisplayMode == KeyPicker.Mode and KeyPicker.DisplayName == RawName and KeyPicker.DisplayKey == Key and KeyPicker.DisplayInactive == Library.KeybindShowInactive then return end;
+            KeyPicker.DisplayInactive = Library.KeybindShowInactive;
             KeyPicker.DisplayState, KeyPicker.DisplayMode, KeyPicker.DisplayName, KeyPicker.DisplayKey = State, KeyPicker.Mode, RawName, Key;
             KeyName.Text = '(' .. KeyPicker.Mode .. ') ' .. string.upper(RawName:sub(1, 1)) .. RawName:sub(2) .. ' - ' .. Key;
-            KeyRow.Visible = State and Key ~= 'None' and Key ~= '';
+            KeyRow.Visible = (State == true or Library.KeybindShowInactive == true) and Key ~= 'None' and Key ~= '';
+            KeyName.TextTransparency = State and 0 or 0.5;
             Library:QueueKeybindLayout();
         end;
 
@@ -5028,14 +5098,14 @@ do
     end;
 end;
 
-Library.UIScale = 0.9;
+Library.UIScale = 1;
 Library.ScaleObjects = {};
 Library.ReducedMotion = false;
 Library.NotifyDuration = 5;
 Library.StreamerMode = 'Off';
 Library.StreamerNames = {};
-Library.UIFontName = 'JetBrains Mono Nerd';
-Library.UIFonts = { 'JetBrains Mono Nerd', 'RobotoMono', 'GothamMedium', 'Gotham', 'GothamBold', 'GothamBlack', 'Arial', 'Legacy', 'Code' }; 
+Library.UIFontName = 'SourceSans';
+Library.UIFonts = { 'SourceSans', 'JetBrains Mono Nerd', 'RobotoMono', 'GothamMedium', 'Gotham', 'GothamBold', 'GothamBlack', 'Arial', 'Legacy', 'Code' }; 
 do
     local seen = {}
     for _, name in ipairs(Library.UIFonts) do seen[name] = true end
@@ -5070,6 +5140,9 @@ function Library:SetUIFont(Name)
     table.clear(self.TextBoundsCache)
     self.TextBoundsCacheCount=0
     if self.WorkspaceWindow and self.WorkspaceWindow.RefreshTabLayout then self.WorkspaceWindow.RefreshTabLayout() end
+    if self.KeybindContainer then self:QueueKeybindLayout() end
+    if self.WatermarkText then self:SetWatermark(self.WatermarkText.Text) end
+    if nerd and not self.NerdFontFace then task.defer(function() if not self.Unloaded then self:LoadNerdFont() end end) end
 end
 function Library:LoadNerdFont()
     if self.NerdFontLoading or self.NerdFontFace or self.Unloaded then return end
@@ -5243,74 +5316,35 @@ do
     });
 
     local WatermarkOuter = Library:Create('Frame', {
-        BorderColor3 = Color3.new(0, 0, 0);
-        Position = UDim2.new(0, 100, 0, -25);
-        Size = UDim2.new(0, 213, 0, 32);
-        ZIndex = 200;
-        Visible = false;
-        Parent = ScreenGui;
+        Name = 'Watermark'; Position = UDim2.fromOffset(14, 12);
+        Size = UDim2.fromOffset(270, 24); Visible = false; ZIndex = 200; Parent = ScreenGui;
     });
-
-    local WatermarkInner = Library:Create('Frame', {
-        BackgroundColor3 = Library.MainColor;
-        BorderColor3 = Library.AccentColor;
-        BorderMode = Enum.BorderMode.Inset;
-        Size = UDim2.new(1, 0, 1, 0);
-        ZIndex = 201;
-        Parent = WatermarkOuter;
-    });
-    Library:StyleControl(WatermarkOuter, WatermarkInner, 8);
-
-    Library:AddToRegistry(WatermarkInner, {
-        BorderColor3 = 'AccentColor';
-    });
-
-    local InnerFrame = Library:Create('Frame', {
-        BackgroundTransparency = 1;
-        BorderSizePixel = 0;
-        Position = UDim2.new(0, 1, 0, 1);
-        Size = UDim2.new(1, -2, 1, -2);
-        ZIndex = 202;
-        Parent = WatermarkInner;
-    });
-
+    Library:StyleIndicator(WatermarkOuter);
     local WatermarkLabel = Library:CreateLabel({
-        Position = UDim2.new(0, 11, 0, 0);
-        Size = UDim2.new(1, -22, 1, 0);
-        TextSize = 13;
-        TextXAlignment = Enum.TextXAlignment.Left;
-        ZIndex = 203;
-        Parent = InnerFrame;
+        Position = UDim2.fromOffset(7, 0); Size = UDim2.new(1, -14, 1, 0);
+        TextSize = 12; TextXAlignment = Enum.TextXAlignment.Left;
+        ZIndex = 203; Parent = WatermarkOuter;
     });
-
-    Library.Watermark = WatermarkOuter;
-    Library.WatermarkText = WatermarkLabel;
-    Library:MakeDraggable(Library.Watermark);
-    Library:ApplyScaleTo(Library.Watermark);
-
-
+    local watermarkLine = Library:Create('Frame', {Name = 'HeaderLine'; Parent = WatermarkOuter; Position = UDim2.fromOffset(4, 1); Size = UDim2.new(1, -8, 0, 1); BackgroundColor3 = Color3.new(1,1,1); BorderSizePixel = 0; ZIndex = 202;});
+    Library:RegisterAnimatedGradient(Library:Create('UIGradient', {Parent = watermarkLine;}), WatermarkOuter);
+    Library.Watermark, Library.WatermarkText = WatermarkOuter, WatermarkLabel;
+    Library:MakeDraggable(WatermarkOuter);
+    Library.WatermarkScale = Library:ApplyScaleTo(WatermarkOuter);
 
     local KeybindOuter = Library:Create('Frame', {
-        AnchorPoint = Vector2.new(0, 0.5); Position = UDim2.new(0, 10, 0.5, 0);
-        Size = UDim2.fromOffset(136, 30); Visible = false; ZIndex = 100; Parent = ScreenGui;
+        Name = 'KeybindIndicator'; AnchorPoint = Vector2.new(0, 0.5); Position = UDim2.new(0, 14, 0.5, 0);
+        Size = UDim2.fromOffset(176, 28); Visible = false; ZIndex = 100; Parent = ScreenGui;
     });
-    local BorderGradient = Library:StyleIndicator(KeybindOuter);
-    local Line = Library:Create('Frame', {BackgroundColor3 = Color3.new(1, 1, 1); BorderSizePixel = 0; Position = UDim2.fromOffset(8, 9); Size = UDim2.new(1, -16, 0, 1); ZIndex = 102; Parent = KeybindOuter;});
-    Library:Create('UIGradient', {Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 26, 33)), ColorSequenceKeypoint.new(0.25, Color3.fromRGB(182, 193, 215)), ColorSequenceKeypoint.new(0.75, Color3.fromRGB(182, 193, 215)), ColorSequenceKeypoint.new(1, Color3.fromRGB(25, 26, 33))}); Parent = Line;});
-    Library:Create('TextLabel', {BackgroundTransparency = 1; Position = UDim2.fromOffset(6, 13); Size = UDim2.new(1, -12, 0, 13); Font = Enum.Font.SourceSans; TextSize = 10; TextColor3 = Color3.fromRGB(225, 225, 230); TextXAlignment = Enum.TextXAlignment.Left; Text = 'Keybinds'; ZIndex = 104; Parent = KeybindOuter;});
-    local KeybindContainer = Library:Create('Frame', {BackgroundTransparency = 1; BorderSizePixel = 0; Position = UDim2.fromOffset(6, 27); Size = UDim2.new(1, -12, 1, -30); ZIndex = 103; Parent = KeybindOuter;});
+    Library:StyleIndicator(KeybindOuter);
+    local Line = Library:Create('Frame', {BackgroundColor3 = Color3.new(1,1,1); BorderSizePixel = 0; Position = UDim2.fromOffset(6, 8); Size = UDim2.new(1, -12, 0, 1); ZIndex = 102; Parent = KeybindOuter;});
+    Library:RegisterAnimatedGradient(Library:Create('UIGradient', {Parent = Line;}), KeybindOuter);
+    local heading = Library:CreateLabel({BackgroundTransparency = 1; Position = UDim2.fromOffset(8, 10); Size = UDim2.new(1, -16, 0, 17); TextSize = 12; TextColor3 = Color3.fromRGB(225,225,230); TextXAlignment = Enum.TextXAlignment.Left; Text = 'Keybinds'; ZIndex = 104; Parent = KeybindOuter;});
+    local KeybindContainer = Library:Create('Frame', {BackgroundTransparency = 1; BorderSizePixel = 0; Position = UDim2.fromOffset(8, 27); Size = UDim2.new(1, -16, 1, -28); ZIndex = 103; Parent = KeybindOuter;});
     Library:Create('UIListLayout', {FillDirection = Enum.FillDirection.Vertical; SortOrder = Enum.SortOrder.LayoutOrder; Parent = KeybindContainer;});
-    Library.KeybindFrame, Library.KeybindContainer = KeybindOuter, KeybindContainer;
+    Library.KeybindFrame, Library.KeybindContainer, Library.KeybindHeading = KeybindOuter, KeybindContainer, heading;
     Library:MakeDraggable(KeybindOuter);
-    Library:ApplyScaleTo(KeybindOuter);
-    local LastFrame = -1;
-    table.insert(Library.Signals, RenderStepped:Connect(function()
-        if not KeybindOuter.Visible or Library.ReducedMotion then return end;
-        local Frame = math.floor(os.clock() * 24);
-        if Frame == LastFrame then return end;
-        LastFrame = Frame;
-        BorderGradient.Rotation = (Frame * 2) % 360;
-    end));
+    Library.KeybindScale = Library:ApplyScaleTo(KeybindOuter);
+
 end;
 
 Library.ToolbarPanels = {}
@@ -5327,11 +5361,25 @@ function Library:SetWatermarkVisibility(Bool)
 end;
 
 function Library:SetWatermark(Text)
-    local X, Y = Library:GetTextBounds(Text, Library.Font, 13);
-    Library.Watermark.Size = UDim2.fromOffset(X + 26, math.max(32, Y + 12));
-    Library:SetWatermarkVisibility(true)
-
-    Library.WatermarkText.Text = Text;
+    Text = tostring(Text or 'phowg host');
+    local X = Library:GetTextBounds(Text, Library.Font, 12);
+    local width = math.min(X + 16, math.max(100, ScreenGui.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01) - 28));
+    Library.Watermark.Size = UDim2.fromOffset(math.ceil(width), 24);
+    Library.WatermarkText.Text, Library.WatermarkText.TextTruncate = Text, Enum.TextTruncate.AtEnd;
+end;
+function Library:SetIndicatorOpacity(Opacity)
+    self.IndicatorOpacity = math.clamp(tonumber(Opacity) or 1, 0.1, 1);
+    self.Watermark.BackgroundTransparency, self.KeybindFrame.BackgroundTransparency = 1 - self.IndicatorOpacity, 1 - self.IndicatorOpacity;
+end;
+function Library:ResetIndicators()
+    self.Watermark.Position = UDim2.fromOffset(14, 12);
+    self.KeybindFrame.Position = UDim2.new(0, 14, 0.5, 0);
+end;
+function Library:SetKeybindShowInactive(Enabled)
+    self.KeybindShowInactive = Enabled == true;
+    for _, option in pairs(Options) do
+        if option.Type == 'KeyPicker' and option.Update then option:Update() end;
+    end;
 end;
 
 Library.NotificationStyle = 'Default';
@@ -5442,6 +5490,7 @@ function Library:NotifyProgress(Text, Progress, CanDismiss)
         Parent = Library.NotificationArea;
     });
     Library:AddToRegistry(Outer, {BackgroundColor3 = 'MainColor';}, true);
+    Library:StyleIndicator(Outer);
     local Label = Library:CreateLabel({
         Position = UDim2.fromOffset(10, 5);
         Size = UDim2.new(1, CanDismiss and -36 or -20, 0, 24);
@@ -5715,7 +5764,7 @@ function Library:Notify(Text, Time)
     local Rich, Plain = NotificationText(Text);
     local Width = math.ceil((Library:GetTextBounds(Plain, Library.Font, 14))) + 10;
     local Holder = Library:Create('CanvasGroup', {Name = 'Notification'; BackgroundColor3 = Color3.fromRGB(10, 10, 12); BorderSizePixel = 0; Size = UDim2.fromOffset(Width, 28); GroupTransparency = Library.ReducedMotion and 0 or 1; ZIndex = 100; Parent = Library.NotificationArea;});
-    Library:Create('UIStroke', {Color = Color3.fromRGB(49, 49, 55); Thickness = 1; ApplyStrokeMode = Enum.ApplyStrokeMode.Border; Parent = Holder;});
+    Library:StyleIndicator(Holder);
     Library:Create('Frame', {BackgroundColor3 = Color3.fromRGB(195, 195, 205); BorderSizePixel = 0; Size = UDim2.new(0, 1, 1, 0); ZIndex = 101; Parent = Holder;});
     Library:Create('TextLabel', {BackgroundTransparency = 1; Position = UDim2.fromOffset(5, 0); Size = UDim2.new(1, -10, 1, 0); Font = Library.Font; TextSize = 14; TextColor3 = Color3.fromRGB(225, 225, 230); TextXAlignment = Enum.TextXAlignment.Center; RichText = true; Text = Rich; ZIndex = 102; Parent = Holder;});
     local Duration = Library.ReducedMotion and 0 or 0.18;
@@ -7124,10 +7173,10 @@ function Library:FormatClassicControl(control, owner, text, anchor)
     local function reflow()
         local scale = math.max(Library.UIScale or 1, 0.01)
         local height=searchList and (control.ClassicListHeight or 120) or 16
-        row.Size=UDim2.new(1,0,0,searchList and height+22 or 42)
-        caption.Position,caption.Size,caption.TextSize=UDim2.fromOffset(0,0),UDim2.new(1,0,0,20),14
-        field.Position=UDim2.fromOffset(0,22)
-        field.Size=UDim2.new(1,0,0,searchList and height or 20)
+        row.Size=UDim2.new(1,0,0,searchList and height+20 or 36)
+        caption.Position,caption.Size,caption.TextSize=UDim2.fromOffset(0,0),UDim2.new(1,0,0,17),12
+        field.Position=UDim2.fromOffset(0,18)
+        field.Size=UDim2.new(1,0,0,searchList and height or 16)
         if owner.Resize then owner:Resize() end
     end
     control.ClassicReflow, self.WorkspaceRows[row] = reflow, reflow
@@ -7234,12 +7283,30 @@ do
     function BaseGroupbox.__index:AddButton(...)
         local result = originalButton(self, ...)
         if Library.WorkspaceEnabled then
-            result.Outer.Size = UDim2.new(result.Outer.Size.X.Scale, result.Outer.Size.X.Offset, 0, 28)
-            local add = result.AddButton
+            local height = Library.ClassicEnabled and 22 or 28
+            result.Outer.Name = 'ActionButton'
+            result.Outer.Size = UDim2.new(1, -4, 0, height)
+            result.Label.TextSize = Library.ClassicEnabled and 12 or 14
             result.AddButton = function(item, ...)
-                local second = add(item, ...)
-                item.Outer.Size = UDim2.new(0.5, -4, 0, 28)
-                second.Outer.Size = UDim2.new(1, 0, 1, 0)
+                local row = item.ButtonRow
+                if not row then
+                    row = Library:Create('Frame', {Name = 'ButtonRow', Parent = item.Outer.Parent, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1,-4,0,height), ZIndex = item.Outer.ZIndex, LayoutOrder = item.Outer.LayoutOrder})
+                    item.Outer.Parent = row
+                    row:SetAttribute('Buttons', 1)
+                    item.ButtonRow = row
+                end
+                local second = originalButton(self, ...)
+                second.Outer.Parent, second.ButtonRow = row, row
+                second.Label.TextSize = Library.ClassicEnabled and 12 or 14
+                second.AddButton = item.AddButton
+                local buttons = {}
+                for _, child in ipairs(row:GetChildren()) do if child:IsA('Frame') then buttons[#buttons+1] = child end end
+                local count = #buttons
+                for index, child in ipairs(buttons) do
+                    child.Position = UDim2.new((index-1)/count, (index-1)*4/count, 0, 0)
+                    child.Size = UDim2.new(1/count, -4*(count-1)/count, 1, 0)
+                end
+                row:SetAttribute('Buttons', count)
                 self:Resize()
                 return second
             end
@@ -7346,29 +7413,23 @@ function Library:CreateWindow(...)
         return object
     end
     local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
-    local requested = typeof(config.Size) == 'UDim2' and config.Size or UDim2.fromOffset(760, 820)
-    local outer = frame('CanvasGroup', {Name = 'ClassicWindow', Parent = ScreenGui, BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, Size = UDim2.fromOffset(math.min(requested.X.Offset, viewport.X - 24), math.min(requested.Y.Offset, viewport.Y - 24)), Position = typeof(config.Position) == 'UDim2' and config.Position or UDim2.fromOffset(8, 8), Visible = false, GroupTransparency = 0, ZIndex = 1}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
+    local requested = typeof(config.Size) == 'UDim2' and config.Size or UDim2.fromOffset(560, 650)
+    local outer = frame('CanvasGroup', {Name = 'ClassicWindow', Parent = ScreenGui, BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, Size = UDim2.fromOffset(math.min(requested.X.Offset, viewport.X - 24), math.min(requested.Y.Offset, viewport.Y - 24)), Position = typeof(config.Position) == 'UDim2' and config.Position or UDim2.fromOffset(math.max(8, viewport.X - requested.X.Offset - 16), math.max(8, (viewport.Y - requested.Y.Offset) * 0.5)), Visible = false, GroupTransparency = 0, ZIndex = 1}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
     Library:StyleControl(outer, outer, 0)
     outer.BorderSizePixel=0
     local oldStroke=outer:FindFirstChild('ControlStroke')
     if oldStroke then oldStroke.Enabled=false end
-    local border=frame('UIStroke',{Name='AnimatedWhiteBorder',Parent=outer,Color=Color3.new(1,1,1),Thickness=1.4,Transparency=0,ApplyStrokeMode=Enum.ApplyStrokeMode.Border})
+    local border=frame('UIStroke',{Name='AnimatedWhiteBorder',Parent=outer,Color=Color3.new(1,1,1),Thickness=1,Transparency=0,ApplyStrokeMode=Enum.ApplyStrokeMode.Border})
     local borderGradient=frame('UIGradient',{Name='BorderGradient',Parent=border,Rotation=0,Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(80,80,88)),ColorSequenceKeypoint.new(0.3,Color3.fromRGB(185,185,194)),ColorSequenceKeypoint.new(0.5,Color3.new(1,1,1)),ColorSequenceKeypoint.new(0.7,Color3.fromRGB(185,185,194)),ColorSequenceKeypoint.new(1,Color3.fromRGB(80,80,88))})})
     window.AnimatedBorder,window.BorderGradient=border,borderGradient
-    local borderElapsed=0
-    Library:GiveSignal(RenderStepped:Connect(function(delta)
-        if Library.Unloaded or not outer.Parent or not outer.Visible or Library.ReducedMotion then return end
-        borderElapsed+=delta
-        if borderElapsed<1/30 then return end
-        borderGradient.Rotation=(borderGradient.Rotation+borderElapsed*28)%360
-        borderElapsed=0
-    end))
+    Library:RegisterAnimatedGradient(borderGradient, outer, true)
+    local innerBorder = frame('Frame', {Name='WindowInset', Parent=outer, Position=UDim2.fromOffset(5,5), Size=UDim2.new(1,-10,1,-10), BackgroundTransparency=1, BorderSizePixel=1, BorderColor3=Library.OutlineColor, ZIndex=2}, {BorderColor3='OutlineColor'})
     window.Holder, window.ScaleObject = outer, Library:ApplyScaleTo(outer)
     if config.Center then outer.Position = UDim2.fromOffset((viewport.X - outer.Size.X.Offset) / 2, (viewport.Y - outer.Size.Y.Offset) / 2) end
     local rainbow = frame('Frame', {Name = 'ClassicRainbow', Parent = outer, Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, ZIndex = 10})
     frame('UIGradient', {Parent = rainbow, Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.fromRGB(207, 91, 222)), ColorSequenceKeypoint.new(0.25, Color3.fromRGB(226, 204, 106)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(92, 215, 143)), ColorSequenceKeypoint.new(0.75, Color3.fromRGB(75, 183, 220)), ColorSequenceKeypoint.new(1, Color3.fromRGB(125, 94, 224))})})
     rainbow.Visible=false
-    local header = frame('Frame', {Name = 'ClassicHeader', Parent = outer, Position = UDim2.fromOffset(0, 1), Size = UDim2.new(1, 0, 0, 32), BackgroundTransparency = 1, BorderSizePixel = 0, Active = true, ZIndex = 9})
+    local header = frame('Frame', {Name = 'ClassicHeader', Parent = outer, Position = UDim2.fromOffset(0, 1), Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, BorderSizePixel = 0, Active = true, ZIndex = 9})
     local title = label(header, window.Title, UDim2.fromOffset(12, 0), UDim2.new(1, -330, 1, 0), 14)
     local searchOuter = frame('Frame', {Name = 'ClassicSearch', Parent = header, Position = UDim2.new(1, -274, 0, 6), Size = UDim2.fromOffset(230, 22), BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 5}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
     Library:StyleControl(searchOuter, searchOuter, 1)
@@ -7376,12 +7437,13 @@ function Library:CreateWindow(...)
     local close = button(header, utf8.char(215), UDim2.fromOffset(22, 22), function() Library:Toggle() end)
     close.Position = UDim2.new(1, -32, 0, 6)
     title.Visible=true
-    title.TextSize=16
-    title.TextXAlignment=Enum.TextXAlignment.Left
-    local notice=label(header,Library.GameNameCache or 'Loading game...',UDim2.new(0.48,0,0,0),UDim2.new(0.52,-16,1,0),14)
+    title.TextSize=12
+    title.TextXAlignment=Enum.TextXAlignment.Center
+    local notice=label(header,Library.GameNameCache or 'Loading game...',UDim2.new(0.60,0,0,0),UDim2.new(0.40,-10,1,0),12)
     window.GameLabel=notice
-    notice.TextColor3=Library.FontColor
-    Library:AddToRegistry(notice,{TextColor3='FontColor'})
+    notice.TextColor3=Color3.fromRGB(211,66,72)
+    Library:RemoveFromRegistry(notice)
+    
     if not Library.GameNameCache then
         task.spawn(function()
             local ok,info=pcall(function()return game:GetService('MarketplaceService'):GetProductInfoAsync(game.PlaceId,Enum.InfoType.Asset)end)
@@ -7393,13 +7455,13 @@ function Library:CreateWindow(...)
     notice.TextXAlignment=Enum.TextXAlignment.Right
     searchOuter.Visible=false
     close.Visible=false
-    local nav = frame('ScrollingFrame', {Name = 'ClassicNavigation', Parent = outer, Position = UDim2.fromOffset(14, 38), Size = UDim2.new(1, -28, 0, 30), BackgroundTransparency = 1, BorderSizePixel = 0, CanvasSize = UDim2.fromOffset(0, 0), ScrollBarThickness = 2, ScrollBarImageColor3 = Library.OutlineColor, ScrollingDirection = Enum.ScrollingDirection.X, ZIndex = 3}, {ScrollBarImageColor3 = 'OutlineColor'})
-    frame('Frame', {Parent = outer, Position = UDim2.fromOffset(14, 70), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'OutlineColor'})
+    local nav = frame('ScrollingFrame', {Name = 'ClassicNavigation', Parent = outer, Position = UDim2.fromOffset(12, 27), Size = UDim2.new(1, -24, 0, 24), BackgroundTransparency = 1, BorderSizePixel = 0, CanvasSize = UDim2.fromOffset(0, 0), ScrollBarThickness = 2, ScrollBarImageColor3 = Library.OutlineColor, ScrollingDirection = Enum.ScrollingDirection.X, ZIndex = 3}, {ScrollBarImageColor3 = 'OutlineColor'})
+    frame('Frame', {Parent = outer, Position = UDim2.fromOffset(12, 53), Size = UDim2.new(1, -24, 0, 1), BackgroundColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'OutlineColor'})
     local navLayout = frame('UIListLayout', {Parent = nav, FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder})
-    local sectionHost = frame('Frame', {Name = 'ClassicSections', Parent = outer, Position = UDim2.fromOffset(14, 74), Size = UDim2.new(1, -28, 0, 26), BackgroundTransparency = 1, ZIndex = 4})
+    local sectionHost = frame('Frame', {Name = 'ClassicSections', Parent = outer, Position = UDim2.fromOffset(12, 55), Size = UDim2.new(1, -24, 0, 22), BackgroundTransparency = 1, ZIndex = 4})
     local utilityHeading = label(sectionHost, '', UDim2.fromOffset(4, 0), UDim2.fromScale(1, 1), 14)
     utilityHeading.Visible = false
-    frame('Frame', {Parent = outer, Position = UDim2.fromOffset(14, 102), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'OutlineColor'})
+    frame('Frame', {Parent = outer, Position = UDim2.fromOffset(12, 79), Size = UDim2.new(1, -24, 0, 1), BackgroundColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'OutlineColor'})
     local function drawIcon(parent, kind)
         local icon = Library:CreateClassicIcon(parent, kind, 24)
         icon.Position = UDim2.new(0.5, -12, 0, 6)
@@ -7432,7 +7494,7 @@ function Library:CreateWindow(...)
         end
     end
     local function makeRootNav(name,callback,order)
-        local object=button(nav,'',UDim2.fromOffset(110,30),callback)
+        local object=button(nav,'',UDim2.fromOffset(78,24),callback)
         object.LayoutOrder=order
         local caption=label(object,tostring(name),UDim2.fromOffset(0,0),UDim2.fromScale(1,1),12)
         caption.Name,caption.TextXAlignment='NavigationLabel',Enum.TextXAlignment.Center
@@ -7485,8 +7547,8 @@ function Library:CreateWindow(...)
                 group.Strip.CanvasSize = UDim2.fromOffset(group.Layout.AbsoluteContentSize.X / math.max(Library.UIScale or 1, 0.01), 0)
             end)
         end
-        local width = math.clamp(select(1, Library:GetTextBounds(tostring(name), Library.Font, 14)) + 28, 72, 180)
-        local object = frame('TextButton', {Name = tostring(name), Parent = group.Strip, Text = tostring(name), Font = Library.Font, TextSize = 12, TextColor3 = Library.FontColor, BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false, LayoutOrder = order, Size = UDim2.fromOffset(width, 26), ZIndex = 9}, {TextColor3 = 'FontColor'})
+        local width = math.clamp(select(1, Library:GetTextBounds(tostring(name), Library.Font, 12)) + 18, 56, 160)
+        local object = frame('TextButton', {Name = tostring(name), Parent = group.Strip, Text = tostring(name), Font = Library.Font, TextSize = 12, TextColor3 = Library.FontColor, BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false, LayoutOrder = order, Size = UDim2.fromOffset(width, 22), ZIndex = 9}, {TextColor3 = 'FontColor'})
         local caption = label(object, tostring(name), UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), 14)
         caption.Name, caption.Visible = 'NavigationLabel', false
         local marker = Library:CreateSelectionMarker(object)
@@ -7505,7 +7567,7 @@ function Library:CreateWindow(...)
     local profileStatus = label(footer, '', UDim2.new(1, -180, 0, 0), UDim2.fromOffset(164, 32), 11)
     profileStatus.Visible = false
     profileStatus.TextXAlignment = Enum.TextXAlignment.Right
-    local body = frame('Frame', {Name = 'ClassicBody', Parent = outer, Position = UDim2.fromOffset(14, 110), Size = UDim2.new(1, -28, 1, -124), BackgroundTransparency = 1, ZIndex = 2})
+    local body = frame('Frame', {Name = 'ClassicBody', Parent = outer, Position = UDim2.fromOffset(12, 85), Size = UDim2.new(1, -24, 1, -97), BackgroundTransparency = 1, ZIndex = 2})
     local rail = frame('Frame', {Name = 'ClassicWeaponRail', Parent = body, Size = UDim2.new(0, 120, 1, 0), BackgroundTransparency = 1, Visible = false, ZIndex = 3})
     local railTitle = label(rail, 'PROFILES', UDim2.fromOffset(2, 0), UDim2.new(1, -30, 0, 22), 10)
     local weaponList = frame('ScrollingFrame', {Name = 'WeaponProfiles', Parent = rail, Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, 0, 1, -28), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 2, ScrollBarImageColor3 = Library.OutlineColor, CanvasSize = UDim2.fromOffset(0, 0), ZIndex = 4}, {ScrollBarImageColor3 = 'OutlineColor'})
@@ -7840,16 +7902,17 @@ function Library:CreateWindow(...)
         local function group(name, parent, box)
             local section: {[string]: any} = {Name = name, RootTab = tab, ColorPickers = {}, ChromaOn = false, ParentTabbox = box, Scroll = parent == left and leftScroll or rightScroll}
             local holder = frame('Frame', {Name = 'ClassicGroupbox', Parent = parent, Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
-            holder.BackgroundTransparency=1
-            frame('Frame',{Name='SectionRule',Parent=holder,Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,1),BackgroundColor3=Library.AccentColor,BorderSizePixel=0},{BackgroundColor3='AccentColor'})
-            local naturalWidth = select(1, Library:GetTextBounds(tostring(name), Library.Font, 14))
-            local sectionLabel = label(holder, tostring(name), UDim2.fromOffset(0,3), UDim2.new(1,0,0,20), 14)
+            holder.BackgroundColor3, holder.BackgroundTransparency, holder.BorderSizePixel = Library.MainColor, 0, 1
+            Library:AddToRegistry(holder,{BackgroundColor3='MainColor',BorderColor3='OutlineColor'})
+            local rule=frame('Frame',{Name='SectionRule',Parent=holder,Position=UDim2.fromOffset(1,0),Size=UDim2.new(1,-2,0,1),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,ZIndex=5})
+            Library:RegisterAnimatedGradient(frame('UIGradient',{Parent=rule}),holder)
+            local naturalWidth = select(1, Library:GetTextBounds(tostring(name), Library.Font, 12))
+            local sectionLabel = label(holder, tostring(name), UDim2.fromOffset(5,3), UDim2.new(1,-10,0,17), 12)
             sectionLabel.AnchorPoint, sectionLabel.TextXAlignment = Vector2.zero, Enum.TextXAlignment.Left
-            sectionLabel.BackgroundTransparency, sectionLabel.BackgroundColor3 = 0, Library.BackgroundColor
-            Library:AddToRegistry(sectionLabel, {BackgroundColor3 = 'BackgroundColor', TextColor3 = 'FontColor'})
+            sectionLabel.BackgroundTransparency = 1
             local chroma = button(holder, 'RGB', UDim2.fromOffset(36, 18), function() Library:SetGroupChroma(section, not section.ChromaOn); Library:AttemptSave() end)
             chroma.Position, chroma.Visible = UDim2.new(1, -46, 0, -8), false
-            local container = frame('Frame', {Parent = holder, Position = UDim2.fromOffset(2, 27), Size = UDim2.new(1, -4, 0, 0), BackgroundTransparency = 1, ZIndex = 5})
+            local container = frame('Frame', {Parent = holder, Position = UDim2.fromOffset(6, 24), Size = UDim2.new(1, -12, 0, 0), BackgroundTransparency = 1, ZIndex = 5})
             local layout = frame('UIListLayout', {Parent = container, SortOrder = Enum.SortOrder.LayoutOrder})
             section.Container, section.Holder, section.TextLabel = container, holder, sectionLabel
             section.ChromaBtn, section.ChromaBtnInner, section.ChromaBtnLabel = chroma, chroma, chroma
@@ -7859,7 +7922,7 @@ function Library:CreateWindow(...)
                 sectionLabel.Size = UDim2.fromOffset(math.max(0, math.min(naturalWidth + 12, holder.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01) - (chroma.Visible and 100 or 24))), 20)
                 local height = 0
                 for _, child in ipairs(container:GetChildren()) do if child:IsA('GuiObject') and child.Visible then height = height + child.Size.Y.Offset end end
-                container.Size, holder.Size = UDim2.new(1, -4, 0, height), UDim2.new(1, 0, 0, height + 32)
+                container.Size, holder.Size = UDim2.new(1, -12, 0, height), UDim2.new(1, 0, 0, height + 28)
                 if box then box:Resize() else tab:Resize() end
             end
             function section:Show()
@@ -7897,10 +7960,9 @@ function Library:CreateWindow(...)
                 self.ClassicDefaults = true
                 item:AddDropdown('NotificationStyle', {Text = 'Notification style', Values = {'Default', 'Gamesense', 'Simple', 'Gamesensical', 'Progress'}, Default = Library.NotificationStyle or 'Default', Callback = function(value) Library:SetNotificationStyle(value) end})
                 item:AddDropdown('NotificationPosition', {Text = 'Notification position', Values = {'Bottom', 'Top', 'Bottom Left', 'Bottom Right', 'Top Left', 'Top Right'}, Default = Library.NotificationPosition or 'Bottom', Callback = function(value) Library:SetNotificationPosition(value) end})
-                item:AddToggle('KeybindIndicator', {Text = 'Keybind indicator', Default = true, Callback = function(value) Library:SetKeybindIndicator(value) end})
                 item:AddSlider('UIScale', {Text = 'UI scale', Default = 100, Min = 75, Max = 150, Rounding = 0, Suffix = '%', Callback = function(value) Library:SetUIScale(value / 100) end})
                 item:AddToggle('ReducedMotion', {Text = 'Reduced motion', Default = false, Callback = function(value) Library.ReducedMotion = value end})
-                item:AddButton('Copy JobId', function() pcall(setclipboard, tostring(game.JobId)); Library:Notify('Copied JobId', 2) end)
+
             end
             item:Resize()
             return item
@@ -8003,13 +8065,16 @@ function Library:CreateWindow(...)
         local searchWidth = math.min(230, math.max(130, width * 0.24))
         local stackedFooter=false
         footer.Visible=false
-        body.Position,body.Size=UDim2.fromOffset(14,110),UDim2.new(1,-28,1,-124)
-        searchOuter.Visible,close.Visible,profileStatus.Visible=false,false,false
-        title.Position,title.Size=UDim2.fromOffset(16,0),UDim2.new(0.47,-16,1,0)
+        body.Position,body.Size=UDim2.fromOffset(12,85),UDim2.new(1,-24,1,-97)
+        searchOuter.Visible,close.Visible,profileStatus.Visible=true,false,false
+        searchOuter.Parent,searchOuter.Position,searchOuter.Size=outer,UDim2.new(1,-122,0,28),UDim2.fromOffset(110,22)
+        search.PlaceholderText,search.TextSize='Search...',12
+        nav.Size=UDim2.new(1,-138,0,24)
+        title.Position,title.Size=UDim2.new(0.30,0,0,0),UDim2.new(0.40,0,1,0)
         local navButtons = {}
         for _, child in ipairs(nav:GetChildren()) do if child:IsA('TextButton') then navButtons[#navButtons + 1] = child end end
-        local tabWidth = math.clamp((width - 20 - math.max(0, #navButtons - 1) * 2) / math.max(1, #navButtons), 60, 180)
-        for _, object in ipairs(navButtons) do object.Size = UDim2.fromOffset(tabWidth, 30) end
+        local tabWidth = math.max(48,(width - 138 - math.max(0, #navButtons - 1) * 2) / math.max(1, #navButtons))
+        for _, object in ipairs(navButtons) do object.Size = UDim2.fromOffset(tabWidth, 24) end
         updateCanvas(nav, navLayout)
         weaponList.CanvasSize = UDim2.fromOffset(0, weaponLayout.AbsoluteContentSize.Y / scale + 4)
         if width ~= lastWidth or height~=lastHeight or scale ~= lastScale or inset ~= lastSidebar or stackedFooter~=lastStacked then
@@ -8107,6 +8172,6 @@ Library:GiveSignal(Players.PlayerAdded:Connect(function(player)
 end));
 Library:GiveSignal(Players.PlayerRemoving:Connect(OnPlayerChange));
 
-task.defer(function()if not Library.Unloaded then Library:LoadNerdFont() end end)
+task.defer(function()if not Library.Unloaded and Library.UIFontName == 'JetBrains Mono Nerd' then Library:LoadNerdFont() end end)
 getgenv().Library = Library
 return Library
