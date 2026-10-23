@@ -37,11 +37,11 @@ local Library: {[string]: any} = {
     Registry = {};
     RegistryMap = {};
     HudRegistry = {};
-    FontColor = Color3.fromRGB(177, 177, 184);
-    MainColor = Color3.fromRGB(26, 26, 32);
-    BackgroundColor = Color3.fromRGB(17, 17, 22);
+    FontColor = Color3.fromRGB(211, 214, 224);
+    MainColor = Color3.fromRGB(27, 29, 37);
+    BackgroundColor = Color3.fromRGB(16, 18, 25);
     AccentColor = Color3.fromRGB(154, 177, 207);
-    OutlineColor = Color3.fromRGB(49, 49, 59);
+    OutlineColor = Color3.fromRGB(57, 62, 76);
     RiskColor = Color3.fromRGB(255, 50, 50),
     Black = Color3.new(0, 0, 0);
     Font = Enum.Font.SourceSans,
@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 34;
+Library.PhowgRevision = 35;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -432,7 +432,7 @@ function Library:StyleControl(Outer, Inner, Radius, Region)
         Parent = Inner;
     });
     if Library.ReferenceStyle and Inner.BackgroundTransparency<1 and Inner.ClassName~='CanvasGroup' then
-        Library:Create('UIGradient',{Name='ReferenceShading',Rotation=90,Color=ColorSequence.new(Color3.fromRGB(255,255,255),Color3.fromRGB(115,115,125)),Parent=Inner});
+        Library:Create('UIGradient',{Name='ReferenceShading',Rotation=90,Color=ColorSequence.new(Color3.fromRGB(255,255,255),Color3.fromRGB(200,203,214)),Parent=Inner});
     end;
     local Hovered, Focused, Pressed = false, false, false;
     local function CurrentColor()
@@ -2815,7 +2815,7 @@ do
                 Parent = Inner;
             });
 
-            Library:Create('UIGradient', {
+            if not Inner:FindFirstChildOfClass('UIGradient') then Library:Create('UIGradient', {
                 Color = ColorSequence.new({
                     ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
                     ColorSequenceKeypoint.new(1, Color3.fromRGB(212, 212, 212))
@@ -2823,6 +2823,8 @@ do
                 Rotation = 90;
                 Parent = Inner;
             });
+
+            end;
 
             Library:AddToRegistry(Outer, {
                 BorderColor3 = 'Black';
@@ -7228,10 +7230,10 @@ do
     function BaseGroupbox.__index:AddButton(...)
         local result = originalButton(self, ...)
         if Library.WorkspaceEnabled then
-            local height = Library.ClassicEnabled and 22 or 28
+            local height = Library.ClassicEnabled and 26 or 30
             result.Outer.Name = 'ActionButton'
             result.Outer.Size = UDim2.new(1, -4, 0, height)
-            result.Label.TextSize = Library.ClassicEnabled and 12 or 14
+            result.Label.TextSize = Library.ClassicEnabled and 13 or 14
             result.AddButton = function(item, ...)
                 local row = item.ButtonRow
                 if not row then
@@ -7242,7 +7244,7 @@ do
                 end
                 local second = originalButton(self, ...)
                 second.Outer.Parent, second.ButtonRow = row, row
-                second.Label.TextSize = Library.ClassicEnabled and 12 or 14
+                second.Label.TextSize = Library.ClassicEnabled and 13 or 14
                 second.AddButton = item.AddButton
                 local buttons = {}
                 for _, child in ipairs(row:GetChildren()) do if child:IsA('Frame') then buttons[#buttons+1] = child end end
@@ -7259,6 +7261,55 @@ do
         end
         return result
     end
+    function BaseGroupbox.__index:AddSectionButton(...)
+        local owner = self
+        local holder = self.Holder or self.Container and self.Container.Parent
+        assert(holder, 'AddSectionButton: section holder is unavailable.')
+        if not self.HeaderActions then
+            self.HeaderActions = Library:Create('Frame', {Name='SectionActions', Parent=holder, AnchorPoint=Vector2.new(1,0), Position=UDim2.new(1,-8,0,4), Size=UDim2.fromOffset(0,22), BackgroundTransparency=1, BorderSizePixel=0, ZIndex=8})
+            self.HeaderButtons = {}
+            local reflowing = false
+            self.ReflowHeaderButtons = function()
+                if reflowing then return end
+                reflowing = true
+                local available = math.max(40, holder.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01) - 110)
+                local total = 0
+                for _, item in ipairs(owner.HeaderButtons) do
+                    item.HeaderWidth = math.clamp(select(1, Library:GetTextBounds(item.Label.Text, Library.Font, 12)) + 24, 48, 120)
+                    total += item.HeaderWidth
+                end
+                local gaps = math.max(0, #owner.HeaderButtons - 1) * 5
+                local ratio = math.min(1, math.max(1, available - gaps) / math.max(total, 1))
+                local x = 0
+                for _, item in ipairs(owner.HeaderButtons) do
+                    local width = item.HeaderWidth * ratio
+                    item.Outer.Position = UDim2.fromOffset(x,0)
+                    item.Outer.Size = UDim2.fromOffset(width,22)
+                    x += width + 5
+                end
+                owner.HeaderActionsWidth = math.max(0, x - 5)
+                owner.HeaderActions.Size = UDim2.fromOffset(owner.HeaderActionsWidth,22)
+                reflowing = false
+                owner:Resize()
+            end
+            Library:GiveSignal(holder:GetPropertyChangedSignal('AbsoluteSize'):Connect(self.ReflowHeaderButtons))
+        end
+        local proxy = setmetatable({Container=self.HeaderActions, AddBlank=function() end, Resize=function() end}, {__index=self})
+        local result = BaseGroupbox.__index.AddButton(proxy, ...)
+        result.Outer.Name = 'SectionActionButton'
+        result.Label.TextSize = 12
+        self.HeaderButtons[#self.HeaderButtons+1] = result
+        result.AddButton = function(_, ...) return owner:AddSectionButton(...) end
+        function result:SetText(text)
+            self.Text = tostring(text)
+            self.Label.Text = self.Text
+            owner.ReflowHeaderButtons()
+            return self
+        end
+        self.ReflowHeaderButtons()
+        return result
+    end
+    BaseGroupbox.__index.AddHeaderButton = BaseGroupbox.__index.AddSectionButton
     function BaseGroupbox.__index:AddLabel(text, wrap)
         local result = originalLabel(self, text, wrap)
         if Library.WorkspaceEnabled then
@@ -7847,23 +7898,23 @@ function Library:CreateWindow(...)
             frame('UIStroke',{Parent=holder,Color=Library.OutlineColor,Transparency=0.2,Thickness=1,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},{Color='OutlineColor'})
             local rule=frame('Frame',{Name='SectionRule',Parent=holder,Position=UDim2.fromOffset(6,0),Size=UDim2.new(1,-12,0,1),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,ZIndex=5})
             Library:RegisterAnimatedGradient(frame('UIGradient',{Parent=rule}),holder)
-            local naturalWidth = select(1, Library:GetTextBounds(tostring(name), Library.Font, 12))
-            local sectionLabel = label(holder, tostring(name), UDim2.fromOffset(5,3), UDim2.new(1,-10,0,17), 12)
+            local naturalWidth = select(1, Library:GetTextBounds(tostring(name), Library.Font, 13))
+            local sectionLabel = label(holder, tostring(name), UDim2.fromOffset(9,5), UDim2.new(1,-18,0,20), 13)
             sectionLabel.AnchorPoint, sectionLabel.TextXAlignment = Vector2.zero, Enum.TextXAlignment.Left
             sectionLabel.BackgroundTransparency = 1
             local chroma = button(holder, 'RGB', UDim2.fromOffset(36, 18), function() Library:SetGroupChroma(section, not section.ChromaOn); Library:AttemptSave() end)
             chroma.Position, chroma.Visible = UDim2.new(1, -46, 0, -8), false
-            local container = frame('Frame', {Parent = holder, Position = UDim2.fromOffset(6, 24), Size = UDim2.new(1, -12, 0, 0), BackgroundTransparency = 1, ZIndex = 5})
+            local container = frame('Frame', {Parent = holder, Position = UDim2.fromOffset(8, 32), Size = UDim2.new(1, -16, 0, 0), BackgroundTransparency = 1, ZIndex = 5})
             local layout = frame('UIListLayout', {Parent = container, SortOrder = Enum.SortOrder.LayoutOrder})
             section.Container, section.Holder, section.TextLabel = container, holder, sectionLabel
             section.ChromaBtn, section.ChromaBtnInner, section.ChromaBtnLabel = chroma, chroma, chroma
             setmetatable(section, BaseGroupbox)
             function section:Resize()
                 if Library:DeferStartupLayout(self) then return end
-                sectionLabel.Size = UDim2.fromOffset(math.max(0, math.min(naturalWidth + 12, holder.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01) - (chroma.Visible and 100 or 24))), 20)
+                sectionLabel.Size = UDim2.fromOffset(math.max(0, math.min(naturalWidth + 12, holder.AbsoluteSize.X / math.max(Library.UIScale or 1, 0.01) - (chroma.Visible and 100 or 24) - (self.HeaderActionsWidth or 0))), 20)
                 local height = 0
                 for _, child in ipairs(container:GetChildren()) do if child:IsA('GuiObject') and child.Visible then height = height + child.Size.Y.Offset end end
-                container.Size, holder.Size = UDim2.new(1, -12, 0, height), UDim2.new(1, 0, 0, height + 28)
+                container.Size, holder.Size = UDim2.new(1, -16, 0, height), UDim2.new(1, 0, 0, height + 38)
                 if box then box:Resize() else tab:Resize() end
             end
             function section:Show()
