@@ -37,11 +37,11 @@ local Library: {[string]: any} = {
     Registry = {};
     RegistryMap = {};
     HudRegistry = {};
-    FontColor = Color3.fromRGB(211, 214, 224);
-    MainColor = Color3.fromRGB(27, 29, 37);
-    BackgroundColor = Color3.fromRGB(16, 18, 25);
-    AccentColor = Color3.fromRGB(154, 177, 207);
-    OutlineColor = Color3.fromRGB(57, 62, 76);
+    FontColor = Color3.fromRGB(215, 215, 215);
+    MainColor = Color3.fromRGB(24, 24, 24);
+    BackgroundColor = Color3.fromRGB(12, 12, 12);
+    AccentColor = Color3.fromRGB(242, 242, 242);
+    OutlineColor = Color3.fromRGB(57, 57, 57);
     RiskColor = Color3.fromRGB(255, 50, 50),
     Black = Color3.new(0, 0, 0);
     Font = Enum.Font.SourceSans,
@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 35;
+Library.PhowgRevision = 36;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -402,7 +402,7 @@ function Library:AnimateControl(Target, Properties)
         for Property, Value in pairs(Properties) do Target[Property] = Value end;
         return;
     end;
-    local Tween = TweenService:Create(Target, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), Properties);
+    local Tween = TweenService:Create(Target, TweenInfo.new(0.16, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), Properties);
     Library.ControlTweens[Target] = Tween;
     Library.ControlTweenGoals[Target] = table.clone(Properties);
     Tween.Completed:Once(function()
@@ -432,7 +432,7 @@ function Library:StyleControl(Outer, Inner, Radius, Region)
         Parent = Inner;
     });
     if Library.ReferenceStyle and Inner.BackgroundTransparency<1 and Inner.ClassName~='CanvasGroup' then
-        Library:Create('UIGradient',{Name='ReferenceShading',Rotation=90,Color=ColorSequence.new(Color3.fromRGB(255,255,255),Color3.fromRGB(200,203,214)),Parent=Inner});
+        Library:Create('UIGradient',{Name='ReferenceShading',Rotation=90,Color=ColorSequence.new(Color3.fromRGB(255,255,255),Color3.fromRGB(210,210,210)),Parent=Inner});
     end;
     local Hovered, Focused, Pressed = false, false, false;
     local function CurrentColor()
@@ -473,6 +473,72 @@ function Library:StyleControl(Outer, Inner, Radius, Region)
     UpdateColor();
     return Stroke;
 end;
+function Library:GetReadableText(Background)
+    local function linear(value)
+        return value <= 0.04045 and value / 12.92 or ((value + 0.055) / 1.055) ^ 2.4
+    end
+    local luminance = 0.2126 * linear(Background.R) + 0.7152 * linear(Background.G) + 0.0722 * linear(Background.B)
+    return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) and Color3.new(0,0,0) or Color3.new(1,1,1)
+end
+function Library:BindChoiceStyle(Button, Label, Marker, IsSelected, Dangerous)
+    local hovered, initialized = false, false
+    local function selectionColor()
+        return Dangerous and self.RiskColor or self.AccentColor
+    end
+    local function background()
+        if IsSelected() then return selectionColor() end
+        return hovered and self.MainColor:Lerp(self.FontColor, 0.09) or self.MainColor
+    end
+    local function foreground()
+        if IsSelected() then return self:GetReadableText(selectionColor()) end
+        return Dangerous and self.RiskColor or self.FontColor
+    end
+    local function update(animate)
+        Marker.Visible = not not IsSelected()
+        if animate and initialized then
+            self:AnimateControl(Button, {BackgroundColor3=background()})
+            self:AnimateControl(Label, {TextColor3=foreground()})
+        else
+            Button.BackgroundColor3, Label.TextColor3 = background(), foreground()
+        end
+        Marker.BackgroundColor3 = foreground()
+        initialized = true
+    end
+    self.RegistryMap[Button].Properties.BackgroundColor3 = background
+    self.RegistryMap[Label].Properties.TextColor3 = foreground
+    self.RegistryMap[Marker].Properties.BackgroundColor3 = foreground
+    Label.Position, Label.Size = UDim2.fromOffset(10,0), UDim2.new(1,-20,1,0)
+    Marker.Position, Marker.Size = UDim2.fromOffset(3,4), UDim2.new(0,2,1,-8)
+    Button.MouseEnter:Connect(function() hovered=true; update(true) end)
+    Button.MouseLeave:Connect(function() hovered=false; update(true) end)
+    Button.Destroying:Connect(function()
+        for _, object in ipairs({Button,Label}) do
+            local tween = self.ControlTweens[object]
+            if tween then tween:Cancel() end
+            self.ControlTweens[object], self.ControlTweenGoals[object] = nil, nil
+        end
+    end)
+    return function() update(true) end
+end
+function Library:StyleActionButton(Outer, Inner)
+    local hovered, pressed = false, false
+    local function color()
+        return self.MainColor:Lerp(self.FontColor, pressed and 0.13 or hovered and 0.065 or 0)
+    end
+    local function update()
+        self:AnimateControl(Inner, {BackgroundColor3=color()})
+    end
+    self.RegistryMap[Inner].Properties.BackgroundColor3 = color
+    Outer.MouseEnter:Connect(function() hovered=true; update() end)
+    Outer.MouseLeave:Connect(function() hovered=false; pressed=false; update() end)
+    Outer.InputBegan:Connect(function(input) if self:IsClickInput(input) then pressed=true; update() end end)
+    Outer.InputEnded:Connect(function(input) if self:IsClickInput(input) then pressed=false; update() end end)
+    Outer.Destroying:Connect(function()
+        local tween = self.ControlTweens[Inner]
+        if tween then tween:Cancel() end
+        self.ControlTweens[Inner], self.ControlTweenGoals[Inner] = nil, nil
+    end)
+end
 function Library:CreateSelectionMarker(Holder)
     local Marker = Library:Create('Frame', {
         Name = 'SelectionMarker';
@@ -1156,20 +1222,20 @@ function Library:SetCustomCursorColor(Color)
 end;
 Library.AnimatedGradients = setmetatable({}, {__mode = 'k'});
 Library.GradientColors = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 33, 44)),
-    ColorSequenceKeypoint.new(0.25, Color3.fromRGB(88, 104, 144)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(222, 232, 255)),
-    ColorSequenceKeypoint.new(0.75, Color3.fromRGB(118, 113, 165)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(32, 33, 44)),
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(30, 30, 30)),
+    ColorSequenceKeypoint.new(0.25, Color3.fromRGB(120, 120, 120)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(250, 250, 250)),
+    ColorSequenceKeypoint.new(0.75, Color3.fromRGB(180, 180, 180)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 30, 30)),
 });
 function Library:SetGradientColors(First, Second, Highlight)
     if typeof(First) ~= 'Color3' or typeof(Second) ~= 'Color3' or typeof(Highlight) ~= 'Color3' then return end;
     self.GradientColors = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(32,33,44)),
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(30,30,30)),
         ColorSequenceKeypoint.new(0.25, First),
         ColorSequenceKeypoint.new(0.5, Highlight),
         ColorSequenceKeypoint.new(0.75, Second),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(32,33,44)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(30,30,30)),
     });
     for gradient in pairs(self.AnimatedGradients) do
         if gradient.Parent then gradient.Color = self.GradientColors end;
@@ -2840,6 +2906,7 @@ do
                 { BorderColor3 = 'Black' }
             );
 
+            Library:StyleActionButton(Outer, Inner)
             return Outer, Inner, Label
         end
 
@@ -3250,7 +3317,7 @@ do
             Size = UDim2.new(1, -24, 1, 0);
             Position = UDim2.fromOffset(24, 0);
             Text = Info.Text;
-            TextSize = 12;
+            TextSize = 13;
             TextWrapped = false;
             TextTruncate = Enum.TextTruncate.AtEnd;
             TextXAlignment = Enum.TextXAlignment.Left;
@@ -3306,8 +3373,10 @@ do
         end
 
         function Toggle:Display()
-            ToggleInner.BackgroundColor3 = Toggle.Value and Library.AccentColor or Library.MainColor;
-            ToggleInner.BorderColor3 = Toggle.Value and Library.AccentColorDark or Library.OutlineColor;
+            Library:AnimateControl(ToggleInner, {
+                BackgroundColor3 = Toggle.Value and Library.AccentColor or Library.MainColor;
+                BorderColor3 = Toggle.Value and Library.AccentColorDark or Library.OutlineColor;
+            });
 
             Library.RegistryMap[ToggleInner].Properties.BackgroundColor3 = Toggle.Value and 'AccentColor' or 'MainColor';
             Library.RegistryMap[ToggleInner].Properties.BorderColor3 = Toggle.Value and 'AccentColorDark' or 'OutlineColor';
@@ -4209,22 +4278,10 @@ do
                 local DangerousMap = Info.DangerousOptions or Info.DangerousMap or {}
                 local IsDangerousOption = Info.Dangerous and true or DangerousMap[Value] == true
                 if Info.DangerousValues and Info.DangerousValues[Value] then IsDangerousOption = true end
+                local UpdateChoice = Library:BindChoiceStyle(Button, ButtonLabel, SelectionMarker, function() return Selected end, IsDangerousOption)
                 function Table:UpdateButton()
-                    if Info.Multi then
-                        Selected = Dropdown.Value[Value];
-                    else
-                        Selected = Dropdown.Value == Value;
-                    end;
-                    SelectionMarker.Visible = not Library.ClassicEnabled and not not Selected;
-                    Button.BackgroundColor3 = Selected and Library.BackgroundColor or Library.MainColor;
-                    Library.RegistryMap[Button].Properties.BackgroundColor3 = Selected and 'BackgroundColor' or 'MainColor';
-                    if IsDangerousOption then
-                        ButtonLabel.TextColor3 = Library.RiskColor
-                        Library.RegistryMap[ButtonLabel].Properties.TextColor3 = 'RiskColor'
-                    else
-                        ButtonLabel.TextColor3 = Selected and Library.AccentColor or Library.FontColor;
-                        Library.RegistryMap[ButtonLabel].Properties.TextColor3 = Selected and 'AccentColor' or 'FontColor';
-                    end
+                    Selected = Info.Multi and Dropdown.Value[Value] or not Info.Multi and Dropdown.Value == Value
+                    UpdateChoice()
                 end;
 
                 Button.Activated:Connect(function()
@@ -4775,18 +4832,10 @@ do
                     if not Library.ClassicEnabled then Library:StyleControl(Button, Button, 3) else Button.BorderSizePixel = 0 end;
                     local SelectionMarker = Library:CreateSelectionMarker(Button);
 
+                    local UpdateChoice = Library:BindChoiceStyle(Button, ButtonLabel, SelectionMarker, function() return Selected end, false)
                     function Table:UpdateButton()
-                        if Info.Multi then
-                            Selected = Dropdown.Value[Value];
-                        else
-                            Selected = Dropdown.Value == Value;
-                        end;
-                        SelectionMarker.Visible = not not Selected;
-                        Button.BackgroundColor3 = Selected and Library.BackgroundColor or Library.MainColor;
-                        Library.RegistryMap[Button].Properties.BackgroundColor3 = Selected and 'BackgroundColor' or 'MainColor';
-
-                        ButtonLabel.TextColor3 = Selected and Library.AccentColor or Library.FontColor;
-                        Library.RegistryMap[ButtonLabel].Properties.TextColor3 = Selected and 'AccentColor' or 'FontColor';
+                        Selected = Info.Multi and Dropdown.Value[Value] or not Info.Multi and Dropdown.Value == Value
+                        UpdateChoice()
 
                         if Dropdown.Highlight == Value and not Selected then
                             Button.BorderColor3 = Library.AccentColor;
@@ -5449,7 +5498,7 @@ do
     Library:StyleIndicator(KeybindOuter);
     local Line = Library:Create('Frame', {BackgroundColor3 = Color3.new(1,1,1); BorderSizePixel = 0; Position = UDim2.fromOffset(6, 8); Size = UDim2.new(1, -12, 0, 1); ZIndex = 102; Parent = KeybindOuter;});
     Library:RegisterAnimatedGradient(Library:Create('UIGradient', {Parent = Line;}), KeybindOuter);
-    local heading = Library:CreateLabel({BackgroundTransparency = 1; Position = UDim2.fromOffset(8, 10); Size = UDim2.new(1, -16, 0, 17); TextSize = 12; TextColor3 = Color3.fromRGB(225,225,230); TextXAlignment = Enum.TextXAlignment.Left; Text = 'Keybinds'; ZIndex = 104; Parent = KeybindOuter;});
+    local heading = Library:CreateLabel({BackgroundTransparency = 1; Position = UDim2.fromOffset(8, 10); Size = UDim2.new(1, -16, 0, 17); TextSize = 12; TextColor3 = Color3.fromRGB(225,225,225); TextXAlignment = Enum.TextXAlignment.Left; Text = 'Keybinds'; ZIndex = 104; Parent = KeybindOuter;});
     local KeybindContainer = Library:Create('Frame', {BackgroundTransparency = 1; BorderSizePixel = 0; Position = UDim2.fromOffset(8, 27); Size = UDim2.new(1, -16, 1, -28); ZIndex = 103; Parent = KeybindOuter;});
     Library:Create('UIListLayout', {FillDirection = Enum.FillDirection.Vertical; SortOrder = Enum.SortOrder.LayoutOrder; Parent = KeybindContainer;});
     Library.KeybindFrame, Library.KeybindContainer, Library.KeybindHeading = KeybindOuter, KeybindContainer, heading;
@@ -5633,7 +5682,7 @@ function Library:BuildNotification(Text, Style, CanDismiss, WithActions)
     if inset then inset:Destroy() end;
     entry.Edge = outer:FindFirstChild('IndicatorBorder');
     if entry.Style=='Simple' then outer.BackgroundTransparency=1; entry.Edge.Enabled=false end;
-    entry.Label = self:CreateLabel({Name='Message'; Parent=outer; BackgroundTransparency=1; Position=UDim2.fromOffset(12,8); Size=UDim2.new(1,-24,0,20); TextSize=14; TextColor3=Color3.fromRGB(225,225,230); RichText=true; TextWrapped=true; TextTruncate=Enum.TextTruncate.AtEnd; TextXAlignment=Enum.TextXAlignment.Left; TextYAlignment=Enum.TextYAlignment.Center; ZIndex=102;});
+    entry.Label = self:CreateLabel({Name='Message'; Parent=outer; BackgroundTransparency=1; Position=UDim2.fromOffset(12,8); Size=UDim2.new(1,-24,0,20); TextSize=14; TextColor3=Color3.fromRGB(225,225,225); RichText=true; TextWrapped=true; TextTruncate=Enum.TextTruncate.AtEnd; TextXAlignment=Enum.TextXAlignment.Left; TextYAlignment=Enum.TextYAlignment.Center; ZIndex=102;});
     entry.Label.TextSize = 14;
     if entry.Style=='Gamesense' or entry.Style=='Gamesensical' then
         entry.Accent = self:Create('Frame',{Parent=outer; Position=UDim2.fromOffset(1,1); Size=UDim2.new(1,-2,0,2); BorderSizePixel=0; BackgroundColor3=self.AccentColor; ZIndex=101;});
@@ -6149,6 +6198,21 @@ function Library:StartPlayerView(target)
         Players.PlayerRemoving:Connect(function(player) if player == target then self:StopPlayerView() end end),
     }
 end
+function Library:SetPlayerInspectorMenuVisible(visible)
+    local state = self.PlayerInspector
+    if not state or state.Closing or not state.Frame.Parent then return end
+    state.Suspended = not visible
+    if state.Tween then state.Tween:Cancel(); state.Tween=nil end
+    local tween = self.ControlTweens[state.Frame]
+    if tween then tween:Cancel(); self.ControlTweens[state.Frame]=nil; self.ControlTweenGoals[state.Frame]=nil end
+    state.Frame.Visible = visible
+    if not visible then return end
+    if state.Resize then state.Resize() end
+    if state.Destination then state.Frame.Position = state.Destination end
+    state.Frame.GroupTransparency = self.ReducedMotion and 0 or 0.2
+    self:AnimateControl(state.Frame, {GroupTransparency=0})
+    if state.Refresh then self:SafeCallback(state.Refresh) end
+end
 function Library:ClosePlayerInspector(immediate)
     local state = self.PlayerInspector
     if not state or state.Closing then return end
@@ -6216,6 +6280,7 @@ function Library:ShowPlayerContextMenu(target, _position)
     state.Docked = docked
     state.Frame, self.PlayerInspector = frame, state
     local destination = docked and UDim2.new(1, 0, 0, 0) or UDim2.new(1, -16, 0, 16)
+    state.Destination = destination
     if docked and self.PlayerWorkspaceResize then self.PlayerWorkspaceResize() end
     local function connect(signal, callback)
         local connection = signal:Connect(callback)
@@ -6224,6 +6289,9 @@ function Library:ShowPlayerContextMenu(target, _position)
     end
     connect(frame.Destroying, function()
         if state.Tween then state.Tween:Cancel() end
+        local controlTween = self.ControlTweens[frame]
+        if controlTween then controlTween:Cancel() end
+        self.ControlTweens[frame], self.ControlTweenGoals[frame] = nil, nil
         for _, connection in ipairs(state.Connections) do connection:Disconnect() end
         if self.PlayerInspector == state then self.PlayerInspector = nil; if self.PlayerWorkspaceResize then self.PlayerWorkspaceResize() end end
         for i = #self.ScaleObjects, 1, -1 do if self.ScaleObjects[i].Parent == frame then table.remove(self.ScaleObjects, i) end end
@@ -6440,7 +6508,8 @@ function Library:ShowPlayerContextMenu(target, _position)
         elapsed = elapsed + delta
         if elapsed < 0.25 then return end
         elapsed = 0
-        if not self.MainVisible or self.Unloaded or state.Docked and not host.Visible then self:ClosePlayerInspector(true); return end
+        if self.Unloaded then self:ClosePlayerInspector(true); return end
+        if not self.MainVisible or state.Suspended or state.Docked and not host.Visible then return end
         self:SafeCallback(refresh)
     end)
     connect(Players.PlayerRemoving, function(player)
@@ -6449,16 +6518,29 @@ function Library:ShowPlayerContextMenu(target, _position)
             self:ClosePlayerInspector(true)
         end
     end)
+    state.Detach = function()
+        if not state.Docked or state.Closing then return end
+        if state.Tween then state.Tween:Cancel(); state.Tween=nil end
+        state.Docked = false
+        frame.Parent = ScreenGui
+        self:ApplyScaleTo(frame)
+        state.Destination = UDim2.new(1,-16,0,16)
+        frame.Position = state.Destination
+        frame.GroupTransparency = 0
+        if self.PlayerWorkspaceResize then self.PlayerWorkspaceResize() end
+        if state.Resize then state.Resize() end
+    end
     state.Resize = function()
         local currentScale = math.max(self.UIScale or 1, 0.01)
+        if state.Docked and host.AbsoluteSize.X / currentScale < 720 then state.Detach(); return end
         if state.Docked then
-            if host.AbsoluteSize.X / currentScale < 720 then self:ClosePlayerInspector(true); return end
             frame.Size = UDim2.fromOffset(math.min(320, host.AbsoluteSize.X / currentScale), host.AbsoluteSize.Y / currentScale)
         else
             frame.Size = UDim2.fromOffset(math.min(384, math.max(220, (ScreenGui.AbsoluteSize.X - 32) / currentScale)), math.max(160, (ScreenGui.AbsoluteSize.Y - 32) / currentScale))
         end
     end
-    connect((docked and host or ScreenGui):GetPropertyChangedSignal('AbsoluteSize'), state.Resize)
+    connect(ScreenGui:GetPropertyChangedSignal('AbsoluteSize'), state.Resize)
+    if host then connect(host:GetPropertyChangedSignal('AbsoluteSize'), state.Resize) end
     if self.ReducedMotion then frame.Position, frame.GroupTransparency = destination, 0
     else
         state.Tween = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = destination, GroupTransparency = 0})
@@ -6817,7 +6899,8 @@ function Library:BuildCustomPanels(Window, TabContainer)
     Window.ScanServers = function(append) Window.EnsureCustomPanel('Servers'); return Window.ScanServers(append) end
     Window.RenderServers = function() Window.EnsureCustomPanel('Servers'); return Window.RenderServers() end
     function Window.HideCustomPanels()
-        self:ClosePlayerInspector(true)
+        local inspector = self.PlayerInspector
+        if inspector and inspector.Detach and not inspector.Closing then inspector.Detach() end
         for _, object in pairs(Window.CustomPanels) do object.Visible = false end
         Window.CustomPanel, Library.OpenToolbarPanel = nil, nil
     end
@@ -7416,7 +7499,7 @@ function Library:CreateWindow(...)
     local oldStroke=outer:FindFirstChild('ControlStroke')
     if oldStroke then oldStroke.Enabled=false end
     local border=frame('UIStroke',{Name='AnimatedWhiteBorder',Parent=outer,Color=Color3.new(1,1,1),Thickness=1,Transparency=0,ApplyStrokeMode=Enum.ApplyStrokeMode.Border})
-    local borderGradient=frame('UIGradient',{Name='BorderGradient',Parent=border,Rotation=0,Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(80,80,88)),ColorSequenceKeypoint.new(0.3,Color3.fromRGB(185,185,194)),ColorSequenceKeypoint.new(0.5,Color3.new(1,1,1)),ColorSequenceKeypoint.new(0.7,Color3.fromRGB(185,185,194)),ColorSequenceKeypoint.new(1,Color3.fromRGB(80,80,88))})})
+    local borderGradient=frame('UIGradient',{Name='BorderGradient',Parent=border,Rotation=0,Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(80,80,80)),ColorSequenceKeypoint.new(0.3,Color3.fromRGB(185,185,185)),ColorSequenceKeypoint.new(0.5,Color3.new(1,1,1)),ColorSequenceKeypoint.new(0.7,Color3.fromRGB(185,185,185)),ColorSequenceKeypoint.new(1,Color3.fromRGB(80,80,80))})})
     window.AnimatedBorder,window.BorderGradient=border,borderGradient
     Library:RegisterAnimatedGradient(borderGradient, outer, true)
     local innerBorder = frame('Frame', {Name='WindowInset', Parent=outer, Position=UDim2.fromOffset(5,5), Size=UDim2.new(1,-10,1,-10), BackgroundTransparency=1, BorderSizePixel=0, BorderColor3=Library.OutlineColor, ZIndex=2}, {BorderColor3='OutlineColor'})
@@ -7461,6 +7544,7 @@ function Library:CreateWindow(...)
     local function selectNav(object, selected)
         if memberships[object] then
             local key = selected and 'AccentColor' or 'FontColor'
+            Library:AnimateControl(object, {TextTransparency=selected and 0 or 0.2})
             object.TextColor3 = Library[key]
             Library.RegistryMap[object].Properties.TextColor3 = key
             return
@@ -7474,7 +7558,7 @@ function Library:CreateWindow(...)
         end
         local key = selected and 'AccentColor' or 'FontColor'
         local caption = object:FindFirstChild('NavigationLabel')
-        if caption then caption.TextColor3 = Library[key]; Library.RegistryMap[caption].Properties.TextColor3 = key end
+        if caption then Library:AnimateControl(caption, {TextTransparency=selected and 0 or 0.2}); caption.TextColor3 = Library[key]; Library.RegistryMap[caption].Properties.TextColor3 = key end
         local icon = object:FindFirstChild('NavigationIcon')
         if icon then
             for _, child in ipairs(icon:GetDescendants()) do
@@ -8112,15 +8196,14 @@ function Library:CreateWindow(...)
         self:HideTooltip()
         toggled, toggleRevision = not toggled, toggleRevision + 1
         local revision = toggleRevision
-        if not toggled then self:StopSliderDrag(true); self:ClosePlayerInspector() end
+        if not toggled then self:StopSliderDrag(true) end
         self.MainVisible, modal.Modal = toggled, toggled
         drag, resize = nil, nil
         self:ClosePopups()
-        self:HideToolbarPanels()
         window.FooterSetActive(nil)
         self:RefreshCustomCursor()
         if toggled then
-            if not window.ActiveTab and window.LastTab then window.LastTab:ShowTab() end
+            if not window.CustomPanel and not window.ActiveTab and window.LastTab then window.LastTab:ShowTab() end
             fit()
             if not outer.Visible then outer.GroupTransparency = self.ReducedMotion and 0 or 1 end
             outer.Visible = true
@@ -8128,8 +8211,9 @@ function Library:CreateWindow(...)
         else
             self:AnimateControl(outer, {GroupTransparency = 1})
             if self.ReducedMotion then outer.Visible = false
-            else task.delay(0.13, function() if revision == toggleRevision and not toggled and outer.Parent then outer.Visible = false end end) end
+            else task.delay(0.18, function() if revision == toggleRevision and not toggled and outer.Parent then outer.Visible = false end end) end
         end
+        self:SetPlayerInspectorMenuVisible(toggled)
     end
     Library:GiveSignal(InputService.InputBegan:Connect(function(input, processed)
         if input.KeyCode == Enum.KeyCode.Escape and search:IsFocused() then search.Text = ''; search:ReleaseFocus(); results.Visible = false; return end
