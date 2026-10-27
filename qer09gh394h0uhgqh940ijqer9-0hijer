@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 39;
+Library.PhowgRevision = 40;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -6207,6 +6207,7 @@ function Library:SetPlayerInspectorMenuVisible(visible)
     local tween = self.ControlTweens[state.Frame]
     if tween then tween:Cancel(); self.ControlTweens[state.Frame]=nil; self.ControlTweenGoals[state.Frame]=nil end
     state.Frame.Visible = visible
+    if state.DetailFrame then state.DetailFrame.Visible = visible end
     if not visible then return end
     if state.Resize then state.Resize() end
     if state.Destination then state.Frame.Position = state.Destination end
@@ -6218,6 +6219,7 @@ function Library:ClosePlayerInspector(immediate)
     local state = self.PlayerInspector
     if not state or state.Closing then return end
     state.Closing = true
+    if state.DetailFrame and state.DetailFrame.Parent then state.DetailFrame.Visible = false end
     if state.Tween then state.Tween:Cancel() end
     if immediate or self.ReducedMotion then state.Frame:Destroy(); return end
     state.Tween = TweenService:Create(state.Frame, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {Position = UDim2.new(1, state.Frame.AbsoluteSize.X + 24, 0, 16), GroupTransparency = 1})
@@ -6327,10 +6329,10 @@ function Library:ShowPlayerContextMenu(target, _position)
     self:ClosePlayerInspector(true)
     local state: {[string]: any} = {Target = target, Connections = {}, Buttons = {}, InventorySignature = '', Closing = false}
     local scale = math.max(self.UIScale or 1, 0.01)
-    local width = math.min(384, math.max(220, (ScreenGui.AbsoluteSize.X - 32) / scale))
+    local width = math.min(384, math.max(160, (ScreenGui.AbsoluteSize.X - 48) / (scale * 2)))
     local height = math.max(160, (ScreenGui.AbsoluteSize.Y - 32) / scale)
     local host = self.PlayerInspectorHost
-    local docked = host and host.Visible and host.AbsoluteSize.X / scale >= 720
+    local docked = false
     local parent = docked and host or ScreenGui
     if docked then width, height = 320, host.AbsoluteSize.Y / scale end
     local frame = self:Create('CanvasGroup', {GroupTransparency = self.ReducedMotion and 0 or 1, Name = 'PlayerInspector', Parent = parent, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, width * scale + 24, 0, 16), Size = UDim2.fromOffset(width, height), BackgroundColor3 = self.BackgroundColor, BorderSizePixel = 0, ZIndex = 310, Active = true})
@@ -6350,13 +6352,15 @@ function Library:ShowPlayerContextMenu(target, _position)
         return connection
     end
     connect(frame.Destroying, function()
+        state.Closing = true
+        if state.DetailFrame and not state.DetailDestroyed and state.DetailFrame.Parent then state.DetailFrame:Destroy() end
         if state.Tween then state.Tween:Cancel() end
         local controlTween = self.ControlTweens[frame]
         if controlTween then controlTween:Cancel() end
         self.ControlTweens[frame], self.ControlTweenGoals[frame] = nil, nil
         for _, connection in ipairs(state.Connections) do connection:Disconnect() end
         if self.PlayerInspector == state then self.PlayerInspector = nil; if self.PlayerWorkspaceResize then self.PlayerWorkspaceResize() end end
-        for i = #self.ScaleObjects, 1, -1 do if self.ScaleObjects[i].Parent == frame then table.remove(self.ScaleObjects, i) end end
+        for i = #self.ScaleObjects, 1, -1 do if self.ScaleObjects[i].Parent == frame or self.ScaleObjects[i].Parent == state.DetailFrame then table.remove(self.ScaleObjects, i) end end
     end)
     local strip = self:Create('Frame', {Parent = frame, BackgroundColor3 = self.AccentColor, BorderSizePixel = 0, Position = UDim2.fromOffset(16, 0), Size = UDim2.new(1, -32, 0, 2), ZIndex = 311})
     self:AddToRegistry(strip, {BackgroundColor3 = 'AccentColor'})
@@ -6483,10 +6487,26 @@ function Library:ShowPlayerContextMenu(target, _position)
     action('support protection', 518, function() self:ToggleProtectByIsrael(target) end, function() return self:IsProtectedByIsrael(target) end)
     action('copy username', 560, function() if type(setclipboard) == 'function' then setclipboard(target.Name) end end)
     action('copy display name', 594, function() if type(setclipboard) == 'function' then setclipboard(target.DisplayName) end end)
-    local infoTitle = section(body, 'REPLICATED PLAYER INFO', 600)
-    local info = label(body, '', 624, 0, 11)
+    local detail = self:Create('CanvasGroup', {Name='PlayerInspectorDetails',Parent=ScreenGui,Position=UDim2.fromOffset(16,16),Size=UDim2.fromOffset(width,height),BackgroundColor3=self.BackgroundColor,BorderSizePixel=0,ZIndex=310,Active=true})
+    state.DetailFrame = detail
+    self:ApplyScaleTo(detail)
+    self:AddToRegistry(detail, {BackgroundColor3='BackgroundColor'})
+    local detailStroke = self:Create('UIStroke', {Parent=detail,Color=self.OutlineColor,Thickness=1,Transparency=0.2})
+    self:AddToRegistry(detailStroke, {Color='OutlineColor'})
+    local detailStrip = self:Create('Frame', {Parent=detail,BackgroundColor3=self.AccentColor,BorderSizePixel=0,Position=UDim2.fromOffset(16,0),Size=UDim2.new(1,-32,0,2),ZIndex=311})
+    self:AddToRegistry(detailStrip, {BackgroundColor3='AccentColor'})
+    label(detail,'PLAYER DETAILS',13,22,11).TextTransparency=0.35
+    local detailName = label(detail,'',43,24,15)
+    local detailClose = self:Create('TextButton', {Parent=detail,Text=utf8.char(215),Font=self.Font,TextSize=21,TextColor3=self.FontColor,BackgroundTransparency=1,Position=UDim2.new(1,-42,0,8),Size=UDim2.fromOffset(32,30),ZIndex=314})
+    self:AddToRegistry(detailClose,{TextColor3='FontColor'})
+    connect(detailClose.Activated,function() self:ClosePlayerInspector() end)
+    connect(detail.Destroying,function() state.DetailDestroyed=true; if not state.Closing then self:ClosePlayerInspector(true) end end)
+    local detailBody = self:Create('ScrollingFrame', {Parent=detail,Position=UDim2.fromOffset(0,82),Size=UDim2.new(1,0,1,-94),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=2,ScrollBarImageColor3=self.AccentColor,CanvasSize=UDim2.fromOffset(0,0),ScrollingDirection=Enum.ScrollingDirection.Y,ZIndex=312})
+    self:AddToRegistry(detailBody,{ScrollBarImageColor3='AccentColor'})
+    local infoTitle = section(detailBody, 'REPLICATED PLAYER INFO', 0)
+    local info = label(detailBody, '', 26, 0, 11)
     info.TextWrapped, info.TextTruncate, info.AutomaticSize = true, Enum.TextTruncate.None, Enum.AutomaticSize.Y
-    local copyInfo = self:Create('TextButton', {Parent = body, Text = 'copy info', Font = self.Font, TextSize = 11, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BorderColor3 = self.OutlineColor, Size = UDim2.fromOffset(80,20), ZIndex = 314})
+    local copyInfo = self:Create('TextButton', {Parent = detailBody, Text = 'copy info', Font = self.Font, TextSize = 11, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BorderColor3 = self.OutlineColor, Size = UDim2.fromOffset(80,20), ZIndex = 314})
     self:AddToRegistry(copyInfo, {TextColor3 = 'FontColor', BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor'})
     connect(copyInfo.Activated, function() if type(setclipboard) == 'function' then setclipboard(state.InfoText or '') end end)
     state.InfoDirty = true
@@ -6494,12 +6514,12 @@ function Library:ShowPlayerContextMenu(target, _position)
     connect(target.DescendantAdded, function() state.InfoDirty = true end)
     connect(target.DescendantRemoving, function() state.InfoDirty = true end)
     local function infoLayout()
-        local top = 544 + (state.InventoryHeight or 38)
+        local top = 0
         infoTitle.Position = UDim2.fromOffset(14, top)
         info.Position = UDim2.fromOffset(14, top + 26)
         copyInfo.Position = UDim2.new(1,-94,0,top)
         local infoHeight = math.max(18, info.AbsoluteSize.Y / math.max(self.UIScale or 1, 0.01))
-        body.CanvasSize = UDim2.fromOffset(0, top + 42 + infoHeight)
+        detailBody.CanvasSize = UDim2.fromOffset(0, top + 42 + infoHeight)
     end
     connect(info:GetPropertyChangedSignal('AbsoluteSize'), infoLayout)
     local function stat(name)
@@ -6516,6 +6536,7 @@ function Library:ShowPlayerContextMenu(target, _position)
         if target.Parent ~= Players then self:ClosePlayerInspector(true); return end
         title.Text = self.StreamerMode == 'Off' and target.DisplayName or self:PlayerDisplayName(target)
         username.Text = self.StreamerMode == 'Off' and '@' .. target.Name or 'Identity hidden'
+        detailName.Text = title.Text .. ' / ' .. username.Text
         if self.ThumbnailCache[target.UserId] then avatar.Image = self.ThumbnailCache[target.UserId] end
         local pd = self.PhongData
         local code = tostring(target:GetAttribute('Country') or ''):upper()
@@ -6635,12 +6656,12 @@ function Library:ShowPlayerContextMenu(target, _position)
     end
     state.Resize = function()
         local currentScale = math.max(self.UIScale or 1, 0.01)
-        if state.Docked and host.AbsoluteSize.X / currentScale < 720 then state.Detach(); return end
-        if state.Docked then
-            frame.Size = UDim2.fromOffset(math.min(320, host.AbsoluteSize.X / currentScale), host.AbsoluteSize.Y / currentScale)
-        else
-            frame.Size = UDim2.fromOffset(math.min(384, math.max(220, (ScreenGui.AbsoluteSize.X - 32) / currentScale)), math.max(160, (ScreenGui.AbsoluteSize.Y - 32) / currentScale))
-        end
+        local panelWidth = math.min(384, math.max(160, (ScreenGui.AbsoluteSize.X - 48) / (currentScale * 2)))
+        local panelHeight = math.max(160, (ScreenGui.AbsoluteSize.Y - 32) / currentScale)
+        frame.Size, detail.Size = UDim2.fromOffset(panelWidth,panelHeight), UDim2.fromOffset(panelWidth,panelHeight)
+        detail.Position = UDim2.fromOffset(16,16)
+        frame.Position = UDim2.new(1,-16,0,16)
+        infoLayout()
     end
     connect(ScreenGui:GetPropertyChangedSignal('AbsoluteSize'), state.Resize)
     if host then connect(host:GetPropertyChangedSignal('AbsoluteSize'), state.Resize) end
