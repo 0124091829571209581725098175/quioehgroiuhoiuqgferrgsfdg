@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 38;
+Library.PhowgRevision = 39;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -6260,6 +6260,67 @@ function Library:GetPlayerInspectorProtection(player)
     if #flags > 0 then return table.concat(flags, '\n') end
     return record.GroupsLoaded and 'No protection flags' or entry.Failed and 'Group check unavailable' or 'Checking staff roles...'
 end
+function Library:GetPlayerIntelligenceRows(player)
+    local rows, full = {}, {}
+    local function display(value)
+        if value == nil then return 'not replicated' end
+        if type(value) == 'boolean' then return value and 'on' or 'off' end
+        if typeof(value) == 'Instance' then return value:GetFullName() end
+        local text = tostring(value)
+        if not utf8.len(text) then text = text:gsub('[^%w%p%s]', function(byte) return ('\\x%02X'):format(string.byte(byte)) end) end
+        return text
+    end
+    local function add(key, value)
+        local text = key .. ': ' .. display(value)
+        full[#full + 1] = text
+        local boundary = utf8.offset(text, 513)
+        rows[#rows + 1] = boundary and text:sub(1, boundary - 1) .. ' [copy info for full value]' or text
+    end
+    local function heading(text) rows[#rows + 1] = ''; rows[#rows + 1] = text; full[#full + 1] = '\n' .. text end
+    heading('IDENTITY')
+    add('username', player.Name); add('display name', player.DisplayName); add('user id', player.UserId); add('account age (days)', player.AccountAge)
+    add('team', player.Team and player.Team.Name or 'none')
+    heading('GAME SETTINGS')
+    for _, name in ipairs({'AutoShoot','Slide','AutoReload','AutoRun','LegacyShooting','LegacyWalk','MacroHold','MacroKey','MacroSpeed','AimSensitivity','TouchSensitivity','FOV','GunFX','GunSounds','SkinAnimations','ExplosionShake','LowGFX','Shadows','BoomBox','Vehicles','FlamePitch','AntiFling','NoSeat','Passenger','KeybindHints','HitMarkers','CooldownIndicators','PartyInvites','TeamPings','EloDisplay','Stats','NameEmoji','LowerKnife'}) do
+        local value = player:GetAttribute(name)
+        if value == nil and name == 'LowGFX' then value = player:GetAttribute('LOWGFX') end
+        add(name, value)
+    end
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass('Humanoid')
+    if humanoid then
+        heading('CHARACTER STATE')
+        for _, name in ipairs({'Health','MaxHealth','WalkSpeed','JumpPower','JumpHeight','HipHeight','Sit','PlatformStand','AutoRotate','MoveDirection','FloorMaterial','RigType'}) do add(name, humanoid[name]) end
+        add('state', humanoid:GetState())
+    end
+    local function attributes(node, name)
+        if not node then return end
+        heading(name)
+        local values, names = node:GetAttributes(), {}
+        for key in pairs(values) do names[#names + 1] = key end
+        table.sort(names)
+        if #names == 0 then rows[#rows + 1] = 'none replicated' end
+        for _, key in ipairs(names) do add(key, values[key]) end
+    end
+    attributes(player, 'PLAYER ATTRIBUTES')
+    attributes(character, 'CHARACTER ATTRIBUTES')
+    attributes(humanoid, 'HUMANOID ATTRIBUTES')
+    local function values(node, prefix, depth)
+        if not node or depth > 3 then return end
+        local children = node:GetChildren()
+        table.sort(children, function(a,b) return a.Name < b.Name end)
+        for _, child in ipairs(children) do
+            local key = prefix == '' and child.Name or prefix .. '.' .. child.Name
+            if child:IsA('ValueBase') then add(key, child.Value)
+            elseif child:IsA('Folder') then values(child, key, depth + 1) end
+        end
+    end
+    heading('BODY EFFECTS')
+    values(character and character:FindFirstChild('BodyEffects'), '', 0)
+    heading('REPLICATED PLAYER DATA')
+    values(player:FindFirstChild('DataFolder'), '', 0)
+    return rows, table.concat(full, '\n')
+end
 function Library:ShowPlayerContextMenu(target, _position)
     if self.Unloaded or not target or target.Parent ~= Players then return end
     self:ClosePopups()
@@ -6422,6 +6483,25 @@ function Library:ShowPlayerContextMenu(target, _position)
     action('support protection', 518, function() self:ToggleProtectByIsrael(target) end, function() return self:IsProtectedByIsrael(target) end)
     action('copy username', 560, function() if type(setclipboard) == 'function' then setclipboard(target.Name) end end)
     action('copy display name', 594, function() if type(setclipboard) == 'function' then setclipboard(target.DisplayName) end end)
+    local infoTitle = section(body, 'REPLICATED PLAYER INFO', 600)
+    local info = label(body, '', 624, 0, 11)
+    info.TextWrapped, info.TextTruncate, info.AutomaticSize = true, Enum.TextTruncate.None, Enum.AutomaticSize.Y
+    local copyInfo = self:Create('TextButton', {Parent = body, Text = 'copy info', Font = self.Font, TextSize = 11, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BorderColor3 = self.OutlineColor, Size = UDim2.fromOffset(80,20), ZIndex = 314})
+    self:AddToRegistry(copyInfo, {TextColor3 = 'FontColor', BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor'})
+    connect(copyInfo.Activated, function() if type(setclipboard) == 'function' then setclipboard(state.InfoText or '') end end)
+    state.InfoDirty = true
+    connect(target.AttributeChanged, function() state.InfoDirty = true end)
+    connect(target.DescendantAdded, function() state.InfoDirty = true end)
+    connect(target.DescendantRemoving, function() state.InfoDirty = true end)
+    local function infoLayout()
+        local top = 544 + (state.InventoryHeight or 38)
+        infoTitle.Position = UDim2.fromOffset(14, top)
+        info.Position = UDim2.fromOffset(14, top + 26)
+        copyInfo.Position = UDim2.new(1,-94,0,top)
+        local infoHeight = math.max(18, info.AbsoluteSize.Y / math.max(self.UIScale or 1, 0.01))
+        body.CanvasSize = UDim2.fromOffset(0, top + 42 + infoHeight)
+    end
+    connect(info:GetPropertyChangedSignal('AbsoluteSize'), infoLayout)
     local function stat(name)
         local folder = target:FindFirstChild('DataFolder')
         local value = folder and folder:FindFirstChild(name)
@@ -6497,10 +6577,32 @@ function Library:ShowPlayerContextMenu(target, _position)
             end
             if #rows == 0 then label(inventory, 'No replicated weapons', 0, 24).TextTransparency = 0.4 end
             local inventoryHeight = math.max(38, #rows * 60)
+            state.InventoryHeight = inventoryHeight
             inventory.Size = UDim2.new(1, -28, 0, inventoryHeight)
             controls.Position = UDim2.fromOffset(0, 290 + inventoryHeight)
             body.CanvasSize = UDim2.fromOffset(0, 538 + inventoryHeight)
         end
+        if state.InfoCharacter ~= target.Character then
+            for _, connection in ipairs(state.InfoCharacterConnections or {}) do
+                connection:Disconnect()
+                local index = table.find(state.Connections, connection)
+                if index then table.remove(state.Connections, index) end
+            end
+            state.InfoCharacter, state.InfoCharacterConnections, state.InfoDirty = target.Character, {}, true
+            if target.Character then
+                for _, signal in ipairs({target.Character.AttributeChanged, target.Character.DescendantAdded, target.Character.DescendantRemoving}) do
+                    state.InfoCharacterConnections[#state.InfoCharacterConnections + 1] = connect(signal, function() state.InfoDirty = true end)
+                end
+            end
+        end
+        if state.InfoDirty or tick() >= (state.InfoAt or 0) then
+            state.InfoDirty, state.InfoAt = false, tick() + 1
+            local rows, text = self:GetPlayerIntelligenceRows(target)
+            local content = table.concat(rows, '\n')
+            state.InfoText = text
+            if info.Text ~= content then info.Text = content end
+        end
+        infoLayout()
     end
     state.Refresh = refresh
     refresh()
