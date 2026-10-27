@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 36;
+Library.PhowgRevision = 38;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -352,10 +352,11 @@ function Library:Create(Class, Properties)
         elseif Property == 'ZIndex' and layer > 0 then
             _Instance.ZIndex = Value >= layer and Value or Value + layer
         else
-        if Property == 'CornerRadius' and Value.Scale == 0 then Value = UDim.new(0, math.min(Library.ClassicEnabled and 8 or 14, Value.Offset)) end;
+        if Property == 'CornerRadius' then Value = UDim.new(0, 0) end;
         _Instance[Property] = Value;
         end
     end;
+    if _Instance:IsA('UICorner') then _Instance.CornerRadius = UDim.new(0, 0) end
     if layer > 0 and not Properties.ZIndex and _Instance:IsA('GuiObject') then _Instance.ZIndex = layer + 1 end
 
     if _Instance:IsA('TextLabel') or _Instance:IsA('TextButton') or _Instance:IsA('TextBox') then
@@ -420,7 +421,7 @@ function Library:StyleControl(Outer, Inner, Radius, Region)
     if Outer ~= Inner then Outer.BackgroundTransparency = 1 end;
     for _, Surface in ipairs(Outer == Inner and {Inner} or {Outer, Inner}) do
         if not Surface:FindFirstChildOfClass('UICorner') then
-            Library:Create('UICorner', {CornerRadius = UDim.new(0, math.min(Radius or 5, Library.ClassicEnabled and (Inner.ClassName=='CanvasGroup' and 8 or 4) or 14)); Parent = Surface;});
+            Library:Create('UICorner', {CornerRadius = UDim.new(0, 0); Parent = Surface;});
         end;
     end;
     local Stroke = Library:Create('UIStroke', {
@@ -550,7 +551,7 @@ function Library:CreateSelectionMarker(Holder)
         ZIndex = Holder.ZIndex + 2;
         Parent = Holder;
     });
-    Library:Create('UICorner', {CornerRadius = UDim.new(1, 0); Parent = Marker;});
+    Library:Create('UICorner', {CornerRadius = UDim.new(0, 0); Parent = Marker;});
     Library:AddToRegistry(Marker, {BackgroundColor3 = 'AccentColor';});
     return Marker;
 end;
@@ -626,7 +627,7 @@ end;
 function Library:StyleSlider(Outer, Inner, Fill)
     Library:StyleControl(Outer, Inner, 4);
     Fill.BorderSizePixel = 0;
-    Library:Create('UICorner', {CornerRadius = UDim.new(0, 4); Parent = Fill;});
+    Library:Create('UICorner', {CornerRadius = UDim.new(0, 0); Parent = Fill;});
     Library:Create('UIGradient', {
         Color = ColorSequence.new(Color3.fromRGB(165, 165, 165), Color3.new(1, 1, 1));
         Parent = Fill;
@@ -642,7 +643,7 @@ function Library:StyleSlider(Outer, Inner, Fill)
         ZIndex = Fill.ZIndex + 1;
         Parent = Fill;
     });
-    if not Library.ClassicEnabled then Library:Create('UICorner', {CornerRadius = UDim.new(1, 0); Parent = Handle;}) end;
+    if not Library.ClassicEnabled then Library:Create('UICorner', {CornerRadius = UDim.new(0, 0); Parent = Handle;}) end;
     Library:AddToRegistry(Handle, {BackgroundColor3 = 'FontColor';});
 end;
 function Library:CreateLabel(Properties, IsHud)
@@ -1155,7 +1156,7 @@ function Library:BuildCustomCursor()
     end;
     local function Circle(Diameter, Hollow)
         local Object = Shape({AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(Diameter, Diameter), BackgroundColor3 = Color, BackgroundTransparency = Hollow and 1 or 0});
-        self:Create('UICorner', {CornerRadius = UDim.new(1, 0), Parent = Object});
+        self:Create('UICorner', {CornerRadius = UDim.new(0, 0), Parent = Object});
         self:Create('UIStroke', {Color = Hollow and Color or Color3.new(0, 0, 0), Thickness = Hollow and 1.5 or 1, Parent = Object});
     end;
     local Half, Gap = Size * 0.5, math.max(2, math.floor(Size * 0.15));
@@ -1292,12 +1293,12 @@ function Library:StyleIndicator(Panel)
     Panel.BackgroundColor3 = Color3.fromRGB(17, 17, 22);
     Panel.BorderSizePixel = 0;
     local corner=Panel:FindFirstChildOfClass('UICorner') or self:Create('UICorner',{Parent=Panel;});
-    corner.CornerRadius=UDim.new(0,6);
+    corner.CornerRadius=UDim.new(0, 0);
     local Edge = self:Create('UIStroke', {Name = 'IndicatorBorder'; Color = Color3.new(1, 1, 1); Thickness = 1; ApplyStrokeMode = Enum.ApplyStrokeMode.Border; Parent = Panel;});
     local Gradient = self:Create('UIGradient', {Parent = Edge;});
     self:RegisterAnimatedGradient(Gradient, Panel, true);
     local inset=self:Create('Frame', {Name='InsetBorder';BackgroundTransparency=1;BorderSizePixel=0;Position=UDim2.fromOffset(3,3);Size=UDim2.new(1,-6,1,-6);ZIndex=Panel.ZIndex;Parent=Panel;});
-    self:Create('UICorner',{CornerRadius=UDim.new(0,3);Parent=inset;});
+    self:Create('UICorner',{CornerRadius=UDim.new(0, 0);Parent=inset;});
     self:Create('UIStroke',{Color=Color3.fromRGB(38,38,48);Thickness=1;ApplyStrokeMode=Enum.ApplyStrokeMode.Border;Parent=inset;});
     return Gradient;
 end;
@@ -6273,7 +6274,7 @@ function Library:ShowPlayerContextMenu(target, _position)
     if docked then width, height = 320, host.AbsoluteSize.Y / scale end
     local frame = self:Create('CanvasGroup', {GroupTransparency = self.ReducedMotion and 0 or 1, Name = 'PlayerInspector', Parent = parent, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, width * scale + 24, 0, 16), Size = UDim2.fromOffset(width, height), BackgroundColor3 = self.BackgroundColor, BorderSizePixel = 0, ZIndex = 310, Active = true})
     self:AddToRegistry(frame, {BackgroundColor3 = 'BackgroundColor'})
-    self:Create('UICorner', {Parent = frame, CornerRadius = UDim.new(0, 8)})
+    self:Create('UICorner', {Parent = frame, CornerRadius = UDim.new(0, 0)})
     local panelStroke = self:Create('UIStroke', {Parent = frame, Color = self.OutlineColor, Thickness = 1, Transparency = 0.2})
     self:AddToRegistry(panelStroke, {Color = 'OutlineColor'})
     if not docked then self:ApplyScaleTo(frame) end
@@ -6304,7 +6305,7 @@ function Library:ShowPlayerContextMenu(target, _position)
     local function card(parent, y, h)
         local object = self:Create('Frame', {Parent = parent, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, Position = UDim2.fromOffset(14, y), Size = UDim2.new(1, -28, 0, h), ZIndex = 312})
         self:AddToRegistry(object, {BackgroundColor3 = 'MainColor'})
-        self:Create('UICorner', {Parent = object, CornerRadius = UDim.new(0, 5)})
+        self:Create('UICorner', {Parent = object, CornerRadius = UDim.new(0, 0)})
         local stroke = self:Create('UIStroke', {Parent = object, Color = self.OutlineColor, Thickness = 1, Transparency = 0.5})
         self:AddToRegistry(stroke, {Color = 'OutlineColor'})
         return object
@@ -6320,7 +6321,7 @@ function Library:ShowPlayerContextMenu(target, _position)
     connect(close.Activated, function() self:ClosePlayerInspector() end)
     local avatar = self:Create('ImageLabel', {Parent = frame, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, Position = UDim2.fromOffset(16, 47), Size = UDim2.fromOffset(72, 72), ZIndex = 312})
     self:AddToRegistry(avatar, {BackgroundColor3 = 'MainColor'})
-    self:Create('UICorner', {Parent = avatar, CornerRadius = UDim.new(0, 8)})
+    self:Create('UICorner', {Parent = avatar, CornerRadius = UDim.new(0, 0)})
     local avatarStroke = self:Create('UIStroke', {Parent = avatar, Color = self.AccentColor, Thickness = 1, Transparency = 0.5})
     self:AddToRegistry(avatarStroke, {Color = 'AccentColor'})
     self:FetchThumbnail(target.UserId, avatar)
@@ -6361,7 +6362,7 @@ function Library:ShowPlayerContextMenu(target, _position)
     section(body, 'PROTECTION & REPUTATION', 114)
     local reputation = card(body, 139, 94)
     local statusDot = self:Create('Frame', {Parent = reputation, BackgroundColor3 = self.AccentColor, BorderSizePixel = 0, Position = UDim2.fromOffset(12, 16), Size = UDim2.fromOffset(6, 6), ZIndex = 314})
-    self:Create('UICorner', {Parent = statusDot, CornerRadius = UDim.new(1, 0)})
+    self:Create('UICorner', {Parent = statusDot, CornerRadius = UDim.new(0, 0)})
     local detection = label(reputation, '', 8, 22, 12)
     detection.Position, detection.Size = UDim2.fromOffset(26, 8), UDim2.new(1, -38, 0, 22)
     local protection = label(reputation, '', 38, 45, 11)
@@ -6380,7 +6381,7 @@ function Library:ShowPlayerContextMenu(target, _position)
         end
         self:AddToRegistry(object, {TextColor3 = 'FontColor', BackgroundColor3 = 'MainColor'})
         self:Create('UIPadding', {Parent = object, PaddingLeft = UDim.new(0, active and 18 or 8), PaddingRight = UDim.new(0, 8)})
-        self:Create('UICorner', {Parent = object, CornerRadius = UDim.new(0, 4)})
+        self:Create('UICorner', {Parent = object, CornerRadius = UDim.new(0, 0)})
         local stroke = self:Create('UIStroke', {Parent = object, Color = self.OutlineColor, Transparency = 0.35, Thickness = 1})
         self:AddToRegistry(stroke, {Color = 'OutlineColor'})
         connect(object.MouseEnter, function() self:AnimateControl(object, {BackgroundColor3 = self.AccentColor:Lerp(self.MainColor, 0.8)}) end)
@@ -6393,7 +6394,7 @@ function Library:ShowPlayerContextMenu(target, _position)
         end)
         if active then
             local dot = self:Create('Frame', {Parent = object, BackgroundColor3 = self.OutlineColor, BorderSizePixel = 0, Position = UDim2.fromOffset(9, 14), Size = UDim2.fromOffset(5, 5), ZIndex = 315})
-            self:Create('UICorner', {Parent = dot, CornerRadius = UDim.new(1, 0)})
+            self:Create('UICorner', {Parent = dot, CornerRadius = UDim.new(0, 0)})
             state.Buttons[#state.Buttons + 1] = {Object = object, Name = name, Active = active, Dot = dot, Stroke = stroke}
         end
         return object
@@ -6485,7 +6486,7 @@ function Library:ShowPlayerContextMenu(target, _position)
             for i, item in ipairs(rows) do
                 local row = self:Create('Frame', {Parent = inventory, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, Position = UDim2.fromOffset(0, (i - 1) * 60), Size = UDim2.new(1, 0, 0, 54), ZIndex = 313})
                 self:AddToRegistry(row, {BackgroundColor3 = 'MainColor'})
-                self:Create('UICorner', {Parent = row, CornerRadius = UDim.new(0, 4)})
+                self:Create('UICorner', {Parent = row, CornerRadius = UDim.new(0, 0)})
                 self:Create('Frame', {Parent = row, BackgroundColor3 = item.Equipped and self.AccentColor or self.FontColor, BackgroundTransparency = item.Equipped and 0.1 or 0.65, BorderSizePixel = 0, Position = UDim2.fromOffset(90, 49), Size = UDim2.new(item.Fraction, -98 * item.Fraction, 0, 2), ZIndex = 314})
                 local edge = self:Create('Frame', {Parent = row, BackgroundColor3 = item.Equipped and self.AccentColor or self.OutlineColor, BorderSizePixel = 0, Position = UDim2.fromOffset(0, 7), Size = UDim2.new(0, 2, 1, -14), ZIndex = 314})
                 self:Create('ImageLabel', {Parent = row, Image = item.Asset, BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit, Position = UDim2.fromOffset(9, 10), Size = UDim2.fromOffset(70, 34), ZIndex = 314})
@@ -7167,7 +7168,7 @@ function Library:FormatClassicControl(control, owner, text, anchor)
         self:AddToRegistry(entry, {TextColor3 = 'FontColor', BackgroundColor3 = 'MainColor'})
         local editorStroke = self:Create('UIStroke', {Name = 'NumericFocus', Parent = entry, Color = self.AccentColor, Thickness = 1, Transparency = 1})
         self:AddToRegistry(editorStroke, {Color = 'AccentColor'})
-        self:Create('UICorner', {Parent = entry, CornerRadius = UDim.new(0, 2)})
+        self:Create('UICorner', {Parent = entry, CornerRadius = UDim.new(0, 0)})
         local original = control.Display
         function control:Display()
             original(self)
@@ -7461,7 +7462,7 @@ do
             for _, circle in ipairs(circles[kind] or {}) do
                 local x, y, radius, width = table.unpack(circle)
                 local ring = self:Create('Frame', {Parent = icon, Position = UDim2.fromOffset((x - radius) * ratio, (y - radius) * ratio), Size = UDim2.fromOffset(radius * 2 * ratio, radius * 2 * ratio), BackgroundColor3 = self.FontColor, BackgroundTransparency = width == 0 and 0 or 1, BorderSizePixel = 0, ZIndex = 6})
-                self:Create('UICorner', {Parent = ring, CornerRadius = UDim.new(1, 0)})
+                self:Create('UICorner', {Parent = ring, CornerRadius = UDim.new(0, 0)})
                 if width == 0 then self:AddToRegistry(ring, {BackgroundColor3 = 'FontColor'}) else
                     local stroke = self:Create('UIStroke', {Parent = ring, Color = self.FontColor, Thickness = width * ratio})
                     self:AddToRegistry(stroke, {Color = 'FontColor'})
@@ -7503,7 +7504,7 @@ function Library:CreateWindow(...)
     window.AnimatedBorder,window.BorderGradient=border,borderGradient
     Library:RegisterAnimatedGradient(borderGradient, outer, true)
     local innerBorder = frame('Frame', {Name='WindowInset', Parent=outer, Position=UDim2.fromOffset(5,5), Size=UDim2.new(1,-10,1,-10), BackgroundTransparency=1, BorderSizePixel=0, BorderColor3=Library.OutlineColor, ZIndex=2}, {BorderColor3='OutlineColor'})
-    frame('UICorner',{Parent=innerBorder,CornerRadius=UDim.new(0,5)})
+    frame('UICorner',{Parent=innerBorder,CornerRadius=UDim.new(0, 0)})
     frame('UIStroke',{Parent=innerBorder,Color=Library.OutlineColor,Transparency=0.35,Thickness=1,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},{Color='OutlineColor'})
     window.Holder, window.ScaleObject = outer, Library:ApplyScaleTo(outer)
     if config.Center then outer.Position = UDim2.fromOffset((viewport.X - outer.Size.X.Offset) / 2, (viewport.Y - outer.Size.Y.Offset) / 2) end
@@ -7583,7 +7584,7 @@ function Library:CreateWindow(...)
         visuals={'Visuals','Visuals',2},world={'Visuals','Visuals',2},
         items={'Utility','Utility',3},shop={'Utility','Utility',3},loadout={'Utility','Utility',3},avatar={'Utility','Utility',3},
         miscellaneous={'Utility','Utility',3},players={'Utility','Utility',3},servers={'Utility','Utility',3},executor={'Utility','Utility',3},
-        protection={'Legit','Legit',4},
+        protection={'Misc','Misc',4},neckgrab={'Misc','Misc',4},
         ['ui settings']={'Settings','Settings',5},profiles={'Settings','Settings',5},
     }
     function window:SelectNavigationPage(object)
@@ -7978,7 +7979,7 @@ function Library:CreateWindow(...)
             local holder = frame('Frame', {Name = 'ClassicGroupbox', Parent = parent, Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 4}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
             holder.BackgroundColor3, holder.BackgroundTransparency, holder.BorderSizePixel = Library.MainColor, 0, 0
             Library:AddToRegistry(holder,{BackgroundColor3='MainColor',BorderColor3='OutlineColor'})
-            frame('UICorner',{Parent=holder,CornerRadius=UDim.new(0,4)})
+            frame('UICorner',{Parent=holder,CornerRadius=UDim.new(0, 0)})
             frame('UIStroke',{Parent=holder,Color=Library.OutlineColor,Transparency=0.2,Thickness=1,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},{Color='OutlineColor'})
             local rule=frame('Frame',{Name='SectionRule',Parent=holder,Position=UDim2.fromOffset(6,0),Size=UDim2.new(1,-12,0,1),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,ZIndex=5})
             Library:RegisterAnimatedGradient(frame('UIGradient',{Parent=rule}),holder)
