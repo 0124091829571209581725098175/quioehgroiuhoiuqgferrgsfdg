@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 41;
+Library.PhowgRevision = 42;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -222,17 +222,23 @@ function Library:QueueUIWork(key,callback,slot)
         queue.Head,queue.Tail,queue.Worker=1,0,nil
     end)
 end
-function Library:FlushDeferredLayouts()
+function Library:FlushDeferredLayouts(immediate)
     local pending=self.PendingLayouts
     self.PendingLayouts=nil
     for owner in pairs(pending or {}) do
-        self:QueueUIWork(owner,function()
+        local function resize()
             if owner.Container and not owner.Container.Parent then return end
             owner.LayoutFlushing=true
             local ok,problem=pcall(owner.Resize,owner)
             owner.LayoutFlushing=false
             if not ok then error(problem) end
-        end,'layout')
+        end
+        if immediate then
+            local ok, problem = pcall(resize)
+            if not ok then warn('[phowg] config layout: ' .. tostring(problem)) end
+        else
+            self:QueueUIWork(owner,resize,'layout')
+        end
     end
 end
 function Library:RefreshVisiblePlayerDropdowns()
@@ -1087,6 +1093,10 @@ function Library:Unload()
         table.clear(self.UIWork.Items);table.clear(self.UIWork.Keys)
         self.UIWork=nil
     end
+    for job in pairs(self.ConfigCallbackJobs or {}) do
+        if job.Thread and job.Thread ~= coroutine.running() then pcall(task.cancel, job.Thread) end
+    end
+    self.ConfigCallbackJobs=nil
     self.PendingLayouts=nil
     if self.PlayerListTimer then pcall(task.cancel,self.PlayerListTimer);self.PlayerListTimer=nil end
     Library:HideTooltip();
@@ -7701,80 +7711,198 @@ do
     end
 end
 
+Library.StartupIntroRevision = 2
 function Library:CancelStartupIntro()
-    local state=self.StartupIntro
+    local state = self.StartupIntro
     if not state then return end
-    self.StartupIntro=nil
+    self.StartupIntro = nil
     if state.Connection then state.Connection:Disconnect() end
-    if state.Timeout and state.Timeout~=coroutine.running() then pcall(task.cancel,state.Timeout) end
-    for _,tween in ipairs(state.Tweens) do tween:Cancel() end
-    for _,entry in ipairs(state.Elements) do
-        if entry.Object.Parent then entry.Object.Position,entry.Object.Size=entry.Position,entry.Size end
+    for _, thread in pairs({state.Timeout, state.Worker}) do
+        if thread and thread ~= coroutine.running() then pcall(task.cancel, thread) end
     end
-    if state.Holder and state.Holder.Parent then state.Holder.GroupTransparency=0 end
-    if state.Overlay then state.Overlay:Destroy() end
+    for _, tween in ipairs(state.Tweens) do tween:Cancel() end
+    for _, entry in ipairs(state.Elements) do
+        if entry.Object.Parent then
+            entry.Object.Position, entry.Object.Rotation = entry.Position, entry.Rotation
+            if entry.Scale then entry.Scale:Destroy() end
+        end
+    end
+    local entry = state.WindowEntry
+    if entry and entry.Object.Parent then
+        entry.Object.Position, entry.Object.Rotation = entry.Position, entry.Rotation
+        entry.Scale.Scale = entry.ScaleValue
+    end
+    if state.Holder and state.Holder.Parent then state.Holder.GroupTransparency = 0 end
     if state.Root then state.Root:Destroy() end
 end
 function Library:BeginStartupIntro(window)
     self:CancelStartupIntro()
-    local root=self:Create('ScreenGui',{Name='phowg startup',IgnoreGuiInset=true,ResetOnSpawn=false,DisplayOrder=1000000,ZIndexBehavior=Enum.ZIndexBehavior.Global})
-    ProtectGui(root);root.Parent=CoreGui
-    local overlay=self:Create('Frame',{Name='startup blackhole',Parent=root,Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.new(),BorderSizePixel=0,ZIndex=100000,Active=true})
-    local disk=self:Create('Frame',{Name='blackhole',Parent=overlay,AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(124,124),BackgroundColor3=Color3.fromRGB(2,2,2),BorderSizePixel=0,ZIndex=100002})
-    local corner=Instance.new('UICorner');corner.CornerRadius=UDim.new(1,0);corner.Parent=disk
-    local stroke=self:Create('UIStroke',{Parent=disk,Color=Color3.new(1,1,1),Thickness=2,Transparency=0.1})
-    local gradient=self:Create('UIGradient',{Parent=stroke,Color=ColorSequence.new(Color3.fromRGB(25,25,25),Color3.new(1,1,1)),Rotation=0})
-    local label=self:CreateLabel({Parent=overlay,Text='phowg host',AnchorPoint=Vector2.new(0.5,0),Position=UDim2.new(0.5,0,0.5,88),Size=UDim2.fromOffset(220,24),TextXAlignment=Enum.TextXAlignment.Center,TextSize=14,ZIndex=100003})
-    local state={Root=root,Overlay=overlay,Disk=disk,Stroke=stroke,Label=label,Holder=window.Holder,Tweens={},Elements={},At=os.clock()}
-    self.StartupIntro=state
-    state.Connection=RunService.RenderStepped:Connect(function()
-        if self.Unloaded or self.StartupIntro~=state or not overlay.Parent then return end
-        local elapsed=os.clock()-state.At
-        gradient.Rotation=elapsed*100%360
-        if not state.Finishing then
-            local size=120+math.sin(elapsed*2.5)*7
-            disk.Size=UDim2.fromOffset(size,size)
+    self.StartupWindow = window
+    local function create(class, properties)
+        local object = Instance.new(class)
+        for key, value in pairs(properties) do object[key] = value end
+        return object
+    end
+    local root = create('ScreenGui', {Name = 'phowg startup', IgnoreGuiInset = true, ResetOnSpawn = false, DisplayOrder = 1000000, ZIndexBehavior = Enum.ZIndexBehavior.Global})
+    pcall(ProtectGui, root)
+    root.Parent = ScreenGui.Parent or CoreGui
+    local overlay = create('Frame', {Name = 'startup blackhole', Parent = root, Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(), BorderSizePixel = 0, ZIndex = 1, Active = true})
+    local scene = create('CanvasGroup', {Name = 'accretion scene', Parent = overlay, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.46), Size = UDim2.fromOffset(960, 720), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 10})
+    local sceneScale = create('UIScale', {Parent = scene, Scale = 1})
+    local state: {[string]: any} = {Root = root, Overlay = overlay, Scene = scene, SceneScale = sceneScale, Holder = window.Holder, Window = window, Tweens = {}, Elements = {}, Grains = {}, Dust = {}, At = os.clock(), RenderAt = 0}
+    self.StartupIntro = state
+    local function noise(n)
+        local value = math.sin(n * 127.1 + 311.7) * 43758.5453
+        return value - math.floor(value)
+    end
+    local function line(parent, x, y, nx, ny, width, alpha, z)
+        local dx, dy = nx - x, ny - y
+        return create('Frame', {Parent = parent, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset((x + nx) * 0.5, (y + ny) * 0.5), Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy), width), Rotation = math.deg(math.atan2(dy, dx)), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 1 - alpha, BorderSizePixel = 0, ZIndex = z})
+    end
+    local function ellipse(radius, flatten, angle)
+        local x, y = math.cos(angle) * radius, math.sin(angle) * radius * flatten
+        return 480 + x * 0.985 + y * 0.169, 365 - x * 0.169 + y * 0.985
+    end
+    for i = 1, 64 do
+        create('Frame', {Parent = overlay, Position = UDim2.fromScale(noise(i + 1), noise(i + 401)), Size = UDim2.fromOffset(i % 13 == 0 and 2 or 1, i % 13 == 0 and 2 or 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.55 + noise(i + 801) * 0.35, BorderSizePixel = 0, ZIndex = 2})
+    end
+    for band = 1, 6 do
+        local radius = 78 * (1.13 + band * 0.33)
+        for segment = 0, 39 do
+            local angle = segment * math.pi / 20
+            local x, y = ellipse(radius, 0.205, angle)
+            local nx, ny = ellipse(radius, 0.205, angle + math.pi / 20)
+            line(scene, x, y, nx, ny, band < 3 and 1.6 or 0.8, (0.5 - band * 0.06) * (0.6 + noise(segment + band * 41) * 0.4), 12)
+        end
+    end
+    for band = 1, 3 do
+        for segment = 0, 31 do
+            local angle = math.pi * (1.02 + segment * 0.96 / 32)
+            local nextAngle = angle + math.pi * 0.96 / 32
+            local rx, ry = 78 * (1.13 + band * 0.026), 78 * (1.17 + band * 0.028)
+            line(scene, 480 + math.cos(angle) * rx, 356 + math.sin(angle) * ry, 480 + math.cos(nextAngle) * rx, 356 + math.sin(nextAngle) * ry, band == 1 and 1.7 or 3, band == 1 and 0.7 or 0.15, 13)
+        end
+    end
+    for i = 1, 64 do
+        local radius = 78 * (1.17 + noise(i + 220) ^ 1.5 * 2.45)
+        state.Grains[i] = {Object = line(scene, 0, 0, 4, 0, 0.7 + noise(i + 88), 0.35 + noise(i + 21) * 0.5, 13), Radius = radius, Phase = noise(i + 900) * math.pi * 2}
+    end
+    for i = 1, 32 do
+        state.Dust[i] = {Object = line(scene, 0, 0, 4, 0, 0.8, 0.2, 11), Seed = noise(i + 2401), Phase = noise(i + 2701) * math.pi * 2}
+    end
+    local disk = create('Frame', {Name = 'event horizon', Parent = scene, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(480, 360), Size = UDim2.fromOffset(156, 156), BackgroundColor3 = Color3.new(), BorderSizePixel = 0, ZIndex = 14})
+    create('UICorner', {Parent = disk, CornerRadius = UDim.new(1, 0)})
+    for i = 1, 4 do
+        local glow = create('Frame', {Parent = scene, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(480, 360), Size = UDim2.fromOffset(156 + i * 5, 156 + i * 5), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 15})
+        create('UICorner', {Parent = glow, CornerRadius = UDim.new(1, 0)})
+        create('UIStroke', {Parent = glow, Color = Color3.new(1, 1, 1), Thickness = i == 1 and 1.2 or 3, Transparency = i == 1 and 0.18 or 0.86 + i * 0.025})
+    end
+    local label = self:CreateLabel({Parent = overlay, Text = 'phowg host', AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.46, 174), Size = UDim2.fromOffset(320, 28), TextXAlignment = Enum.TextXAlignment.Center, TextSize = 20, ZIndex = 20})
+    state.Label = label
+    local function draw(elapsed)
+        local size = overlay.AbsoluteSize
+        if not state.Emitting then
+            sceneScale.Scale = math.clamp(math.min(size.X / 960, size.Y / 720), 0.35, 1.25)
+        end
+        if self.ReducedMotion then elapsed = 0 end
+        scene.Rotation = math.deg(elapsed * 0.09)
+        for _, grain in ipairs(state.Grains) do
+            local phase = grain.Phase + elapsed * 0.45 / (grain.Radius / 78) ^ 1.3
+            local x, y = ellipse(grain.Radius, 0.205, phase)
+            grain.Object.Position = UDim2.fromOffset(x, y)
+            grain.Object.Rotation = math.deg(phase) + 80
+        end
+        for _, dust in ipairs(state.Dust) do
+            local travel = (dust.Seed + elapsed * 0.032) % 1
+            local radius = 110 + (1 - travel) * 310
+            local angle = dust.Phase + elapsed * 0.11 + math.log(radius / 78) * 1.7
+            dust.Object.Position = UDim2.fromOffset(480 + math.cos(angle) * radius, 360 + math.sin(angle) * radius * 0.58)
+            dust.Object.Rotation = math.deg(angle) + 65
+            dust.Object.BackgroundTransparency = 1 - math.sin(travel * math.pi) * 0.3
+        end
+    end
+    state.Connection = RunService.RenderStepped:Connect(function()
+        if self.Unloaded or self.StartupIntro ~= state or not root.Parent then return end
+        local now = os.clock()
+        if now - state.RenderAt < 1 / 30 then return end
+        state.RenderAt = now
+        draw(now - state.At)
+        local entry = state.WindowEntry
+        if entry and entry.Object.Parent then
+            local progress = self.ReducedMotion and 1 or math.clamp((now - entry.At) / 3.2, 0, 1)
+            local t = 1 - (1 - progress) ^ 3
+            local u = 1 - t
+            local x = u * u * entry.Origin.X + 2 * u * t * entry.Control.X + t * t * entry.Destination.X
+            local y = u * u * entry.Origin.Y + 2 * u * t * entry.Control.Y + t * t * entry.Destination.Y
+            local scale = entry.Scale.Scale
+            entry.Object.Position = UDim2.fromOffset(x - entry.Object.Size.X.Offset * scale * 0.5, y - entry.Object.Size.Y.Offset * scale * 0.5)
         end
     end)
-    state.Timeout=task.delay(18,function()if self.StartupIntro==state then self:CancelStartupIntro() end end)
+    draw(0)
+    state.Timeout = task.delay(18, function() if self.StartupIntro == state then self:CancelStartupIntro() end end)
 end
 function Library:FinishStartupIntro()
-    local state=self.StartupIntro
+    if self.Unloaded or self.StartupIntroPlayed then return end
+    if not self.StartupIntro and self.StartupWindow then self:BeginStartupIntro(self.StartupWindow) end
+    local state = self.StartupIntro
     if not state or state.Finishing then return end
-    state.Finishing=true
-    if state.Timeout then pcall(task.cancel,state.Timeout);state.Timeout=nil end
-    task.spawn(function()
-        local untilAt=os.clock()+2
-        repeat task.wait() until self.Unloaded or not self.UIWork or not self.UIWork.Worker or os.clock()>=untilAt
-        if self.Unloaded or self.StartupIntro~=state then return end
-        local function tween(object,duration,goals,delay)
-            local animation=TweenService:Create(object,TweenInfo.new(duration,Enum.EasingStyle.Quint,Enum.EasingDirection.Out,0,false,delay or 0),goals)
-            state.Tweens[#state.Tweens+1]=animation;animation:Play()
+    state.Finishing = true
+    if state.Timeout then pcall(task.cancel, state.Timeout) end
+    state.Timeout = task.delay(14, function() if self.StartupIntro == state then self:CancelStartupIntro() end end)
+    state.Worker = task.defer(function()
+        local untilAt = os.clock() + 8
+        repeat task.wait() until self.Unloaded or self.StartupIntro ~= state or os.clock() >= untilAt
+            or self.ControlsReady ~= false and not self.ConfigLoading and not next(self.ConfigCallbackJobs or {})
+        while not self.Unloaded and self.StartupIntro == state and os.clock() - state.At < (self.ReducedMotion and 0.15 or 2.2) do task.wait() end
+        if self.Unloaded or self.StartupIntro ~= state then return end
+        self.StartupIntroPlayed = true
+        state.Emitting = true
+        local function tween(object, duration, goals, delay)
+            local animation = TweenService:Create(object, TweenInfo.new(duration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out, 0, false, delay or 0), goals)
+            state.Tweens[#state.Tweens + 1] = animation
+            animation:Play()
         end
-        local holder=state.Holder
-        if holder and holder.Parent and holder.Visible and not self.ReducedMotion then
-            local scale=self.UIScale or 1
-            if typeof(scale)~='number' or scale<=0 then scale=1 end
-            local center=(state.Overlay.AbsoluteSize*0.5-holder.AbsolutePosition)/scale
-            local index=0
-            for _,object in ipairs(holder:GetChildren()) do
-                if object:IsA('GuiObject') and object.Visible and object.Size.Y.Offset~=1 and object.Name~='WindowInset' then
-                    index+=1
-                    local entry={Object=object,Position=object.Position,Size=object.Size}
-                    state.Elements[#state.Elements+1]=entry
-                    object.Position=UDim2.fromOffset(center.X,center.Y)
-                    tween(object,1.1,{Position=entry.Position},(index-1)*0.07)
+        local holder, scaleObject = state.Holder, state.Window.ScaleObject
+        if holder and holder.Parent and holder.Visible and scaleObject and not self.ReducedMotion then
+            local scale = scaleObject.Scale
+            local entry = {Object = holder, Position = holder.Position, Rotation = holder.Rotation, Scale = scaleObject, ScaleValue = scale}
+            state.WindowEntry = entry
+            local origin = Vector2.new(state.Overlay.AbsoluteSize.X * 0.5, state.Overlay.AbsoluteSize.Y * 0.46)
+            pcall(function()
+                if not ScreenGui.IgnoreGuiInset then origin -= game:GetService('GuiService'):GetGuiInset() end
+            end)
+            local screen = ScreenGui.AbsoluteSize
+            local destination = Vector2.new(entry.Position.X.Scale * screen.X + entry.Position.X.Offset + holder.Size.X.Offset * scale * 0.5, entry.Position.Y.Scale * screen.Y + entry.Position.Y.Offset + holder.Size.Y.Offset * scale * 0.5)
+            local dx, dy = destination.X - origin.X, destination.Y - origin.Y
+            local distance = math.max(1, math.sqrt(dx * dx + dy * dy))
+            local curl = math.min(160, distance * 0.28)
+            entry.Origin, entry.Destination, entry.At = origin, destination, os.clock()
+            entry.Control = Vector2.new((origin.X + destination.X) * 0.5 - dy / distance * curl, (origin.Y + destination.Y) * 0.5 + dx / distance * curl)
+            holder.Position = UDim2.fromOffset(origin.X - holder.Size.X.Offset * scale * 0.0075, origin.Y - holder.Size.Y.Offset * scale * 0.0075)
+            holder.Rotation, holder.GroupTransparency, scaleObject.Scale = -55, 1, scale * 0.015
+            tween(holder, 3.2, {Rotation = entry.Rotation, GroupTransparency = 0})
+            tween(scaleObject, 3.2, {Scale = scale})
+            local index = 0
+            for _, object in ipairs(holder:GetChildren()) do
+                if object:IsA('GuiObject') and object.Visible and object.Size.Y.Offset ~= 1 and object.Name ~= 'WindowInset' then
+                    index += 1
+                    local childScale = Instance.new('UIScale')
+                    childScale.Scale, childScale.Parent = 0.05, object
+                    local child = {Object = object, Position = object.Position, Rotation = object.Rotation, Scale = childScale}
+                    state.Elements[#state.Elements + 1] = child
+                    object.Position, object.Rotation = UDim2.fromOffset(holder.Size.X.Offset * 0.5, holder.Size.Y.Offset * 0.5), -24
+                    local delay = math.min(0.8, (index - 1) * 0.1)
+                    tween(object, 2.3, {Position = child.Position, Rotation = child.Rotation}, delay)
+                    tween(childScale, 2.3, {Scale = 1}, delay)
                 end
             end
-            holder.GroupTransparency=1
-            tween(holder,0.9,{GroupTransparency=0},0.2)
         end
-        tween(state.Overlay,self.ReducedMotion and 0.15 or 1.3,{BackgroundTransparency=1})
-        tween(state.Disk,0.9,{Size=UDim2.fromOffset(0,0),BackgroundTransparency=1},0.2)
-        tween(state.Stroke,0.8,{Transparency=1},0.2)
-        tween(state.Label,0.5,{TextTransparency=1})
-        task.wait(self.ReducedMotion and 0.2 or 2.1)
-        if self.StartupIntro==state then self:CancelStartupIntro() end
+        tween(state.Overlay, self.ReducedMotion and 0.15 or 1.6, {BackgroundTransparency = 1})
+        tween(state.Label, self.ReducedMotion and 0.15 or 0.8, {TextTransparency = 1})
+        tween(state.Scene, self.ReducedMotion and 0.15 or 3.5, {GroupTransparency = 1}, self.ReducedMotion and 0 or 0.5)
+        tween(state.SceneScale, self.ReducedMotion and 0.15 or 3.5, {Scale = state.SceneScale.Scale * 0.015}, self.ReducedMotion and 0 or 0.5)
+        task.wait(self.ReducedMotion and 0.2 or 4.2)
+        if self.StartupIntro == state then self:CancelStartupIntro() end
     end)
 end
 
@@ -8427,6 +8555,7 @@ function Library:CreateWindow(...)
 
     local drag, resize, lastWidth, lastScale, lastSidebar, lastHeight, lastStacked
     local function fit()
+        if Library.StartupIntro and Library.StartupIntro.Emitting then return end
         local screen = ScreenGui.AbsoluteSize
         if screen.X < 100 or screen.Y < 100 then return end
         local scale = math.max(window.ScaleObject.Scale, 0.01)
@@ -8498,12 +8627,12 @@ function Library:CreateWindow(...)
     window.ScaleObject:GetPropertyChangedSignal('Scale'):Connect(fit)
     local modal = frame('TextButton', {Parent = ScreenGui, BackgroundTransparency = 1, Text = '', Size = UDim2.fromOffset(0, 0), Modal = false, Visible = true})
     local toggled, toggleRevision = false, 0
-    function Library:Toggle()
+    function Library:Toggle(fromStartup)
         if self.Unloaded then return end
         self:HideTooltip()
         toggled, toggleRevision = not toggled, toggleRevision + 1
         local revision = toggleRevision
-        if self.StartupIntro and self.StartupIntro.Finishing then self:CancelStartupIntro() end
+        if self.StartupIntro and self.StartupIntro.Finishing and not fromStartup then self:CancelStartupIntro() end
         if not toggled then self:StopSliderDrag(true) end
         self.MainVisible, modal.Modal = toggled, toggled
         drag, resize = nil, nil
@@ -8534,7 +8663,7 @@ function Library:CreateWindow(...)
     end))
     fit()
     self:BeginStartupIntro(window)
-    if config.AutoShow then task.defer(function() if not Library.Unloaded then Library:Toggle() end end) end
+    if config.AutoShow and not self.Unloaded then self:Toggle(true) end
     return window
 end
 
