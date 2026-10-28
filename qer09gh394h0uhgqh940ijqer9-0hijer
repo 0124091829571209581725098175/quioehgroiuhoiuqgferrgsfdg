@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 43;
+Library.PhowgRevision = 44;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -633,6 +633,8 @@ function Library:UpdateSliderDrag(input)
     if self.Unloaded or not self.MainVisible or not drag.Track.Parent then self:StopSliderDrag(false); return end;
     if drag.Input.UserInputType == Enum.UserInputType.Touch and input ~= drag.Input then return end;
     local x = input.Position and input.Position.X or Mouse.X;
+    if math.abs(x - drag.StartX) > 3 then drag.Control.LastNumericClick = nil; drag.DeferUntilMoved = false end;
+    if drag.DeferUntilMoved then return end;
     local track = drag.Track;
     local width = math.max(1, track.AbsoluteSize.X);
     local value;
@@ -648,18 +650,86 @@ function Library:UpdateSliderDrag(input)
         drag.Control:SetValue(value);
     end;
 end;
+function Library:BindSliderEditor(control, entry)
+    control.NumericEntry, control.NumericRestingZ = entry, entry.ZIndex
+    entry.TextEditable, entry.Active = false, false
+    entry.Focused:Connect(function()
+        if not control.NumericEditing then entry:ReleaseFocus(); return end
+        self.FocusedSlider = control
+    end)
+    entry.FocusLost:Connect(function()
+        control.NumericEditing, control.LastNumericClick = nil, nil
+        entry.TextEditable, entry.Active, entry.ZIndex = false, false, control.NumericRestingZ
+        if self.FocusedSlider == control then self.FocusedSlider = nil end
+    end)
+end
+function Library:BeginSliderEdit(control)
+    local entry = control.NumericEntry
+    if not entry or not entry.Parent or self.Unloaded then return end
+    self:StopSliderDrag(true)
+    control.NumericEditing, control.LastNumericClick = true, nil
+    entry.TextEditable, entry.Active = true, true
+    entry.ZIndex = math.max(control.NumericRestingZ, control.HitArea.ZIndex) + 1
+    entry.Text = tostring(control.Value)
+    task.defer(function()
+        if control.NumericEditing and entry.Parent and not self.Unloaded and self.MainVisible then entry:CaptureFocus() end
+    end)
+end
+function Library:PairSliderRows(first, second)
+    if first.SliderPair or not first.WorkspaceRow or not second.WorkspaceRow then return second end
+    local left, right = first.WorkspaceRow, second.WorkspaceRow
+    local container, owner = left.Parent, first.Groupbox
+    if not container or right.Parent ~= container then return second end
+    local ordered, lastOrder = {}, 0
+    local children = container:GetChildren()
+    for _, child in ipairs(children) do
+        if child:IsA('GuiObject') then lastOrder = math.max(lastOrder, child.LayoutOrder) end
+    end
+    for index, child in ipairs(children) do
+        if child:IsA('GuiObject') then
+            local order = child.LayoutOrder == 0 and lastOrder + index or child.LayoutOrder
+            ordered[#ordered + 1] = {Object = child, Index = index, Order = order}
+        end
+    end
+    table.sort(ordered, function(a, b) return a.Order == b.Order and a.Index < b.Index or a.Order < b.Order end)
+    for index, item in ipairs(ordered) do item.Object.LayoutOrder = index end
+    local pair = self:Create('Frame', {Name = 'SliderRow', Parent = container, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = left.LayoutOrder, ZIndex = left.ZIndex})
+    first.SliderPair, second.SliderPair = pair, pair
+    left.Parent, right.Parent = pair, pair
+    left.Position, right.Position = UDim2.fromOffset(0, 0), UDim2.new(0.5, 4, 0, 0)
+    left.Size, right.Size = UDim2.new(0.5, -4, 0, left.Size.Y.Offset), UDim2.new(0.5, -4, 0, right.Size.Y.Offset)
+    for _, row in ipairs({left, right}) do
+        local reflow = self.WorkspaceRows and self.WorkspaceRows[row]
+        if reflow then reflow() end
+    end
+    pair.Size = UDim2.new(1, 0, 0, math.max(left.Size.Y.Offset, right.Size.Y.Offset))
+    if owner and owner.Resize then owner:Resize() end
+    return second
+end
+
 function Library:BindSliderInput(control, track)
     control.Track = track;
-    local hit = self:Create('TextButton', {Name = 'SliderHitArea'; Parent = track.Parent; BackgroundTransparency = 1; Text = ''; AutoButtonColor = false; Active = true; Position = UDim2.fromOffset(0, 0); Size = UDim2.new(track.Size.X.Scale, track.Size.X.Offset, 1, 0); ZIndex = 11;});
+    local hit = self:Create('TextButton', {Name = 'SliderHitArea'; Parent = track.Parent; BackgroundTransparency = 1; Text = ''; AutoButtonColor = false; Active = true; Position = UDim2.fromOffset(0, 0); Size = UDim2.new(track.Size.X.Scale, track.Size.X.Offset, 1, 0); ZIndex = 13;});
     control.HitArea = hit;
     track:GetPropertyChangedSignal('Size'):Connect(function() hit.Size = UDim2.new(track.Size.X.Scale, track.Size.X.Offset, 1, 0) end);
     hit.InputBegan:Connect(function(input)
         if not self:IsClickInput(input) or self.Unloaded or self:MouseIsOverOpenedFrame(hit) then return end;
+        local point = input.Position or Vector2.new(Mouse.X, Mouse.Y);
+        local entry = control.NumericEntry;
+        local overNumber = entry and point.X >= entry.AbsolutePosition.X and point.X <= entry.AbsolutePosition.X + entry.AbsoluteSize.X
+            and point.Y >= entry.AbsolutePosition.Y and point.Y <= entry.AbsolutePosition.Y + entry.AbsoluteSize.Y;
+        local last = control.LastNumericClick;
+        if overNumber and last and last.Kind == input.UserInputType and os.clock() - last.At <= 0.3
+            and math.abs(point.X - last.X) <= 6 and math.abs(point.Y - last.Y) <= 6 then
+            self:BeginSliderEdit(control);
+            return;
+        end;
+        control.LastNumericClick = overNumber and {At = os.clock(), X = point.X, Y = point.Y, Kind = input.UserInputType} or nil;
         self:StopSliderDrag(true);
         local focused = InputService:GetFocusedTextBox();
         if focused then focused:ReleaseFocus() end;
         local precision = InputService:IsKeyDown(Enum.KeyCode.LeftShift) or InputService:IsKeyDown(Enum.KeyCode.RightShift);
-        self.ActiveSliderDrag = {Control = control; Track = track; Input = input; StartX = input.Position and input.Position.X or Mouse.X; StartValue = control.Value; Precision = precision; Changed = false;};
+        self.ActiveSliderDrag = {Control = control; Track = track; Input = input; StartX = input.Position and input.Position.X or Mouse.X; StartValue = control.Value; Precision = precision; Changed = false; DeferUntilMoved = overNumber == true;};
         self:UpdateSliderDrag(input);
     end);
     if self.SliderInputBound then return end;
@@ -3733,7 +3803,9 @@ do
         Library:BindSliderInput(Slider, SliderInner);
 
         function Slider:AddSlider(Idx, Info)
-            if Library.WorkspaceEnabled then return Slider.Groupbox:AddSlider(Idx, Info) end;
+            if Library.WorkspaceEnabled then
+                return Library:PairSliderRows(Slider, Slider.Groupbox:AddSlider(Idx, Info))
+            end;
             assert(Info.Default, 'AddSlider: Missing default value.');
             assert(Info.Text, 'AddSlider: Missing slider text.');
             assert(Info.Min, 'AddSlider: Missing minimum value.');
@@ -7402,7 +7474,7 @@ function Library:FormatClassicControl(control, owner, text, anchor)
             if stroke then stroke.Transparency = 1 end
         end
         if display then display.Visible = false end
-        local entry = self:Create('TextBox', {Name = 'SliderValue', Parent = field, Position = UDim2.new(0.5,-32,0,0), Size = UDim2.fromOffset(64,18), Text = tostring(control.Value) .. control.Suffix, TextXAlignment = Enum.TextXAlignment.Center, ClearTextOnFocus = false, Font = self.Font, TextSize = 11, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 12})
+        local entry = self:Create('TextBox', {Name = 'SliderValue', Parent = field, Position = UDim2.new(0.5,-32,0,0), Size = UDim2.fromOffset(64,16), Text = tostring(control.Value) .. control.Suffix, TextXAlignment = Enum.TextXAlignment.Center, ClearTextOnFocus = false, Font = self.Font, TextSize = 11, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 12})
         self:AddToRegistry(entry, {TextColor3 = 'FontColor', BackgroundColor3 = 'MainColor'})
         local editorStroke = self:Create('UIStroke', {Name = 'NumericFocus', Parent = entry, Color = self.AccentColor, Thickness = 1, Transparency = 1})
         self:AddToRegistry(editorStroke, {Color = 'AccentColor'})
@@ -7425,7 +7497,7 @@ function Library:FormatClassicControl(control, owner, text, anchor)
             end
             entry.Text = tostring(control.Value) .. control.Suffix
         end)
-        control.NumericEntry = entry
+        self:BindSliderEditor(control, entry)
         local reset = self:Create('TextButton', {Name = 'ResetSlider', Parent = field, Position = UDim2.new(1, -22, 0, 0), Size = UDim2.fromOffset(22, 22), Text = '', Font = self.Font, TextSize = 16, TextColor3 = self.FontColor, BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false, ZIndex = 12})
         self:CreateResetIcon(reset)
         reset.Visible=false
@@ -7442,7 +7514,7 @@ function Library:FormatClassicControl(control, owner, text, anchor)
     local function reflow()
         local scale = math.max(Library.UIScale or 1, 0.01)
         local height=searchList and (control.ClassicListHeight or 120) or 16
-        row.Size=UDim2.new(1,0,0,searchList and height+20 or 36)
+        row.Size=UDim2.new(control.SliderPair and 0.5 or 1,control.SliderPair and -4 or 0,0,searchList and height+20 or 36)
         caption.Position,caption.Size,caption.TextSize=UDim2.fromOffset(0,0),UDim2.new(1,0,0,17),12
         field.Position=UDim2.fromOffset(0,18)
         field.Size=UDim2.new(1,0,0,searchList and height or 16)
@@ -7518,7 +7590,7 @@ function Library:FormatWorkspaceControl(control, owner, text, anchor)
                 end
                 entry.Text = tostring(control.Value)
             end)
-            control.NumericEntry = entry
+            self:BindSliderEditor(control, entry)
         end
     end
     local separator = self:Create('Frame', {Parent = row, Position = UDim2.new(0, 0, 1, -1), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = self.OutlineColor, BackgroundTransparency = 0.55, BorderSizePixel = 0, ZIndex = 4})
@@ -7527,8 +7599,8 @@ function Library:FormatWorkspaceControl(control, owner, text, anchor)
     self.WorkspaceRows = self.WorkspaceRows or setmetatable({}, {__mode = 'k'})
     local function reflow()
         local scale = math.max(Library.UIScale or 1, 0.01)
-        local compact = row.AbsoluteSize.X / scale < (Library.ClassicEnabled and 270 or 360)
-        row.Size = UDim2.new(1, 0, 0, compact and (searchList and 96 or control.Type == 'Slider' and 76 or 66) or (searchList and 78 or control.Type == 'Slider' and 54 or 44))
+        local compact = control.SliderPair ~= nil or row.AbsoluteSize.X / scale < (Library.ClassicEnabled and 270 or 360)
+        row.Size = UDim2.new(control.SliderPair and 0.5 or 1, control.SliderPair and -4 or 0, 0, compact and (searchList and 96 or control.Type == 'Slider' and 76 or 66) or (searchList and 78 or control.Type == 'Slider' and 54 or 44))
         caption.Size = compact and UDim2.new(1, 0, 0, 22) or UDim2.new(0.43, -12, 1, -1)
         field.Position = compact and UDim2.fromOffset(0, 26) or UDim2.new(0.43, 0, 0, 6)
         field.Size = UDim2.new(compact and 1 or 0.57, -4, 0, searchList and 64 or control.Type == 'Slider' and 40 or 32)
