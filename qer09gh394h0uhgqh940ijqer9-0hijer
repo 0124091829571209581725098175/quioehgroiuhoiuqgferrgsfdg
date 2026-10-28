@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 42;
+Library.PhowgRevision = 43;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -5685,7 +5685,7 @@ end;
 
 Library.ProgressNotifications = {};
 function Library:NotificationMessage(text)
-    local plain=tostring(text or ''):gsub('^%[neuro%.net%]%s*',''):gsub('^%[phowg host%]%s*','')
+    local plain=tostring(text or ''):gsub('[%c%s]+',' '):match('^%s*(.-)%s*$'):gsub('^%[neuro%.net%]%s*',''):gsub('^%[phowg host%]%s*','')
     return '[phowg host] '..plain
 end
 Library.NotificationEntries = {};
@@ -5708,7 +5708,7 @@ local function NotificationText(Text, Style)
     Body = Body:gsub('UNSYNCED', '<font color="#C86173">UNSYNCED</font>');
     Body = Body:gsub('(landed on )(.+)( for [%d%.]+ damage)', '%1<font color="#83BD80">%2</font>%3');
     Body = Body:gsub('^(hit )(.+)( for [%d%.]+ damage)', '%1<font color="#83BD80">%2</font>%3');
-    return '<font color="#8C8C94">' .. Prefix .. '</font> ' .. Body, Plain;
+    return '<font color="#A0A0A8">' .. Prefix .. '</font> ' .. Body, Plain;
 end;
 function Library:RefreshNotifications()
     if self.Unloaded or self.NotificationReflowing or not self.NotificationArea then return end;
@@ -5719,7 +5719,7 @@ function Library:RefreshNotifications()
     local position = self.NotificationPosition or 'Bottom';
     local top = position:find('Top',1,true) ~= nil;
     local margin = top and math.min(60,screen.Y*0.1) or math.min(200,screen.Y*0.25);
-    local maxWidth = math.max(80, math.min(480, (screen.X-32)/scale));
+    local maxWidth = math.max(80, math.min(720, (screen.X-32)/scale));
     local maxHeight = math.max(40, (screen.Y-margin-16)/scale);
     local left, right = position:find('Left',1,true), position:find('Right',1,true);
     local area, layout = self.NotificationArea, self.NotificationLayout;
@@ -5728,7 +5728,7 @@ function Library:RefreshNotifications()
     area.Size = UDim2.fromOffset(maxWidth, maxHeight);
     layout.HorizontalAlignment = left and Enum.HorizontalAlignment.Left or right and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Center;
     layout.VerticalAlignment = top and Enum.VerticalAlignment.Top or Enum.VerticalAlignment.Bottom;
-    layout.Padding = UDim.new(0,8);
+    layout.Padding = UDim.new(0,4);
     local entries = {};
     for entry in pairs(self.NotificationEntries) do
         if entry.Closed or not entry.Frame.Parent then self.NotificationEntries[entry] = nil;
@@ -5747,24 +5747,24 @@ function Library:RefreshNotifications()
         if not entry.Closed then
             local hasProgress = type(entry.Fraction)=='number';
             if entry.Dirty or entry.LayoutWidth~=maxWidth or entry.LayoutHeight~=maxHeight or entry.MeasuredFont~=entry.Label.Font or entry.MeasuredSize~=entry.Label.TextSize then
-                local extra = entry.CanDismiss and 24 or 0;
+                local extra = entry.CanDismiss and 20 or 0;
                 local natural = self:GetTextBounds(entry.Plain, entry.Label.Font, entry.Label.TextSize);
-                local width = math.clamp(math.ceil(natural)+24+extra, math.min(220,maxWidth), maxWidth);
-                local footer = (hasProgress and 10 or 0) + (entry.Actions and 36 or 0);
-                local _, measured = self:GetTextBounds(entry.Plain, entry.Label.Font, entry.Label.TextSize, Vector2.new(math.max(20,width-24-extra),100000));
-                local body = math.clamp(math.ceil(measured)+2, 20, math.max(20,maxHeight-footer-16));
-                local height = body+16+footer;
+                local minimum = entry.Actions and 240 or 100;
+                local width = math.clamp(math.ceil(natural)+16+extra, math.min(minimum,maxWidth), maxWidth);
+                local footer = (hasProgress and 4 or 0) + (entry.Actions and 26 or 0);
+                local body = math.max(16, math.ceil(entry.Label.TextSize)+4);
+                local height = body+8+footer;
                 entry.Frame.Size = UDim2.fromOffset(width,height);
-                entry.Label.Position, entry.Label.Size = UDim2.fromOffset(12,8), UDim2.new(1,-24-extra,0,body);
+                entry.Label.Position, entry.Label.Size = UDim2.fromOffset(8,4), UDim2.new(1,-16-extra,0,body);
                 if entry.Track then
                     entry.Track.Visible = hasProgress;
-                    entry.Track.Position = UDim2.fromOffset(12,body+14);
+                    entry.Track.Position = UDim2.fromOffset(8,body+7);
                 end;
-                if entry.Actions then entry.Actions.Position = UDim2.fromOffset(12,body+16+(hasProgress and 10 or 0)) end;
+                if entry.Actions then entry.Actions.Position = UDim2.fromOffset(8,body+8+(hasProgress and 4 or 0)) end;
                 entry.Height,entry.LayoutWidth,entry.LayoutHeight,entry.MeasuredFont,entry.MeasuredSize,entry.Dirty=height,maxWidth,maxHeight,entry.Label.Font,entry.Label.TextSize,false;
             end;
             if hasProgress then entry.Fill.Size = UDim2.fromScale(entry.Fraction,1) end;
-            local gap = visible>0 and 8 or 0;
+            local gap = visible>0 and 4 or 0;
             local show = visible<6 and used+gap+entry.Height<=maxHeight;
             entry.Frame.Visible = show;
             if show then used += entry.Height+gap; visible += 1 end;
@@ -5777,24 +5777,24 @@ function Library:BuildNotification(Text, Style, CanDismiss, WithActions)
     local entry: {[string]: any} = {Closed=false,Closing=false,Style=Style or 'Default',CanDismiss=CanDismiss==true,Persistent=Style=='Progress' or WithActions==true};
     self.NotificationSequence += 1;
     entry.Order = self.NotificationSequence;
-    local outer = self:Create('Frame', {Name='Notification'; Parent=self.NotificationArea; Size=UDim2.fromOffset(220,36); BackgroundColor3=Color3.fromRGB(17,17,22); BorderSizePixel=0; ClipsDescendants=false; ZIndex=100; LayoutOrder=entry.Order;});
+    local outer = self:Create('Frame', {Name='Notification'; Parent=self.NotificationArea; Size=UDim2.fromOffset(100,24); BackgroundColor3=Color3.fromRGB(17,17,22); BorderSizePixel=0; ClipsDescendants=false; ZIndex=100; LayoutOrder=entry.Order;});
     entry.Frame = outer;
     self:StyleIndicator(outer);
     local inset = outer:FindFirstChild('InsetBorder');
     if inset then inset:Destroy() end;
     entry.Edge = outer:FindFirstChild('IndicatorBorder');
     if entry.Style=='Simple' then outer.BackgroundTransparency=1; entry.Edge.Enabled=false end;
-    entry.Label = self:CreateLabel({Name='Message'; Parent=outer; BackgroundTransparency=1; Position=UDim2.fromOffset(12,8); Size=UDim2.new(1,-24,0,20); TextSize=14; TextColor3=Color3.fromRGB(225,225,225); RichText=true; TextWrapped=true; TextTruncate=Enum.TextTruncate.AtEnd; TextXAlignment=Enum.TextXAlignment.Left; TextYAlignment=Enum.TextYAlignment.Center; ZIndex=102;});
-    entry.Label.TextSize = 14;
+    entry.Label = self:CreateLabel({Name='Message'; Parent=outer; BackgroundTransparency=1; Position=UDim2.fromOffset(8,4); Size=UDim2.new(1,-16,0,16); TextSize=12; TextColor3=Color3.fromRGB(225,225,225); RichText=true; TextWrapped=false; TextTruncate=Enum.TextTruncate.AtEnd; TextXAlignment=Enum.TextXAlignment.Left; TextYAlignment=Enum.TextYAlignment.Center; ZIndex=102;});
+    entry.Label.TextSize = 12;
     if entry.Style=='Gamesense' or entry.Style=='Gamesensical' then
         entry.Accent = self:Create('Frame',{Parent=outer; Position=UDim2.fromOffset(1,1); Size=UDim2.new(1,-2,0,2); BorderSizePixel=0; BackgroundColor3=self.AccentColor; ZIndex=101;});
         self:AddToRegistry(entry.Accent,{BackgroundColor3='AccentColor'},true);
     end;
-    entry.Track = self:Create('Frame',{Name='Progress'; Parent=outer; Position=UDim2.fromOffset(12,30); Size=UDim2.new(1,-24,0,3); BackgroundColor3=self.MainColor; BorderSizePixel=0; Visible=false; ZIndex=101;});
+    entry.Track = self:Create('Frame',{Name='Progress'; Parent=outer; Position=UDim2.fromOffset(8,23); Size=UDim2.new(1,-16,0,2); BackgroundColor3=self.MainColor; BorderSizePixel=0; Visible=false; ZIndex=101;});
     entry.Fill = self:Create('Frame',{Parent=entry.Track; Size=UDim2.fromScale(0,1); BackgroundColor3=self.AccentColor; BorderSizePixel=0; ZIndex=102;});
     self:AddToRegistry(entry.Track,{BackgroundColor3='MainColor'},true);
     self:AddToRegistry(entry.Fill,{BackgroundColor3='AccentColor'},true);
-    if WithActions then entry.Actions=self:Create('Frame',{Name='Actions'; Parent=outer; BackgroundTransparency=1; BorderSizePixel=0; Size=UDim2.new(1,-24,0,28); ZIndex=103;}) end;
+    if WithActions then entry.Actions=self:Create('Frame',{Name='Actions'; Parent=outer; BackgroundTransparency=1; BorderSizePixel=0; Size=UDim2.new(1,-16,0,24); ZIndex=103;}) end;
     function entry:Update(NewText, Fraction)
         if self.Closed or not outer.Parent or Library.Unloaded then return end;
         local rich, plain = NotificationText(NewText,self.Style);
@@ -5826,8 +5826,8 @@ function Library:BuildNotification(Text, Style, CanDismiss, WithActions)
         self.Timer=task.delay(math.clamp(seconds,0.2,120),function()self.Timer=nil;self:Close()end);
     end;
     if entry.CanDismiss then
-        entry.CloseButton=self:Create('TextButton',{Name='Dismiss'; Parent=outer; Position=UDim2.new(1,-28,0,6); Size=UDim2.fromOffset(20,20); Text='×'; TextSize=16; Font=self.Font; TextColor3=self.FontColor; BackgroundTransparency=1; BorderSizePixel=0; ZIndex=104;});
-        entry.CloseButton.TextSize=16;
+        entry.CloseButton=self:Create('TextButton',{Name='Dismiss'; Parent=outer; Position=UDim2.new(1,-20,0,4); Size=UDim2.fromOffset(16,16); Text='×'; TextSize=14; Font=self.Font; TextColor3=self.FontColor; BackgroundTransparency=1; BorderSizePixel=0; ZIndex=104;});
+        entry.CloseButton.TextSize=14;
         entry.CloseButton.Activated:Connect(function()entry:Destroy()end);
     end;
     outer.Destroying:Connect(function()
