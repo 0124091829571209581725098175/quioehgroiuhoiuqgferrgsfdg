@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 40;
+Library.PhowgRevision = 41;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -191,6 +191,67 @@ local function GetTeamsString()
     return TeamList;
 end;
 
+function Library:QueueUIWork(key,callback,slot)
+    if self.Unloaded then return end
+    slot=slot or 'default'
+    local queue=self.UIWork
+    if not queue then queue={Items={},Keys={},Head=1,Tail=0};self.UIWork=queue end
+    local slots=queue.Keys[key]
+    if not slots then slots={};queue.Keys[key]=slots end
+    if slots[slot] then slots[slot].Callback=callback;return end
+    local item={Key=key,Slot=slot,Callback=callback}
+    slots[slot]=item;queue.Tail+=1;queue.Items[queue.Tail]=item
+    if queue.Worker then return end
+    queue.Worker=task.defer(function()
+        while queue.Head<=queue.Tail and not self.Unloaded do
+            task.wait()
+            local started,count=os.clock(),0
+            while queue.Head<=queue.Tail and count<4 and os.clock()-started<0.002 and not self.Unloaded do
+                local entry=queue.Items[queue.Head];queue.Items[queue.Head]=nil;queue.Head+=1
+                local fields=queue.Keys[entry.Key]
+                if fields then fields[entry.Slot]=nil;if not next(fields) then queue.Keys[entry.Key]=nil end end
+                count+=1
+                task.spawn(function()
+                    if self.Unloaded then return end
+                    local ok,problem=pcall(entry.Callback)
+                    if not ok and not self.Unloaded then warn('[phowg] interface work: '..tostring(problem)) end
+                end)
+            end
+        end
+        table.clear(queue.Items);table.clear(queue.Keys)
+        queue.Head,queue.Tail,queue.Worker=1,0,nil
+    end)
+end
+function Library:FlushDeferredLayouts()
+    local pending=self.PendingLayouts
+    self.PendingLayouts=nil
+    for owner in pairs(pending or {}) do
+        self:QueueUIWork(owner,function()
+            if owner.Container and not owner.Container.Parent then return end
+            owner.LayoutFlushing=true
+            local ok,problem=pcall(owner.Resize,owner)
+            owner.LayoutFlushing=false
+            if not ok then error(problem) end
+        end,'layout')
+    end
+end
+function Library:RefreshVisiblePlayerDropdowns()
+    local dirty=false
+    for control,frame in pairs(self.PlayerDropdowns or {}) do
+        if control.ListDirty then
+            dirty=true
+            if frame.Parent and self.IsControlVisible and self:IsControlVisible(frame) and control.BuildList then
+                self:QueueUIWork(control,function()if frame.Parent and self:IsControlVisible(frame) then control:BuildList() end end,'roster')
+            end
+        end
+    end
+    if dirty and self.MainVisible and not self.ConfigLoading and not self.PlayerListTimer and not self.Unloaded then
+        self.PlayerListTimer=task.delay(0.2,function()
+            self.PlayerListTimer=nil
+            if not self.Unloaded and self.MainVisible then self:RefreshVisiblePlayerDropdowns() end
+        end)
+    end
+end
 function Library:SafeCallback(f, ...)
     if (not f) then
         return;
@@ -928,6 +989,10 @@ function Library:GetTextBounds(Text, Font, Size, Resolution)
     return Bounds.X, Bounds.Y;
 end;
 function Library:DeferStartupLayout(Owner)
+    if self.ConfigLoading and not Owner.LayoutFlushing then
+        self.PendingLayouts=self.PendingLayouts or {};self.PendingLayouts[Owner]=true
+        return true
+    end
     if self.ControlsReady ~= false or Owner.LayoutFlushing then return false end;
     if not Owner.LayoutPending then
         Owner.LayoutPending = true;
@@ -1016,6 +1081,14 @@ function Library:Unload()
     Library:ClosePlayerInspector(true);
     Library:StopPlayerView();
     Library.Unloaded = true;
+    if self.CancelStartupIntro then self:CancelStartupIntro() end
+    if self.UIWork then
+        if self.UIWork.Worker then pcall(task.cancel,self.UIWork.Worker) end
+        table.clear(self.UIWork.Items);table.clear(self.UIWork.Keys)
+        self.UIWork=nil
+    end
+    self.PendingLayouts=nil
+    if self.PlayerListTimer then pcall(task.cancel,self.PlayerListTimer);self.PlayerListTimer=nil end
     Library:HideTooltip();
     Library.CustomCursorEnabled = false;
     Library:RefreshCustomCursor();
@@ -1516,8 +1589,8 @@ do
             Size = UDim2.new(1, -5, 1, 0);
             Font = Library.Font;
             PlaceholderColor3 = Color3.fromRGB(190, 190, 190);
-            PlaceholderText = 'Hex color',
-            Text = '#FFFFFF',
+            PlaceholderText = 'hex color',
+            Text = '#ffffff',
             TextColor3 = Library.FontColor;
             TextSize = 14;
             TextStrokeTransparency = 0;
@@ -1536,7 +1609,7 @@ do
 
         local RgbBox = Library:Create(RgbBoxBase.Frame:FindFirstChild('TextBox'), {
             Text = '255, 255, 255',
-            PlaceholderText = 'RGB color',
+            PlaceholderText = 'rgb color',
             TextColor3 = Library.FontColor
         });
 
@@ -2953,7 +3026,7 @@ do
                     Library:AddToRegistry(Button.Label, { TextColor3 = 'AccentColor' })
 
                     Button.Label.TextColor3 = Library.AccentColor
-                    Button.Label.Text = 'Are you sure?'
+                    Button.Label.Text = 'are you sure?'
                     Button.Locked = true
 
                     local clicked = WaitForEvent(Button.Outer.InputBegan, 0.5, ValidateClick)
@@ -3576,7 +3649,7 @@ do
         local DisplayLabel = Library:CreateLabel({
             Size = UDim2.new(1, 0, 1, 0);
             TextSize = 14;
-            Text = 'Infinite';
+            Text = 'infinite';
             ZIndex = 9;
             Parent = SliderInner;
         });
@@ -3787,7 +3860,7 @@ do
             local S2Label = Library:CreateLabel({
                 Size = UDim2.new(1, 0, 1, 0);
                 TextSize = 14;
-                Text = 'Infinite';
+                Text = 'infinite';
                 ZIndex = 9;
                 Parent = S2Inner;
             });
@@ -3918,7 +3991,7 @@ do
             local _DropdownLabel = Library:CreateLabel({
                 Size = UDim2.new(1, 0, 0, 10);
                 TextSize = 14;
-                Text = Info.Text;
+                Text = Info.Text and tostring(Info.Text):lower();
                 TextXAlignment = Enum.TextXAlignment.Left;
                 TextYAlignment = Enum.TextYAlignment.Bottom;
                 ZIndex = 5;
@@ -4095,7 +4168,7 @@ do
             else
                 Str = Dropdown.Value or '';
             end;
-            ItemList.Text = (Str == '' and '--' or Str);
+            ItemList.Text = Info.SpecialType=='Player' and (Str=='' and '--' or Str) or tostring(Str=='' and '--' or Str):lower();
             if Info.Dangerous then
                 ItemList.TextColor3 = Library.RiskColor
                 Library.RegistryMap[ItemList].Properties.TextColor3 = 'RiskColor'
@@ -4152,7 +4225,7 @@ do
                 Size = UDim2.new(1, -10, 1, 0);
                 Font = Library.Font;
                 PlaceholderColor3 = Color3.fromRGB(190, 190, 190);
-                PlaceholderText = 'Custom value...';
+                PlaceholderText = 'custom value...';
                 Text = '';
                 TextColor3 = Library.FontColor;
                 TextSize = 14;
@@ -4254,7 +4327,7 @@ do
                     Size = UDim2.new(1, -6, 1, 0);
                     Position = UDim2.new(0, 6, 0, 0);
                     TextSize = 14;
-                    Text = Value;
+                    Text = Info.SpecialType=='Player' and Value or tostring(Value):lower();
                     TextXAlignment = Enum.TextXAlignment.Left;
                     TextTruncate = Enum.TextTruncate.AtEnd;
                     ZIndex = 25;
@@ -4481,6 +4554,10 @@ do
         Groupbox:AddBlank(Info.BlankSize or 2);
         Groupbox:Resize();
 
+        if Info.SpecialType=='Player' then
+            Library.PlayerDropdowns=Library.PlayerDropdowns or setmetatable({},{__mode='k'})
+            Library.PlayerDropdowns[Dropdown]=ListOuter
+        end
         Options[Idx] = Dropdown;
         Library:RegisterControl(Idx, Dropdown, Groupbox, Info.Text, DropdownOuter);
 
@@ -4527,7 +4604,7 @@ do
             local _DropdownLabel = Library:CreateLabel({
                 Size = UDim2.new(1, 0, 0, 10);
                 TextSize = 14;
-                Text = Info.Text;
+                Text = Info.Text and tostring(Info.Text):lower();
                 TextXAlignment = Enum.TextXAlignment.Left;
                 TextYAlignment = Enum.TextYAlignment.Bottom;
                 ZIndex = 5;
@@ -4604,7 +4681,7 @@ do
             Size = UDim2.new(1, -10, 1, 0);
             Font = Library.Font;
             PlaceholderColor3 = Color3.fromRGB(190, 190, 190);
-            PlaceholderText = 'Search...';
+            PlaceholderText = 'search...';
             Text = '';
             TextColor3 = Library.FontColor;
             TextSize = 14;
@@ -4715,7 +4792,7 @@ do
                 Size = UDim2.new(1, -10, 1, 0);
                 Font = Library.Font;
                 PlaceholderColor3 = Color3.fromRGB(190, 190, 190);
-                PlaceholderText = 'Custom value...';
+                PlaceholderText = 'custom value...';
                 Text = '';
                 TextColor3 = Library.FontColor;
                 TextSize = 14;
@@ -4770,14 +4847,9 @@ do
         end;
 
         function Dropdown:BuildList()
-            for _, Element in next, Scrolling:GetChildren() do
-                if not Element:IsA('UIListLayout') then
-                    Element:Destroy();
-                end;
-            end;
-
-            RowTables = {};
-            RowByValue = {};
+            Dropdown.ListDirty=false
+            local previous=RowByValue
+            RowTables,RowByValue={},{}
             Dropdown.Filtered = {};
 
             local Query = SearchBox.Text:lower();
@@ -4788,7 +4860,13 @@ do
                     Count = Count + 1;
                     table.insert(Dropdown.Filtered, Value);
 
-                    local Table = {};
+                    local Table=previous[Value]
+                    if Table and Table.Button and Table.Button.Parent then
+                        Table.Button.LayoutOrder=Count
+                        RowTables[Table.Button],RowByValue[Value]=Table,Table
+                        Table:UpdateButton()
+                    else
+                    Table={};
                     local Selected = false;
 
                     if Info.Multi then
@@ -4820,7 +4898,7 @@ do
                         Size = UDim2.new(1, -6, 1, 0);
                         Position = UDim2.new(0, 6, 0, 0);
                         TextSize = 14;
-                        Text = Value;
+                        Text = Info.SpecialType=='Player' and Value or tostring(Value):lower();
                         TextXAlignment = Enum.TextXAlignment.Left;
                         ZIndex = 8;
                         Parent = Button;
@@ -4885,11 +4963,14 @@ do
 
                     Table:UpdateButton();
 
+                    Table.Button=Button;Button.LayoutOrder=Count
                     RowTables[Button] = Table;
                     RowByValue[Value] = Table;
+                    end
                 end;
             end;
 
+            for value,row in pairs(previous) do if not RowByValue[value] and row.Button then row.Button:Destroy() end end
             Scrolling.CanvasSize = UDim2.fromOffset(0, (Count * 20) + 1);
             RefreshHeight(Count);
 
@@ -4959,7 +5040,13 @@ do
                 Scrolling.CanvasPosition = Vector2.new(0, 0);
             end;
 
-            Dropdown:BuildList();
+            if Library.ConfigLoading or Library.IsControlVisible and not Library:IsControlVisible(ListOuter) then
+                Dropdown.ListDirty=true
+                return
+            end
+            Library:QueueUIWork(Dropdown,function()
+                if ListOuter.Parent and (not Library.IsControlVisible or Library:IsControlVisible(ListOuter)) then Dropdown:BuildList() else Dropdown.ListDirty=true end
+            end,'roster')
         end;
 
         function Dropdown:OnChanged(Func)
@@ -5045,6 +5132,10 @@ do
         Groupbox:AddBlank(Info.BlankSize or 2);
         Groupbox:Resize();
 
+        if Info.SpecialType=='Player' then
+            Library.PlayerDropdowns=Library.PlayerDropdowns or setmetatable({},{__mode='k'})
+            Library.PlayerDropdowns[Dropdown]=ListOuter
+        end
         Options[Idx] = Dropdown;
         Library:RegisterControl(Idx, Dropdown, Groupbox, Info.Text, ListOuter);
 
@@ -5499,7 +5590,7 @@ do
     Library:StyleIndicator(KeybindOuter);
     local Line = Library:Create('Frame', {BackgroundColor3 = Color3.new(1,1,1); BorderSizePixel = 0; Position = UDim2.fromOffset(6, 8); Size = UDim2.new(1, -12, 0, 1); ZIndex = 102; Parent = KeybindOuter;});
     Library:RegisterAnimatedGradient(Library:Create('UIGradient', {Parent = Line;}), KeybindOuter);
-    local heading = Library:CreateLabel({BackgroundTransparency = 1; Position = UDim2.fromOffset(8, 10); Size = UDim2.new(1, -16, 0, 17); TextSize = 12; TextColor3 = Color3.fromRGB(225,225,225); TextXAlignment = Enum.TextXAlignment.Left; Text = 'Keybinds'; ZIndex = 104; Parent = KeybindOuter;});
+    local heading = Library:CreateLabel({BackgroundTransparency = 1; Position = UDim2.fromOffset(8, 10); Size = UDim2.new(1, -16, 0, 17); TextSize = 12; TextColor3 = Color3.fromRGB(225,225,225); TextXAlignment = Enum.TextXAlignment.Left; Text = 'keybinds'; ZIndex = 104; Parent = KeybindOuter;});
     local KeybindContainer = Library:Create('Frame', {BackgroundTransparency = 1; BorderSizePixel = 0; Position = UDim2.fromOffset(8, 27); Size = UDim2.new(1, -16, 1, -28); ZIndex = 103; Parent = KeybindOuter;});
     Library:Create('UIListLayout', {FillDirection = Enum.FillDirection.Vertical; SortOrder = Enum.SortOrder.LayoutOrder; Parent = KeybindContainer;});
     Library.KeybindFrame, Library.KeybindContainer, Library.KeybindHeading = KeybindOuter, KeybindContainer, heading;
@@ -6439,7 +6530,7 @@ function Library:ShowPlayerContextMenu(target, _position)
     local columns = {[238] = {162, 0}, [272] = {162, 1}, [314] = {28, 0}, [348] = {28, 1}, [382] = {68, 0}, [416] = {68, 1}, [450] = {108, 0}, [484] = {108, 1}, [518] = {148, 0}, [560] = {198, 0}, [594] = {198, 1}}
     local function action(name, y, callback, active)
         local cell = columns[y]
-        local object = self:Create('TextButton', {Parent = (y == 238 or y == 272) and frame or controls, Text = name, Font = self.Font, TextSize = 12, TextTruncate = Enum.TextTruncate.AtEnd, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, AutoButtonColor = false, Position = UDim2.fromOffset(14, y), Size = UDim2.new(1, -28, 0, 34), ZIndex = 314})
+        local object = self:Create('TextButton', {Parent = (y == 238 or y == 272) and frame or controls, Text = tostring(name):lower(), Font = self.Font, TextSize = 12, TextTruncate = Enum.TextTruncate.AtEnd, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, AutoButtonColor = false, Position = UDim2.fromOffset(14, y), Size = UDim2.new(1, -28, 0, 34), ZIndex = 314})
         if cell then
             object.Position = UDim2.new(cell[2] * 0.5, cell[2] == 0 and 14 or 3, 0, cell[1])
             object.Size = UDim2.new(0.5, -17, 0, 34)
@@ -6554,7 +6645,7 @@ function Library:ShowPlayerContextMenu(target, _position)
         protection.Text = protectionText
         local flag = stat('LockFlagged') or 0
         local statuses = {'not sure', 'suspected', 'flagged', 'bannable'}
-        detection.Text = 'LockFlagged  /  ' .. (flag >= 1 and statuses[math.min(4, math.floor(flag))] or 'Not flagged')
+        detection.Text = 'lockflagged  /  ' .. (flag >= 1 and statuses[math.min(4, math.floor(flag))] or 'Not flagged')
         detection.TextColor3 = flag >= 2 and Color3.fromRGB(235, 116, 116) or self.FontColor
         statusDot.BackgroundColor3 = flag >= 2 and Color3.fromRGB(235, 116, 116) or flag == 1 and Color3.fromRGB(225, 184, 99) or self.AccentColor
         view.Text = self.Spectating == target and 'unview' or 'view'
@@ -6579,7 +6670,7 @@ function Library:ShowPlayerContextMenu(target, _position)
             rows[#rows + 1] = {Name = tool.Name, Ammo = amount, Asset = asset or '', Equipped = tool.Parent == target.Character, Fraction = math.clamp((tonumber(ammo.Value) or 0) / math.max(1, tonumber(maximum and maximum.Value or tool:GetAttribute('MaxAmmo')) or 1), 0, 1)}
             signature[#signature + 1] = tool.Name .. amount .. tostring(asset) .. tostring(tool.Parent == target.Character)
         end
-        inventoryTitle.Text = 'WEAPON INVENTORY  /  ' .. #rows .. ' weapons'
+        inventoryTitle.Text = 'weapon inventory  /  ' .. #rows .. ' weapons'
         local key = table.concat(signature, '|')
         if state.InventorySignature ~= key or not state.InventoryBuilt then
             state.InventorySignature, state.InventoryBuilt = key, true
@@ -6681,17 +6772,17 @@ function Library:BuildCustomPanels(Window, TabContainer)
         return object
     end
     local function text(parent, name, value, position, size)
-        return self:CreateLabel({Name = name, Parent = parent, Text = value, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Position = position, Size = size, ZIndex = 7})
+        return self:CreateLabel({Name = name, Parent = parent, Text = name=='Name' and value or tostring(value):lower(), TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Position = position, Size = size, ZIndex = 7})
     end
     local function button(parent, name, value, position, size, callback)
-        local object = self:Create('TextButton', {Name = name, Parent = parent, Text = value, Font = self.Font, TextSize = 12, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BorderColor3 = self.OutlineColor, BorderSizePixel = 0, AutoButtonColor = false, Position = position, Size = size, ZIndex = 8})
+        local object = self:Create('TextButton', {Name = name, Parent = parent, Text = tostring(value):lower(), Font = self.Font, TextSize = 12, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BorderColor3 = self.OutlineColor, BorderSizePixel = 0, AutoButtonColor = false, Position = position, Size = size, ZIndex = 8})
         self:AddToRegistry(object, {TextColor3 = 'FontColor', BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor'})
         self:StyleControl(object, object, 1)
         object.Activated:Connect(function() if not self.Unloaded and not self:MouseIsOverOpenedFrame(object) then self:SafeCallback(callback) end end)
         return object
     end
     local function input(parent, name, placeholder, position, size)
-        local object = self:Create('TextBox', {Name = name, Parent = parent, Text = '', PlaceholderText = placeholder, ClearTextOnFocus = false, Font = self.Font, TextSize = 13, TextColor3 = self.FontColor, PlaceholderColor3 = self.FontColor, TextXAlignment = Enum.TextXAlignment.Left, BackgroundColor3 = self.MainColor, BorderColor3 = self.OutlineColor, BorderSizePixel = 0, Position = position, Size = size, ZIndex = 8})
+        local object = self:Create('TextBox', {Name = name, Parent = parent, Text = '', PlaceholderText = tostring(placeholder):lower(), ClearTextOnFocus = false, Font = self.Font, TextSize = 13, TextColor3 = self.FontColor, PlaceholderColor3 = self.FontColor, TextXAlignment = Enum.TextXAlignment.Left, BackgroundColor3 = self.MainColor, BorderColor3 = self.OutlineColor, BorderSizePixel = 0, Position = position, Size = size, ZIndex = 8})
         self:AddToRegistry(object, {TextColor3 = 'FontColor', BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor', PlaceholderColor3 = 'FontColor'})
         self:Create('UIPadding', {Parent = object, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8)})
         self:StyleControl(object, object, 1)
@@ -6753,8 +6844,9 @@ function Library:BuildCustomPanels(Window, TabContainer)
     end
     local function refreshPlayers()
         if self.Unloaded then return end
-        clear(playerList)
-        playerRows = {}
+        local previous=playerRows
+        playerRows={}
+        local empty=playerList:FindFirstChild('EmptyPlayers');if empty then empty:Destroy() end
         local query = search.Text:lower():match('^%s*(.-)%s*$')
         local rows, members = Players:GetPlayers(), {}
         table.sort(rows, function(a, b) return a.Name:lower() < b.Name:lower() end)
@@ -6770,6 +6862,16 @@ function Library:BuildCustomPanels(Window, TabContainer)
             local allowed = filter == 'All' or filter == 'Protected' and protected(player) or filter == 'Flagged' and flagged(player)
             if matches and allowed then
                 shown = shown + 1
+                local existing=previous[player]
+                if existing and existing.Row and existing.Row.Parent then
+                    existing.Row.LayoutOrder=shown
+                    existing.NameLabel.Text=self.StreamerMode=='Off' and (player.DisplayName..' @'..player.Name) or self:PlayerDisplayName(player)
+                    existing.Country.Text=tostring(player:GetAttribute('Country') or ''):upper()
+                    local crew=self:GetCrewName(player)
+                    local detail=existing.Row:FindFirstChild('Details')
+                    if detail then detail.Text=(crew and self:GetCrewGroupName(crew)..' ('..tostring(members[crew])..')' or 'no crew')..' | '..self:FormatJoinedTime(player) end
+                    playerRows[player]=existing
+                else
                 local row = self:Create('Frame', {Name = 'Player_' .. player.UserId, Parent = playerList, Size = UDim2.new(1, -6, 0, 44), BackgroundColor3 = self.MainColor, BorderColor3 = self.OutlineColor, BorderSizePixel = 0, ZIndex = 6})
                 self:AddToRegistry(row, {BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor'})
                 self:StyleControl(row, row, 1)
@@ -6785,7 +6887,8 @@ function Library:BuildCustomPanels(Window, TabContainer)
                 local country = tostring(player:GetAttribute('Country') or ''):upper()
                 local countryLabel = text(row, 'Country', country, UDim2.new(1, -66, 0, 4), UDim2.fromOffset(54, 16))
                 countryLabel.TextXAlignment, countryLabel.TextTransparency = Enum.TextXAlignment.Right, 0.35
-                playerRows[player] = {Marker = marker, NameLabel = nameLabel, Country = countryLabel, WeaponImage = weaponImage}
+                row.LayoutOrder=shown
+                playerRows[player] = {Row=row,Marker = marker, NameLabel = nameLabel, Country = countryLabel, WeaponImage = weaponImage}
                 local crew = self:GetCrewName(player)
                 local crewName = crew and self:GetCrewGroupName(crew) .. ' (' .. tostring(members[crew]) .. ')' or 'No crew'
                 text(row, 'Details', crewName .. ' | ' .. self:FormatJoinedTime(player), UDim2.fromOffset(49, 24), UDim2.new(1, -60, 0, 16)).TextTransparency = 0.35
@@ -6797,9 +6900,11 @@ function Library:BuildCustomPanels(Window, TabContainer)
                 hit.Activated:Connect(function()
                     if not self:MouseIsOverOpenedFrame(row) then self:ShowPlayerContextMenu(player) end
                 end)
+                end
             end
         end
-        count.Text = 'Players: ' .. shown .. ' / ' .. #rows
+        for player,row in pairs(previous) do if not playerRows[player] and row.Row then row.Row:Destroy() end end
+        count.Text = 'players: ' .. shown .. ' / ' .. #rows
         if shown == 0 then text(playerList, 'EmptyPlayers', 'No matching players', UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 28)) end
         resizePlayers()
         self.PlayerWorkspaceResize()
@@ -6827,7 +6932,7 @@ function Library:BuildCustomPanels(Window, TabContainer)
     local function queuePlayers()
         if pending or self.Unloaded then return end
         pending = true
-        task.delay(0.1, function() pending = false; if playersPanel.Visible and not self.Unloaded then refreshPlayers() end end)
+        task.delay(0.1, function() pending = false; if playersPanel.Visible and self.MainVisible and not self.Unloaded then self:QueueUIWork(playersPanel,refreshPlayers) end end)
     end
     local elapsed = 0
     self:GiveSignal(RunService.Heartbeat:Connect(function(delta)
@@ -6872,7 +6977,7 @@ function Library:BuildCustomPanels(Window, TabContainer)
     button(serversPanel, 'Rejoin', 'Rejoin', UDim2.fromOffset(0, 30), UDim2.new(0.32, -4, 0, 28), function() doTeleport(game.JobId) end)
     button(serversPanel, 'Hop', 'Server hop', UDim2.new(0.32, 2, 0, 30), UDim2.new(0.34, -4, 0, 28), function() doTeleport() end)
     scan = button(serversPanel, 'Scan', 'Scan', UDim2.new(0.66, 2, 0, 30), UDim2.new(0.34, -2, 0, 28), function()
-        if state.Requesting then state.Token = state.Token + 1; state.Requesting = false; scan.Text = 'Scan'; status.Text = 'Scan cancelled'; return end
+        if state.Requesting then state.Token = state.Token + 1; state.Requesting = false; scan.Text = 'scan'; status.Text = 'scan cancelled'; return end
         start(false)
     end)
     local sortMode, sortDirection
@@ -6887,7 +6992,7 @@ function Library:BuildCustomPanels(Window, TabContainer)
     render = function()
         if self.Unloaded then return end
         clear(serverList)
-        sortMode.Text = 'Sort: ' .. self.ServerSortMode
+        sortMode.Text = 'sort: ' .. self.ServerSortMode
         sortDirection.Text = self.ServerSortDesc and 'Descending' or 'Ascending'
         local rows = table.clone(state.Rows)
         table.sort(rows, function(a, b)
@@ -6939,8 +7044,8 @@ function Library:BuildCustomPanels(Window, TabContainer)
                 if token ~= state.Token or self.Unloaded then return end
                 if not data then
                     state.Requesting, state.Error = false, problem
-                    scan.Text = 'Retry'
-                    status.Text = 'Scan failed; select Retry' .. (#state.Rows > 0 and ' | Previous results kept' or '')
+                    scan.Text = 'retry'
+                    status.Text = 'scan failed; select retry' .. (#state.Rows > 0 and ' | Previous results kept' or '')
                     more.Visible = state.Cursor ~= nil
                     return
                 end
@@ -6955,18 +7060,18 @@ function Library:BuildCustomPanels(Window, TabContainer)
                 if cursor then cursors[cursor] = true end
                 state.Rows, state.Seen, state.Cursor, state.Loaded = rows, seen, cursor, true
                 render()
-                status.Text = 'Scanning... ' .. #rows .. ' servers'
+                status.Text = 'scanning... ' .. #rows .. ' servers'
                 if not cursor then break end
             end
             if token ~= state.Token or self.Unloaded then return end
             state.Requesting = false
-            scan.Text, status.Text = 'Scan', #state.Rows .. ' servers' .. (state.Cursor and ' | More available' or ' | Scan complete')
+            scan.Text, status.Text = 'scan', #state.Rows .. ' servers' .. (state.Cursor and ' | More available' or ' | Scan complete')
             render()
         end)
     end
     Window.ScanServers, Window.RenderServers = start, render
     Window.RefreshCustom.Servers = function()
-        serverCount.Text = 'Current server: ' .. #Players:GetPlayers() .. '/' .. tostring(Players.MaxPlayers or '?') .. ' players'
+        serverCount.Text = 'current server: ' .. #Players:GetPlayers() .. '/' .. tostring(Players.MaxPlayers or '?') .. ' players'
         render()
         if not state.Loaded and not state.Requesting then start(false) end
     end
@@ -6993,7 +7098,7 @@ function Library:BuildCustomPanels(Window, TabContainer)
         local id = join.Text:match('^%s*(.-)%s*$')
         if id == '' then self:Notify('Paste a JobId first', 2) else doTeleport(id) end
     end)
-    Window.RefreshCustom.Executor = function() playerCount.Text = 'Players: ' .. #Players:GetPlayers() .. '/' .. tostring(Players.MaxPlayers or '?'); resizeInfo() end
+    Window.RefreshCustom.Executor = function() playerCount.Text = 'players: ' .. #Players:GetPlayers() .. '/' .. tostring(Players.MaxPlayers or '?'); resizeInfo() end
     local statsConnection, elapsed, frames = nil, 0, 0
     executor:GetPropertyChangedSignal('Visible'):Connect(function()
         if statsConnection then statsConnection:Disconnect(); statsConnection = nil end
@@ -7002,7 +7107,7 @@ function Library:BuildCustomPanels(Window, TabContainer)
         statsConnection = RunService.RenderStepped:Connect(function(delta)
             elapsed, frames = elapsed + delta, frames + 1
             if elapsed < 0.5 then return end
-            fps.Text = 'FPS: ' .. math.floor(frames / elapsed)
+            fps.Text = 'fps: ' .. math.floor(frames / elapsed)
             local value
             pcall(function() value = game:GetService('Stats').Network.ServerStatsItem['Data Ping']:GetValue() end)
             ping.Text = value and 'Ping: ' .. math.floor(value) .. ' ms' or 'Ping: unavailable'
@@ -7102,7 +7207,7 @@ function Library:CreateWeaponWorkspace(owner, provider, selected, choose, summar
     local state: {[string]: any} = {Connections = {}, Angle = 0, Zoom = 1, Elapsed = 0, Views = {}}
     local holder = self:Create('Frame', {Name = 'WeaponWorkspace', Parent = owner.Container, Size = UDim2.new(1, 0, 0, 430), BackgroundTransparency = 1, ZIndex = 5})
     local title = self:CreateLabel({Parent = holder, Text = '', Position = UDim2.fromOffset(6, 4), Size = UDim2.new(1, -100, 0, 26), TextSize = 18, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 7})
-    local subtitle = self:CreateLabel({Parent = holder, Text = 'Drag to rotate  /  scroll to zoom', Position = UDim2.fromOffset(6, 32), Size = UDim2.new(1, -12, 0, 18), TextSize = 10, TextTransparency = 0.4, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7})
+    local subtitle = self:CreateLabel({Parent = holder, Text = 'drag to rotate  /  scroll to zoom', Position = UDim2.fromOffset(6, 32), Size = UDim2.new(1, -12, 0, 18), TextSize = 10, TextTransparency = 0.4, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7})
     local function connect(signal, callback)
         local connection = signal:Connect(callback)
         state.Connections[#state.Connections + 1] = connection
@@ -7170,7 +7275,7 @@ function Library:CreateWeaponWorkspace(owner, provider, selected, choose, summar
         end)
     end
     local loadout = self:CreateLabel({Parent = holder, Text = '', Position = UDim2.fromOffset(6, 398), Size = UDim2.new(1, -12, 0, 30), TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 7})
-    local reset = self:Create('TextButton', {Parent = holder, Position = UDim2.new(1, -84, 0, 5), Size = UDim2.fromOffset(78, 24), Text = 'Reset view', Font = self.Font, TextSize = 11, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, AutoButtonColor = false, ZIndex = 8})
+    local reset = self:Create('TextButton', {Parent = holder, Position = UDim2.new(1, -84, 0, 5), Size = UDim2.fromOffset(78, 24), Text = 'reset view', Font = self.Font, TextSize = 11, TextColor3 = self.FontColor, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, AutoButtonColor = false, ZIndex = 8})
     self:AddToRegistry(reset, {TextColor3 = 'FontColor', BackgroundColor3 = 'MainColor'})
     self:StyleControl(reset, reset, 3)
     connect(reset.Activated, function() state.Angle, state.Zoom = 0, 1 end)
@@ -7596,6 +7701,83 @@ do
     end
 end
 
+function Library:CancelStartupIntro()
+    local state=self.StartupIntro
+    if not state then return end
+    self.StartupIntro=nil
+    if state.Connection then state.Connection:Disconnect() end
+    if state.Timeout and state.Timeout~=coroutine.running() then pcall(task.cancel,state.Timeout) end
+    for _,tween in ipairs(state.Tweens) do tween:Cancel() end
+    for _,entry in ipairs(state.Elements) do
+        if entry.Object.Parent then entry.Object.Position,entry.Object.Size=entry.Position,entry.Size end
+    end
+    if state.Holder and state.Holder.Parent then state.Holder.GroupTransparency=0 end
+    if state.Overlay then state.Overlay:Destroy() end
+    if state.Root then state.Root:Destroy() end
+end
+function Library:BeginStartupIntro(window)
+    self:CancelStartupIntro()
+    local root=self:Create('ScreenGui',{Name='phowg startup',IgnoreGuiInset=true,ResetOnSpawn=false,DisplayOrder=1000000,ZIndexBehavior=Enum.ZIndexBehavior.Global})
+    ProtectGui(root);root.Parent=CoreGui
+    local overlay=self:Create('Frame',{Name='startup blackhole',Parent=root,Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.new(),BorderSizePixel=0,ZIndex=100000,Active=true})
+    local disk=self:Create('Frame',{Name='blackhole',Parent=overlay,AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(124,124),BackgroundColor3=Color3.fromRGB(2,2,2),BorderSizePixel=0,ZIndex=100002})
+    local corner=Instance.new('UICorner');corner.CornerRadius=UDim.new(1,0);corner.Parent=disk
+    local stroke=self:Create('UIStroke',{Parent=disk,Color=Color3.new(1,1,1),Thickness=2,Transparency=0.1})
+    local gradient=self:Create('UIGradient',{Parent=stroke,Color=ColorSequence.new(Color3.fromRGB(25,25,25),Color3.new(1,1,1)),Rotation=0})
+    local label=self:CreateLabel({Parent=overlay,Text='phowg host',AnchorPoint=Vector2.new(0.5,0),Position=UDim2.new(0.5,0,0.5,88),Size=UDim2.fromOffset(220,24),TextXAlignment=Enum.TextXAlignment.Center,TextSize=14,ZIndex=100003})
+    local state={Root=root,Overlay=overlay,Disk=disk,Stroke=stroke,Label=label,Holder=window.Holder,Tweens={},Elements={},At=os.clock()}
+    self.StartupIntro=state
+    state.Connection=RunService.RenderStepped:Connect(function()
+        if self.Unloaded or self.StartupIntro~=state or not overlay.Parent then return end
+        local elapsed=os.clock()-state.At
+        gradient.Rotation=elapsed*100%360
+        if not state.Finishing then
+            local size=120+math.sin(elapsed*2.5)*7
+            disk.Size=UDim2.fromOffset(size,size)
+        end
+    end)
+    state.Timeout=task.delay(18,function()if self.StartupIntro==state then self:CancelStartupIntro() end end)
+end
+function Library:FinishStartupIntro()
+    local state=self.StartupIntro
+    if not state or state.Finishing then return end
+    state.Finishing=true
+    if state.Timeout then pcall(task.cancel,state.Timeout);state.Timeout=nil end
+    task.spawn(function()
+        local untilAt=os.clock()+2
+        repeat task.wait() until self.Unloaded or not self.UIWork or not self.UIWork.Worker or os.clock()>=untilAt
+        if self.Unloaded or self.StartupIntro~=state then return end
+        local function tween(object,duration,goals,delay)
+            local animation=TweenService:Create(object,TweenInfo.new(duration,Enum.EasingStyle.Quint,Enum.EasingDirection.Out,0,false,delay or 0),goals)
+            state.Tweens[#state.Tweens+1]=animation;animation:Play()
+        end
+        local holder=state.Holder
+        if holder and holder.Parent and holder.Visible and not self.ReducedMotion then
+            local scale=self.UIScale or 1
+            if typeof(scale)~='number' or scale<=0 then scale=1 end
+            local center=(state.Overlay.AbsoluteSize*0.5-holder.AbsolutePosition)/scale
+            local index=0
+            for _,object in ipairs(holder:GetChildren()) do
+                if object:IsA('GuiObject') and object.Visible and object.Size.Y.Offset~=1 and object.Name~='WindowInset' then
+                    index+=1
+                    local entry={Object=object,Position=object.Position,Size=object.Size}
+                    state.Elements[#state.Elements+1]=entry
+                    object.Position=UDim2.fromOffset(center.X,center.Y)
+                    tween(object,1.1,{Position=entry.Position},(index-1)*0.07)
+                end
+            end
+            holder.GroupTransparency=1
+            tween(holder,0.9,{GroupTransparency=0},0.2)
+        end
+        tween(state.Overlay,self.ReducedMotion and 0.15 or 1.3,{BackgroundTransparency=1})
+        tween(state.Disk,0.9,{Size=UDim2.fromOffset(0,0),BackgroundTransparency=1},0.2)
+        tween(state.Stroke,0.8,{Transparency=1},0.2)
+        tween(state.Label,0.5,{TextTransparency=1})
+        task.wait(self.ReducedMotion and 0.2 or 2.1)
+        if self.StartupIntro==state then self:CancelStartupIntro() end
+    end)
+end
+
 function Library:CreateWindow(...)
     local args = {...}
     local config = type(args[1]) == 'table' and table.clone(args[1]) or {Title = args[1], AutoShow = args[2]}
@@ -7607,10 +7789,10 @@ function Library:CreateWindow(...)
         return object
     end
     local function label(parent, text, position, size, textSize)
-        return Library:CreateLabel({Parent = parent, Text = text, Position = position, Size = size, TextSize = textSize or 14, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 5})
+        return Library:CreateLabel({Parent = parent, Text = tostring(text):lower(), Position = position, Size = size, TextSize = textSize or 14, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 5})
     end
     local function button(parent, text, size, callback)
-        local object = frame('TextButton', {Parent = parent, Text = text, Size = size, BackgroundColor3 = Library.MainColor, BorderSizePixel = 0, TextColor3 = Library.FontColor, TextSize = 13, Font = Library.Font, AutoButtonColor = false, ZIndex = 5}, {BackgroundColor3 = 'MainColor', TextColor3 = 'FontColor'})
+        local object = frame('TextButton', {Parent = parent, Text = tostring(text):lower(), Size = size, BackgroundColor3 = Library.MainColor, BorderSizePixel = 0, TextColor3 = Library.FontColor, TextSize = 13, Font = Library.Font, AutoButtonColor = false, ZIndex = 5}, {BackgroundColor3 = 'MainColor', TextColor3 = 'FontColor'})
         Library:StyleControl(object, object, 7)
         object.Activated:Connect(function() if not Library.Unloaded then callback() end end)
         return object
@@ -7638,7 +7820,7 @@ function Library:CreateWindow(...)
     local title = label(header, window.Title, UDim2.fromOffset(12, 0), UDim2.new(1, -330, 1, 0), 14)
     local searchOuter = frame('Frame', {Name = 'ClassicSearch', Parent = header, Position = UDim2.new(1, -274, 0, 6), Size = UDim2.fromOffset(230, 22), BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, ZIndex = 5}, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
     Library:StyleControl(searchOuter, searchOuter, 1)
-    local search = frame('TextBox', {Parent = searchOuter, BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 1, 0), Text = '', PlaceholderText = 'Search settings...', ClearTextOnFocus = false, Font = Library.Font, TextSize = 12, TextColor3 = Library.FontColor, PlaceholderColor3 = Library.FontColor, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6}, {TextColor3 = 'FontColor', PlaceholderColor3 = 'FontColor'})
+    local search = frame('TextBox', {Parent = searchOuter, BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 1, 0), Text = '', PlaceholderText = 'search settings...', ClearTextOnFocus = false, Font = Library.Font, TextSize = 12, TextColor3 = Library.FontColor, PlaceholderColor3 = Library.FontColor, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6}, {TextColor3 = 'FontColor', PlaceholderColor3 = 'FontColor'})
     local close = button(header, utf8.char(215), UDim2.fromOffset(22, 22), function() Library:Toggle() end)
     close.Position = UDim2.new(1, -32, 0, 6)
     title.Visible=true
@@ -7694,7 +7876,7 @@ function Library:CreateWindow(...)
     local function makeRootNav(name,callback,order)
         local object=button(nav,'',UDim2.fromOffset(78,24),callback)
         object.LayoutOrder=order
-        local caption=label(object,tostring(name),UDim2.fromOffset(0,0),UDim2.fromScale(1,1),12)
+        local caption=label(object,tostring(name):lower(),UDim2.fromOffset(0,0),UDim2.fromScale(1,1),12)
         caption.Name,caption.TextXAlignment='NavigationLabel',Enum.TextXAlignment.Center
         local marker=Library:CreateSelectionMarker(object)
         marker.Visible=false
@@ -7708,7 +7890,7 @@ function Library:CreateWindow(...)
         items={'Utility','Utility',3},shop={'Utility','Utility',3},loadout={'Utility','Utility',3},avatar={'Utility','Utility',3},
         miscellaneous={'Utility','Utility',3},players={'Utility','Utility',3},servers={'Utility','Utility',3},executor={'Utility','Utility',3},
         protection={'Misc','Misc',4},neckgrab={'Misc','Misc',4},
-        ['ui settings']={'Settings','Settings',5},profiles={'Settings','Settings',5},
+        ['ui settings']={'Settings','Settings',5},profiles={'Settings','Settings',5},configs={'Settings','Settings',5},
     }
     function window:SelectNavigationPage(object)
         local membership = memberships[object]
@@ -7747,7 +7929,7 @@ function Library:CreateWindow(...)
         end
         local width = math.clamp(select(1, Library:GetTextBounds(tostring(name), Library.Font, 12)) + 18, 56, 160)
         local object = frame('TextButton', {Name = tostring(name), Parent = group.Strip, Text = tostring(name), Font = Library.Font, TextSize = 12, TextColor3 = Library.FontColor, BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false, LayoutOrder = order, Size = UDim2.fromOffset(width, 22), ZIndex = 9}, {TextColor3 = 'FontColor'})
-        local caption = label(object, tostring(name), UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), 14)
+        local caption = label(object, tostring(name):lower(), UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), 14)
         caption.Name, caption.Visible = 'NavigationLabel', false
         local marker = Library:CreateSelectionMarker(object)
         marker.Position, marker.Size, marker.Visible = UDim2.new(0, 6, 1, -2), UDim2.new(1, -12, 0, 2), false
@@ -7856,14 +8038,14 @@ function Library:CreateWindow(...)
         if self.ConfigManager or not manager or not option then return end
         self.ConfigManager = manager
         status.Visible = false
-        local caption = label(footer, 'Saved config', UDim2.fromOffset(18, 10), UDim2.fromOffset(96, 28), 11)
+        local caption = label(footer, 'saved config', UDim2.fromOffset(18, 10), UDim2.fromOffset(96, 28), 11)
         local picker = button(footer, '', UDim2.fromOffset(220, 28), function() end)
         picker.Name, picker.Position = 'CurrentConfig', UDim2.fromOffset(118, 10)
         local selected = label(picker, '', UDim2.fromOffset(8, 0), UDim2.new(1, -28, 1, 0), 14)
         label(picker, utf8.char(9662), UDim2.new(1, -20, 0, 0), UDim2.fromOffset(16, 28), 12)
         local popup = frame('CanvasGroup', {Name = 'ConfigPopup', Parent = ScreenGui, PopupAnchor = picker, BackgroundColor3 = Library.MainColor, BorderColor3 = Library.OutlineColor, BorderSizePixel = 0, Size = UDim2.fromOffset(220, 0), Visible = false, GroupTransparency = 0, ZIndex = 30}, {BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor'})
         Library:StyleControl(popup, popup, 1)
-        local configSearch = frame('TextBox', {Name = 'ConfigSearch', Parent = popup, Position = UDim2.fromOffset(8, 3), Size = UDim2.new(1, -16, 0, 28), Text = '', PlaceholderText = 'Search configs...', ClearTextOnFocus = false, Font = Library.Font, TextSize = 13, TextColor3 = Library.FontColor, PlaceholderColor3 = Library.FontColor, TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 33}, {TextColor3 = 'FontColor', PlaceholderColor3 = 'FontColor'})
+        local configSearch = frame('TextBox', {Name = 'ConfigSearch', Parent = popup, Position = UDim2.fromOffset(8, 3), Size = UDim2.new(1, -16, 0, 28), Text = '', PlaceholderText = 'search configs...', ClearTextOnFocus = false, Font = Library.Font, TextSize = 13, TextColor3 = Library.FontColor, PlaceholderColor3 = Library.FontColor, TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 33}, {TextColor3 = 'FontColor', PlaceholderColor3 = 'FontColor'})
         local list = frame('ScrollingFrame', {Parent = popup, Position = UDim2.fromOffset(0, 32), Size = UDim2.new(1, 0, 1, -32), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = Library.AccentColor, CanvasSize = UDim2.fromOffset(0, 0), ZIndex = 31}, {ScrollBarImageColor3 = 'AccentColor'})
         local function closePopup() popup.Visible = false; Library.OpenedFrames[popup] = nil end
         Library.PopupClosers[popup] = closePopup
@@ -7892,7 +8074,7 @@ function Library:CreateWindow(...)
             configSearch.Position, configSearch.Size, configSearch.TextSize = UDim2.fromOffset(8 * scale, 3 * scale), UDim2.new(1, -16 * scale, 0, 28 * scale), 13 * scale
             list.Position, list.Size = UDim2.fromOffset(0, 32 * scale), UDim2.new(1, 0, 1, -32 * scale)
             for i, name in ipairs(values) do
-                local row = frame('TextButton', {Name = name, Parent = list, Text = name, TextXAlignment = Enum.TextXAlignment.Left, Font = Library.Font, TextSize = 14 * scale, TextColor3 = option.Value == name and Library.AccentColor or Library.FontColor, BackgroundColor3 = Library.MainColor, BorderSizePixel = 0, AutoButtonColor = false, Position = UDim2.fromOffset(0, (i - 1) * 24 * scale), Size = UDim2.new(1, -4, 0, 24 * scale), ZIndex = 32}, {BackgroundColor3 = 'MainColor', TextColor3 = option.Value == name and 'AccentColor' or 'FontColor'})
+                local row = frame('TextButton', {Name = name, Parent = list, Text = tostring(name):lower(), TextXAlignment = Enum.TextXAlignment.Left, Font = Library.Font, TextSize = 14 * scale, TextColor3 = option.Value == name and Library.AccentColor or Library.FontColor, BackgroundColor3 = Library.MainColor, BorderSizePixel = 0, AutoButtonColor = false, Position = UDim2.fromOffset(0, (i - 1) * 24 * scale), Size = UDim2.new(1, -4, 0, 24 * scale), ZIndex = 32}, {BackgroundColor3 = 'MainColor', TextColor3 = option.Value == name and 'AccentColor' or 'FontColor'})
                 frame('UIPadding', {Parent = row, PaddingLeft = UDim.new(0, 8)})
                 row.Activated:Connect(function() option:SetValue(name); closePopup() end)
             end
@@ -8082,6 +8264,7 @@ function Library:CreateWindow(...)
             for _, other in pairs(window.Tabs) do if other ~= self then other:HideTab() end end
             window.ActiveTab, window.LastTab = self, self
             page.Visible, marker.Visible = true, true
+            Library:RefreshVisiblePlayerDropdowns()
             window:SelectNavigationPage(navButton)
             selectNav(navButton, true)
             window.FooterSetActive(nil)
@@ -8107,7 +8290,7 @@ function Library:CreateWindow(...)
             local rule=frame('Frame',{Name='SectionRule',Parent=holder,Position=UDim2.fromOffset(6,0),Size=UDim2.new(1,-12,0,1),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,ZIndex=5})
             Library:RegisterAnimatedGradient(frame('UIGradient',{Parent=rule}),holder)
             local naturalWidth = select(1, Library:GetTextBounds(tostring(name), Library.Font, 13))
-            local sectionLabel = label(holder, tostring(name), UDim2.fromOffset(9,5), UDim2.new(1,-18,0,20), 13)
+            local sectionLabel = label(holder, tostring(name):lower(), UDim2.fromOffset(9,5), UDim2.new(1,-18,0,20), 13)
             sectionLabel.AnchorPoint, sectionLabel.TextXAlignment = Vector2.zero, Enum.TextXAlignment.Left
             sectionLabel.BackgroundTransparency = 1
             local chroma = button(holder, 'RGB', UDim2.fromOffset(36, 18), function() Library:SetGroupChroma(section, not section.ChromaOn); Library:AttemptSave() end)
@@ -8158,10 +8341,10 @@ function Library:CreateWindow(...)
             local lower = tostring(self.Name):lower()
             if (lower == 'ui settings' or lower == 'ui' or lower == 'settings') and not self.ClassicDefaults then
                 self.ClassicDefaults = true
-                item:AddDropdown('NotificationStyle', {Text = 'Notification style', Values = {'Default', 'Gamesense', 'Simple', 'Gamesensical', 'Progress'}, Default = Library.NotificationStyle or 'Default', Callback = function(value) Library:SetNotificationStyle(value) end})
-                item:AddDropdown('NotificationPosition', {Text = 'Notification position', Values = {'Bottom', 'Top', 'Bottom Left', 'Bottom Right', 'Top Left', 'Top Right'}, Default = Library.NotificationPosition or 'Bottom', Callback = function(value) Library:SetNotificationPosition(value) end})
-                item:AddSlider('UIScale', {Text = 'UI scale', Default = 100, Min = 75, Max = 150, Rounding = 0, Suffix = '%', Callback = function(value) Library:SetUIScale(value / 100) end})
-                item:AddToggle('ReducedMotion', {Text = 'Reduced motion', Default = false, Callback = function(value) Library.ReducedMotion = value end})
+                item:AddDropdown('NotificationStyle', {Text = 'notification style', Values = {'Default', 'Gamesense', 'Simple', 'Gamesensical', 'Progress'}, Default = Library.NotificationStyle or 'Default', Callback = function(value) Library:SetNotificationStyle(value) end})
+                item:AddDropdown('NotificationPosition', {Text = 'notification position', Values = {'Bottom', 'Top', 'Bottom Left', 'Bottom Right', 'Top Left', 'Top Right'}, Default = Library.NotificationPosition or 'Bottom', Callback = function(value) Library:SetNotificationPosition(value) end})
+                item:AddSlider('UIScale', {Text = 'ui scale', Default = 100, Min = 75, Max = 150, Rounding = 0, Suffix = '%', Callback = function(value) Library:SetUIScale(value / 100) end})
+                item:AddToggle('ReducedMotion', {Text = 'reduced motion', Default = false, Callback = function(value) Library.ReducedMotion = value end})
 
             end
             item:Resize()
@@ -8320,6 +8503,7 @@ function Library:CreateWindow(...)
         self:HideTooltip()
         toggled, toggleRevision = not toggled, toggleRevision + 1
         local revision = toggleRevision
+        if self.StartupIntro and self.StartupIntro.Finishing then self:CancelStartupIntro() end
         if not toggled then self:StopSliderDrag(true) end
         self.MainVisible, modal.Modal = toggled, toggled
         drag, resize = nil, nil
@@ -8331,6 +8515,7 @@ function Library:CreateWindow(...)
             fit()
             if not outer.Visible then outer.GroupTransparency = self.ReducedMotion and 0 or 1 end
             outer.Visible = true
+            self:RefreshVisiblePlayerDropdowns()
             self:AnimateControl(outer, {GroupTransparency = 0})
         else
             self:AnimateControl(outer, {GroupTransparency = 1})
@@ -8348,6 +8533,7 @@ function Library:CreateWindow(...)
         elseif input.KeyCode == Enum.KeyCode.RightControl or input.KeyCode == Enum.KeyCode.RightShift then Library:Toggle() end
     end))
     fit()
+    self:BeginStartupIntro(window)
     if config.AutoShow then task.defer(function() if not Library.Unloaded then Library:Toggle() end end) end
     return window
 end
@@ -8356,13 +8542,14 @@ local PlayerChangePending = false;
 local function OnPlayerChange()
     if PlayerChangePending or Library.Unloaded then return; end;
     PlayerChangePending = true;
-    task.defer(function()
+    task.delay(0.1,function()
         PlayerChangePending = false;
         if Library.Unloaded then return; end;
         local PlayerList = GetPlayersString();
-        for _, Value in next, Options do
-            if Value.Type == 'Dropdown' and Value.SpecialType == 'Player' then Value:SetValues(PlayerList); end;
-        end;
+        for control in pairs(Library.PlayerDropdowns or {}) do
+            control:SetValues(PlayerList)
+        end
+        Library:RefreshVisiblePlayerDropdowns()
     end);
 end;
 
