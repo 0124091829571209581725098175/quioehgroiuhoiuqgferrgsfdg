@@ -7888,7 +7888,14 @@ do
     end
 end
 
-Library.StartupIntroRevision = 3
+Library.StartupIntroRevision = 4
+function Library:SetStartupProgress(text, progress)
+    local state = self.StartupIntro
+    if not state or state.Emitting then return end
+    state.Progress = math.clamp(tonumber(progress) or state.Progress or 0,0,1)
+    state.Status.Text = tostring(text or 'loading') .. '  ' .. tostring(math.round(state.Progress * 100)) .. '%'
+    state.Fill.Size = UDim2.fromScale(state.Progress,1)
+end
 function Library:CancelStartupIntro()
     local state = self.StartupIntro
     if not state then return end
@@ -7905,6 +7912,13 @@ function Library:CancelStartupIntro()
     if state.Root then state.Root:Destroy() end
 end
 function Library:BeginStartupIntro(window)
+    if self.StartupIntro and not self.StartupIntro.Finishing then
+        if window then
+            self.StartupWindow = window
+            self.StartupIntro.Window, self.StartupIntro.Holder = window, window.Holder
+        end
+        return
+    end
     self:CancelStartupIntro()
     self.StartupWindow = window
     local function create(class, properties)
@@ -7918,8 +7932,14 @@ function Library:BeginStartupIntro(window)
     local overlay = create('Frame', {Name = 'startup blackhole', Parent = root, Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(), BorderSizePixel = 0, ZIndex = 1, Active = true})
     local scene = create('CanvasGroup', {Name = 'accretion scene', Parent = overlay, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.46), Size = UDim2.fromOffset(960, 720), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 10})
     local sceneScale = create('UIScale', {Parent = scene, Scale = 1})
-    local state: {[string]: any} = {Root = root, Overlay = overlay, Scene = scene, SceneScale = sceneScale, Holder = window.Holder, Window = window, Tweens = {}, Grains = {}, Dust = {}, Create = create, At = os.clock(), RenderAt = 0}
+    local state: {[string]: any} = {Root = root, Overlay = overlay, Scene = scene, SceneScale = sceneScale, Holder = window and window.Holder, Window = window, Tweens = {}, Grains = {}, Dust = {}, Create = create, At = os.clock(), RenderAt = 0}
     self.StartupIntro = state
+    local progress = create('Frame', {Name = 'loading status', Parent = overlay, AnchorPoint = Vector2.new(0.5,1), Position = UDim2.new(0.5,0,1,-48), Size = UDim2.new(0.7,0,0,38), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 20})
+    create('UISizeConstraint', {Parent = progress, MaxSize = Vector2.new(440,38)})
+    local track = create('Frame', {Parent = progress, Position = UDim2.fromOffset(0,30), Size = UDim2.new(1,0,0,3), BackgroundColor3 = Color3.fromRGB(35,35,35), BorderSizePixel = 0, ZIndex = 20})
+    state.Fill = create('Frame', {Parent = track, Size = UDim2.fromScale(0,1), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 21})
+    state.Status = self:CreateLabel({Parent = progress, Text = 'initializing  0%', Size = UDim2.new(1,0,0,24), TextXAlignment = Enum.TextXAlignment.Center, TextSize = 14, ZIndex = 21})
+    state.ProgressPanel = progress
     local function noise(n)
         local value = math.sin(n * 127.1 + 311.7) * 43758.5453
         return value - math.floor(value)
@@ -8014,7 +8034,7 @@ function Library:BeginStartupIntro(window)
         end
     end)
     draw(0)
-    state.Timeout = task.delay(18, function() if self.StartupIntro == state then self:CancelStartupIntro() end end)
+    state.Timeout = task.delay(120, function() if self.StartupIntro == state then self:CancelStartupIntro() end end)
 end
 function Library:FinishStartupIntro()
     if self.Unloaded or self.StartupIntroPlayed then return end
@@ -8023,15 +8043,27 @@ function Library:FinishStartupIntro()
     if not state or state.Finishing then return end
     state.Finishing = true
     if state.Timeout then pcall(task.cancel, state.Timeout) end
-    state.Timeout = task.delay(14, function() if self.StartupIntro == state then self:CancelStartupIntro() end end)
+    state.Timeout = task.delay(75, function() if self.StartupIntro == state then self:CancelStartupIntro() end end)
     state.Worker = task.defer(function()
-        local untilAt = os.clock() + 8
-        repeat task.wait() until self.Unloaded or self.StartupIntro ~= state or os.clock() >= untilAt
-            or self.ControlsReady ~= false and not self.ConfigLoading and not next(self.ConfigCallbackJobs or {})
+        local untilAt = os.clock() + 60
+        local ready = false
+        repeat
+            if self.Unloaded or self.StartupIntro ~= state then return end
+            ready = self.ControlsReady ~= false and not self.ConfigLoading and not next(self.ConfigCallbackJobs or {})
+            if self.StartupProgressProvider then
+                local complete, text, progress = self.StartupProgressProvider()
+                ready = ready and complete
+                self:SetStartupProgress(text,progress)
+            end
+            if not ready then task.wait(0.1) end
+        until ready or os.clock() >= untilAt
+        self:SetStartupProgress(ready and 'ready' or 'ready; remaining assets continue in background',1)
+        self.StartupProgressProvider = nil
         while not self.Unloaded and self.StartupIntro == state and os.clock() - state.At < (self.ReducedMotion and 0.15 or 2.2) do task.wait() end
         if self.Unloaded or self.StartupIntro ~= state then return end
         self.StartupIntroPlayed = true
         state.Emitting = true
+        state.ProgressPanel.Visible = false
         local function tween(object, duration, goals, delay)
             local animation = TweenService:Create(object, TweenInfo.new(duration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out, 0, false, delay or 0), goals)
             state.Tweens[#state.Tweens + 1] = animation
