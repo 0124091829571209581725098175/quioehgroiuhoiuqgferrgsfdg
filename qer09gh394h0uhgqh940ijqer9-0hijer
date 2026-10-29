@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 45;
+Library.PhowgRevision = 46;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -6498,11 +6498,150 @@ function Library:GetPlayerIntelligenceRows(player)
     values(player:FindFirstChild('DataFolder'), '', 0)
     return rows, table.concat(full, '\n')
 end
+function Library:CreateInspectorInventory(state, target, inventory, controls, body, title, label)
+    local controller = {Records = {}, ContainerConnections = {}, LayoutDirty = true, Sequence = 0}
+    local function disconnect(connections)
+        for _, connection in pairs(connections) do connection:Disconnect() end
+        table.clear(connections)
+    end
+    local function listen(connections, signal, callback)
+        local connection = signal:Connect(callback)
+        connections[#connections + 1] = connection
+        return connection
+    end
+    local function destroyRow(record)
+        if not record.Row then return end
+        self:RemoveFromRegistry(record.Row)
+        self:RemoveFromRegistry(record.NameLabel)
+        self:RemoveFromRegistry(record.AmmoLabel)
+        record.Row:Destroy()
+        record.Row, record.NameLabel, record.AmmoLabel = nil, nil, nil
+        controller.LayoutDirty = true
+    end
+    local function bindValues(record)
+        local tool = record.Tool
+        local ammo, maximum = tool:FindFirstChild('Ammo'), tool:FindFirstChild('MaxAmmo')
+        if ammo and not ammo:IsA('ValueBase') then ammo = nil end
+        if maximum and not maximum:IsA('ValueBase') then maximum = nil end
+        if record.Ammo == ammo and record.Maximum == maximum then return end
+        disconnect(record.ValueConnections)
+        record.Ammo, record.Maximum, record.Dirty = ammo, maximum, true
+        controller.LayoutDirty = true
+        for _, value in pairs({ammo, maximum}) do
+            listen(record.ValueConnections, value:GetPropertyChangedSignal('Value'), function() record.Dirty = true end)
+        end
+    end
+    local function observe(tool)
+        if not tool:IsA('Tool') then return end
+        local record = controller.Records[tool]
+        if record then record.Dirty = true; return end
+        controller.Sequence += 1
+        record = {Tool = tool, Connections = {}, ValueConnections = {}, Dirty = true, Sequence = controller.Sequence}
+        controller.Records[tool] = record
+        listen(record.Connections, tool.ChildAdded, function(child) if child.Name == 'Ammo' or child.Name == 'MaxAmmo' then bindValues(record) end end)
+        listen(record.Connections, tool.ChildRemoved, function(child) if child == record.Ammo or child == record.Maximum then bindValues(record) end end)
+        listen(record.Connections, tool:GetPropertyChangedSignal('Name'), function() record.Dirty = true; controller.LayoutDirty = true end)
+        listen(record.Connections, tool:GetAttributeChangedSignal('MaxAmmo'), function() record.Dirty = true end)
+        bindValues(record)
+        controller.LayoutDirty = true
+    end
+    local function remove(record)
+        disconnect(record.Connections)
+        disconnect(record.ValueConnections)
+        destroyRow(record)
+        controller.Records[record.Tool] = nil
+    end
+    local function bindContainers()
+        local character, backpack = target.Character, target:FindFirstChildOfClass('Backpack')
+        if controller.Character == character and controller.Backpack == backpack then return end
+        disconnect(controller.ContainerConnections)
+        controller.Character, controller.Backpack = character, backpack
+        for _, container in pairs({character, backpack}) do
+            listen(controller.ContainerConnections, container.ChildAdded, observe)
+            listen(controller.ContainerConnections, container.ChildRemoved, function(tool)
+                local record = controller.Records[tool]
+                if record then record.Dirty = true; controller.LayoutDirty = true end
+            end)
+            for _, tool in ipairs(container:GetChildren()) do observe(tool) end
+        end
+        controller.LayoutDirty = true
+    end
+    function controller:Refresh()
+        if self.Closed or state.Closing then return end
+        bindContainers()
+        local data = Library.PhongData
+        local esp = data and data.ESPInstance or getgenv and getgenv().ESP
+        local themeChanged = self.Accent ~= Library.AccentColor or self.Font ~= Library.FontColor or self.Outline ~= Library.OutlineColor or self.ESP ~= esp
+        self.Accent, self.Font, self.Outline, self.ESP = Library.AccentColor, Library.FontColor, Library.OutlineColor, esp
+        for tool, record in pairs(self.Records) do
+            if not tool.Parent or tool.Parent ~= self.Character and tool.Parent ~= self.Backpack then remove(record)
+            elseif not record.Ammo then destroyRow(record)
+            elseif record.Dirty or themeChanged or not record.Row then
+                record.Dirty = false
+                local equipped = tool.Parent == self.Character
+                local amount = tonumber(record.Ammo.Value) or 0
+                local maximum = record.Maximum and record.Maximum.Value or tool:GetAttribute('MaxAmmo')
+                local text = tostring(record.Ammo.Value) .. ' / ' .. tostring(maximum or '?')
+                local fraction = math.clamp(amount / math.max(1, tonumber(maximum) or 1), 0, 1)
+                if not record.Row then
+                    local row = Library:Create('Frame', {Parent = inventory, BackgroundColor3 = Library.MainColor, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 54), ZIndex = 313})
+                    Library:AddToRegistry(row, {BackgroundColor3 = 'MainColor'})
+                    record.Row = row
+                    record.Bar = Library:Create('Frame', {Parent = row, BorderSizePixel = 0, Position = UDim2.fromOffset(90, 49), ZIndex = 314})
+                    record.Edge = Library:Create('Frame', {Parent = row, BorderSizePixel = 0, Position = UDim2.fromOffset(0, 7), Size = UDim2.new(0, 2, 1, -14), ZIndex = 314})
+                    record.Icon = Library:Create('ImageLabel', {Parent = row, BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit, Position = UDim2.fromOffset(9, 10), Size = UDim2.fromOffset(70, 34), ZIndex = 314})
+                    record.NameLabel = label(row, '', 7, 18, 12)
+                    record.NameLabel.Position, record.NameLabel.Size = UDim2.fromOffset(90, 7), UDim2.new(1, -98, 0, 18)
+                    record.AmmoLabel = label(row, '', 29, 16, 11)
+                    record.AmmoLabel.Position, record.AmmoLabel.Size, record.AmmoLabel.TextTransparency = UDim2.fromOffset(90, 29), UDim2.new(1, -98, 0, 16), 0.35
+                    self.LayoutDirty = true
+                end
+                if record.DisplayName ~= tool.Name or themeChanged then
+                    record.DisplayName = tool.Name
+                    record.Icon.Image = esp and esp.GetWeaponIconAsset and esp:GetWeaponIconAsset(tool.Name) or ''
+                end
+                local name = tool.Name .. (equipped and '  / held' or '')
+                if record.NameLabel.Text ~= name then record.NameLabel.Text = name end
+                if record.AmmoLabel.Text ~= text then record.AmmoLabel.Text = text end
+                local size = UDim2.new(fraction, -98 * fraction, 0, 2)
+                if record.Bar.Size ~= size then record.Bar.Size = size end
+                record.Bar.BackgroundColor3 = equipped and Library.AccentColor or Library.FontColor
+                record.Bar.BackgroundTransparency = equipped and 0.1 or 0.65
+                record.Edge.BackgroundColor3 = equipped and Library.AccentColor or Library.OutlineColor
+            end
+        end
+        if not self.LayoutDirty then return end
+        self.LayoutDirty = false
+        local rows = {}
+        for _, record in pairs(self.Records) do if record.Row then rows[#rows + 1] = record end end
+        table.sort(rows, function(a, b) if a.Tool.Name ~= b.Tool.Name then return a.Tool.Name < b.Tool.Name end; return a.Sequence < b.Sequence end)
+        for index, record in ipairs(rows) do record.Row.Position = UDim2.fromOffset(0, (index - 1) * 60) end
+        title.Text = 'weapon inventory  /  ' .. #rows .. ' weapons'
+        if not self.Empty then self.Empty = label(inventory, 'No replicated weapons', 0, 24); self.Empty.TextTransparency = 0.4 end
+        self.Empty.Visible = #rows == 0
+        local height = math.max(38, #rows * 60)
+        if state.InventoryHeight ~= height then
+            state.InventoryHeight = height
+            inventory.Size = UDim2.new(1, -28, 0, height)
+            controls.Position = UDim2.fromOffset(0, 290 + height)
+            body.CanvasSize = UDim2.fromOffset(0, 538 + height)
+        end
+    end
+    function controller:Destroy()
+        if self.Closed then return end
+        self.Closed = true
+        disconnect(self.ContainerConnections)
+        for _, record in pairs(self.Records) do remove(record) end
+        if self.Empty then Library:RemoveFromRegistry(self.Empty); self.Empty:Destroy() end
+    end
+    return controller
+end
+
 function Library:ShowPlayerContextMenu(target, _position)
     if self.Unloaded or not target or target.Parent ~= Players then return end
     self:ClosePopups()
     self:ClosePlayerInspector(true)
-    local state: {[string]: any} = {Target = target, Connections = {}, Buttons = {}, InventorySignature = '', Closing = false}
+    local state: {[string]: any} = {Target = target, Connections = {}, Buttons = {}, Closing = false}
     local scale = math.max(self.UIScale or 1, 0.01)
     local width = math.min(384, math.max(160, (ScreenGui.AbsoluteSize.X - 48) / (scale * 2)))
     local height = math.max(160, (ScreenGui.AbsoluteSize.Y - 32) / scale)
@@ -6528,6 +6667,7 @@ function Library:ShowPlayerContextMenu(target, _position)
     end
     connect(frame.Destroying, function()
         state.Closing = true
+        if state.InventoryController then state.InventoryController:Destroy() end
         if state.DetailFrame and not state.DetailDestroyed and state.DetailFrame.Parent then state.DetailFrame:Destroy() end
         if state.Tween then state.Tween:Cancel() end
         local controlTween = self.ControlTweens[frame]
@@ -6706,6 +6846,7 @@ function Library:ShowPlayerContextMenu(target, _position)
         hits, shots = stat(hits), stat(shots)
         return hits and shots and shots > 0 and string.format('%.1f%%', math.clamp(hits / shots * 100, 0, 100)) or 'N/A'
     end
+    state.InventoryController = self:CreateInspectorInventory(state, target, inventory, controls, body, inventoryTitle, label)
     local function refresh()
         if state.Closing or self.Unloaded then return end
         if target.Parent ~= Players then self:ClosePlayerInspector(true); return end
@@ -6739,45 +6880,7 @@ function Library:ShowPlayerContextMenu(target, _position)
             item.Stroke.Color = active and self.AccentColor or self.OutlineColor
             item.Stroke.Transparency = active and 0.2 or 0.6
         end
-        local tools, rows, signature = {}, {}, {}
-        for _, container in pairs({target.Character, target:FindFirstChildOfClass('Backpack')}) do
-            for _, tool in ipairs(container:GetChildren()) do
-                if tool:IsA('Tool') and tool:FindFirstChild('Ammo') then tools[#tools + 1] = tool end
-            end
-        end
-        table.sort(tools, function(a, b) return a.Name < b.Name end)
-        local esp = pd and pd.ESPInstance or getgenv and getgenv().ESP
-        for _, tool in ipairs(tools) do
-            local ammo, maximum = tool:FindFirstChild('Ammo'), tool:FindFirstChild('MaxAmmo')
-            local asset = esp and esp.GetWeaponIconAsset and esp:GetWeaponIconAsset(tool.Name) or ''
-            local amount = tostring(ammo.Value) .. ' / ' .. tostring(maximum and maximum.Value or tool:GetAttribute('MaxAmmo') or '?')
-            rows[#rows + 1] = {Name = tool.Name, Ammo = amount, Asset = asset or '', Equipped = tool.Parent == target.Character, Fraction = math.clamp((tonumber(ammo.Value) or 0) / math.max(1, tonumber(maximum and maximum.Value or tool:GetAttribute('MaxAmmo')) or 1), 0, 1)}
-            signature[#signature + 1] = tool.Name .. amount .. tostring(asset) .. tostring(tool.Parent == target.Character)
-        end
-        inventoryTitle.Text = 'weapon inventory  /  ' .. #rows .. ' weapons'
-        local key = table.concat(signature, '|')
-        if state.InventorySignature ~= key or not state.InventoryBuilt then
-            state.InventorySignature, state.InventoryBuilt = key, true
-            for _, child in ipairs(inventory:GetChildren()) do child:Destroy() end
-            for i, item in ipairs(rows) do
-                local row = self:Create('Frame', {Parent = inventory, BackgroundColor3 = self.MainColor, BorderSizePixel = 0, Position = UDim2.fromOffset(0, (i - 1) * 60), Size = UDim2.new(1, 0, 0, 54), ZIndex = 313})
-                self:AddToRegistry(row, {BackgroundColor3 = 'MainColor'})
-                self:Create('UICorner', {Parent = row, CornerRadius = UDim.new(0, 0)})
-                self:Create('Frame', {Parent = row, BackgroundColor3 = item.Equipped and self.AccentColor or self.FontColor, BackgroundTransparency = item.Equipped and 0.1 or 0.65, BorderSizePixel = 0, Position = UDim2.fromOffset(90, 49), Size = UDim2.new(item.Fraction, -98 * item.Fraction, 0, 2), ZIndex = 314})
-                local edge = self:Create('Frame', {Parent = row, BackgroundColor3 = item.Equipped and self.AccentColor or self.OutlineColor, BorderSizePixel = 0, Position = UDim2.fromOffset(0, 7), Size = UDim2.new(0, 2, 1, -14), ZIndex = 314})
-                self:Create('ImageLabel', {Parent = row, Image = item.Asset, BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit, Position = UDim2.fromOffset(9, 10), Size = UDim2.fromOffset(70, 34), ZIndex = 314})
-                local name = label(row, item.Name .. (item.Equipped and '  / held' or ''), 7, 18, 12)
-                name.Position, name.Size = UDim2.fromOffset(90, 7), UDim2.new(1, -98, 0, 18)
-                local ammoLabel = label(row, item.Ammo, 29, 16, 11)
-                ammoLabel.Position, ammoLabel.Size, ammoLabel.TextTransparency = UDim2.fromOffset(90, 29), UDim2.new(1, -98, 0, 16), 0.35
-            end
-            if #rows == 0 then label(inventory, 'No replicated weapons', 0, 24).TextTransparency = 0.4 end
-            local inventoryHeight = math.max(38, #rows * 60)
-            state.InventoryHeight = inventoryHeight
-            inventory.Size = UDim2.new(1, -28, 0, inventoryHeight)
-            controls.Position = UDim2.fromOffset(0, 290 + inventoryHeight)
-            body.CanvasSize = UDim2.fromOffset(0, 538 + inventoryHeight)
-        end
+        state.InventoryController:Refresh()
         if state.InfoCharacter ~= target.Character then
             for _, connection in ipairs(state.InfoCharacterConnections or {}) do
                 connection:Disconnect()
