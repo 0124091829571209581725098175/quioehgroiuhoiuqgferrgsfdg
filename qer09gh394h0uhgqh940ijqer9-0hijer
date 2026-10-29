@@ -52,7 +52,7 @@ local Library: {[string]: any} = {
     Toggles = Toggles;
     Options = Options;
 };
-Library.PhowgRevision = 44;
+Library.PhowgRevision = 45;
 Library.TooltipsEnabled = false;
 Library.WorkspaceEnabled = true;
 Library.ClassicEnabled = true;
@@ -1154,6 +1154,7 @@ end
 
 function Library:Unload()
     Library:StopSliderDrag(false);
+    if self.WorkspaceWindow and self.WorkspaceWindow.StopMovement then self.WorkspaceWindow:StopMovement() end
     Library:ClosePlayerInspector(true);
     Library:StopPlayerView();
     Library.Unloaded = true;
@@ -1412,6 +1413,7 @@ function Library:RegisterAnimatedGradient(Gradient, Surface, Border)
         else
             sampleTime, sampleFrames = 0, 0;
         end;
+        if Library.WindowInteracting or Library.StartupIntro then return end;
         elapsed += delta;
         if elapsed < 1 / 30 then return end;
         elapsed = 0;
@@ -7783,7 +7785,7 @@ do
     end
 end
 
-Library.StartupIntroRevision = 2
+Library.StartupIntroRevision = 3
 function Library:CancelStartupIntro()
     local state = self.StartupIntro
     if not state then return end
@@ -7793,18 +7795,10 @@ function Library:CancelStartupIntro()
         if thread and thread ~= coroutine.running() then pcall(task.cancel, thread) end
     end
     for _, tween in ipairs(state.Tweens) do tween:Cancel() end
-    for _, entry in ipairs(state.Elements) do
-        if entry.Object.Parent then
-            entry.Object.Position, entry.Object.Rotation = entry.Position, entry.Rotation
-            if entry.Scale then entry.Scale:Destroy() end
-        end
-    end
     local entry = state.WindowEntry
-    if entry and entry.Object.Parent then
-        entry.Object.Position, entry.Object.Rotation = entry.Position, entry.Rotation
-        entry.Scale.Scale = entry.ScaleValue
-    end
+    if entry and entry.Holder and entry.Holder.Parent then entry.Holder.Visible = entry.Visible end
     if state.Holder and state.Holder.Parent then state.Holder.GroupTransparency = 0 end
+    if state.Proxy then state.Proxy:Destroy() end
     if state.Root then state.Root:Destroy() end
 end
 function Library:BeginStartupIntro(window)
@@ -7821,7 +7815,7 @@ function Library:BeginStartupIntro(window)
     local overlay = create('Frame', {Name = 'startup blackhole', Parent = root, Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(), BorderSizePixel = 0, ZIndex = 1, Active = true})
     local scene = create('CanvasGroup', {Name = 'accretion scene', Parent = overlay, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.46), Size = UDim2.fromOffset(960, 720), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 10})
     local sceneScale = create('UIScale', {Parent = scene, Scale = 1})
-    local state: {[string]: any} = {Root = root, Overlay = overlay, Scene = scene, SceneScale = sceneScale, Holder = window.Holder, Window = window, Tweens = {}, Elements = {}, Grains = {}, Dust = {}, At = os.clock(), RenderAt = 0}
+    local state: {[string]: any} = {Root = root, Overlay = overlay, Scene = scene, SceneScale = sceneScale, Holder = window.Holder, Window = window, Tweens = {}, Grains = {}, Dust = {}, Create = create, At = os.clock(), RenderAt = 0}
     self.StartupIntro = state
     local function noise(n)
         local value = math.sin(n * 127.1 + 311.7) * 43758.5453
@@ -7835,31 +7829,31 @@ function Library:BeginStartupIntro(window)
         local x, y = math.cos(angle) * radius, math.sin(angle) * radius * flatten
         return 480 + x * 0.985 + y * 0.169, 365 - x * 0.169 + y * 0.985
     end
-    for i = 1, 64 do
+    for i = 1, 32 do
         create('Frame', {Parent = overlay, Position = UDim2.fromScale(noise(i + 1), noise(i + 401)), Size = UDim2.fromOffset(i % 13 == 0 and 2 or 1, i % 13 == 0 and 2 or 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.55 + noise(i + 801) * 0.35, BorderSizePixel = 0, ZIndex = 2})
     end
-    for band = 1, 6 do
-        local radius = 78 * (1.13 + band * 0.33)
-        for segment = 0, 39 do
-            local angle = segment * math.pi / 20
+    for band = 1, 4 do
+        local radius = 78 * (1.13 + band * 0.5)
+        for segment = 0, 31 do
+            local angle = segment * math.pi / 16
             local x, y = ellipse(radius, 0.205, angle)
-            local nx, ny = ellipse(radius, 0.205, angle + math.pi / 20)
-            line(scene, x, y, nx, ny, band < 3 and 1.6 or 0.8, (0.5 - band * 0.06) * (0.6 + noise(segment + band * 41) * 0.4), 12)
+            local nx, ny = ellipse(radius, 0.205, angle + math.pi / 16)
+            line(scene, x, y, nx, ny, band < 3 and 1.6 or 0.8, (0.5 - band * 0.09) * (0.6 + noise(segment + band * 41) * 0.4), 12)
         end
     end
-    for band = 1, 3 do
-        for segment = 0, 31 do
-            local angle = math.pi * (1.02 + segment * 0.96 / 32)
-            local nextAngle = angle + math.pi * 0.96 / 32
+    for band = 1, 2 do
+        for segment = 0, 23 do
+            local angle = math.pi * (1.02 + segment * 0.96 / 24)
+            local nextAngle = angle + math.pi * 0.96 / 24
             local rx, ry = 78 * (1.13 + band * 0.026), 78 * (1.17 + band * 0.028)
             line(scene, 480 + math.cos(angle) * rx, 356 + math.sin(angle) * ry, 480 + math.cos(nextAngle) * rx, 356 + math.sin(nextAngle) * ry, band == 1 and 1.7 or 3, band == 1 and 0.7 or 0.15, 13)
         end
     end
-    for i = 1, 64 do
+    for i = 1, 28 do
         local radius = 78 * (1.17 + noise(i + 220) ^ 1.5 * 2.45)
-        state.Grains[i] = {Object = line(scene, 0, 0, 4, 0, 0.7 + noise(i + 88), 0.35 + noise(i + 21) * 0.5, 13), Radius = radius, Phase = noise(i + 900) * math.pi * 2}
+        state.Grains[i] = {Object = line(scene, 0, 0, 4, 0, 0.7 + noise(i + 88), 0.35 + noise(i + 21) * 0.5, 13), Radius = radius, Speed = 0.45 / (radius / 78) ^ 1.3, Phase = noise(i + 900) * math.pi * 2}
     end
-    for i = 1, 32 do
+    for i = 1, 12 do
         state.Dust[i] = {Object = line(scene, 0, 0, 4, 0, 0.8, 0.2, 11), Seed = noise(i + 2401), Phase = noise(i + 2701) * math.pi * 2}
     end
     local disk = create('Frame', {Name = 'event horizon', Parent = scene, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(480, 360), Size = UDim2.fromOffset(156, 156), BackgroundColor3 = Color3.new(), BorderSizePixel = 0, ZIndex = 14})
@@ -7873,13 +7867,19 @@ function Library:BeginStartupIntro(window)
     state.Label = label
     local function draw(elapsed)
         local size = overlay.AbsoluteSize
-        if not state.Emitting then
-            sceneScale.Scale = math.clamp(math.min(size.X / 960, size.Y / 720), 0.35, 1.25)
+        local resized = state.ViewportSize ~= size
+        if resized then
+            state.ViewportSize = size
+            if not state.Emitting then sceneScale.Scale = math.clamp(math.min(size.X / 960, size.Y / 720), 0.35, 1.25) end
         end
-        if self.ReducedMotion then elapsed = 0 end
+        if self.ReducedMotion then
+            if state.Drawn and not resized then return end
+            elapsed = 0
+        end
+        state.Drawn = true
         scene.Rotation = math.deg(elapsed * 0.09)
         for _, grain in ipairs(state.Grains) do
-            local phase = grain.Phase + elapsed * 0.45 / (grain.Radius / 78) ^ 1.3
+            local phase = grain.Phase + elapsed * grain.Speed
             local x, y = ellipse(grain.Radius, 0.205, phase)
             grain.Object.Position = UDim2.fromOffset(x, y)
             grain.Object.Rotation = math.deg(phase) + 80
@@ -7936,8 +7936,23 @@ function Library:FinishStartupIntro()
         end
         local holder, scaleObject = state.Holder, state.Window.ScaleObject
         if holder and holder.Parent and holder.Visible and scaleObject and not self.ReducedMotion then
+            local create = state.Create
             local scale = scaleObject.Scale
-            local entry = {Object = holder, Position = holder.Position, Rotation = holder.Rotation, Scale = scaleObject, ScaleValue = scale}
+            local proxy = create('CanvasGroup', {Name = 'startup window', Parent = ScreenGui, Size = holder.Size, Position = holder.Position, BackgroundColor3 = self.BackgroundColor, BorderSizePixel = 0, GroupTransparency = 1, ZIndex = 1000})
+            state.Proxy = proxy
+            local proxyScale = create('UIScale', {Parent = proxy, Scale = scale * 0.015})
+            create('UIStroke', {Parent = proxy, Color = self.FontColor, Thickness = 1, Transparency = 0.15})
+            create('TextLabel', {Parent = proxy, Text = state.Window.Title, Font = self.Font, TextSize = 12, TextColor3 = self.FontColor, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), ZIndex = 1001})
+            for index = 1, 5 do
+                create('Frame', {Parent = proxy, Position = UDim2.new((index - 1) / 5, 12, 0, 32), Size = UDim2.new(0.2, -24, 0, 14), BackgroundColor3 = self.MainColor, BorderSizePixel = 0, ZIndex = 1001})
+            end
+            for column = 0, 1 do
+                create('Frame', {Parent = proxy, Position = UDim2.new(column * 0.5, 12, 0, 64), Size = UDim2.new(0.5, -24, 0, 1), BackgroundColor3 = self.FontColor, BorderSizePixel = 0, ZIndex = 1001})
+                for row = 1, 9 do
+                    create('Frame', {Parent = proxy, Position = UDim2.new(column * 0.5, 16, 0, 68 + row * 24), Size = UDim2.new(0.5, -40 - row % 3 * 14, 0, row % 3 == 0 and 8 or 2), BackgroundColor3 = row % 3 == 0 and self.MainColor or self.OutlineColor, BorderSizePixel = 0, ZIndex = 1001})
+                end
+            end
+            local entry = {Object = proxy, Position = holder.Position, Rotation = holder.Rotation, Scale = proxyScale, Holder = holder, Visible = holder.Visible}
             state.WindowEntry = entry
             local origin = Vector2.new(state.Overlay.AbsoluteSize.X * 0.5, state.Overlay.AbsoluteSize.Y * 0.46)
             pcall(function()
@@ -7950,32 +7965,79 @@ function Library:FinishStartupIntro()
             local curl = math.min(160, distance * 0.28)
             entry.Origin, entry.Destination, entry.At = origin, destination, os.clock()
             entry.Control = Vector2.new((origin.X + destination.X) * 0.5 - dy / distance * curl, (origin.Y + destination.Y) * 0.5 + dx / distance * curl)
-            holder.Position = UDim2.fromOffset(origin.X - holder.Size.X.Offset * scale * 0.0075, origin.Y - holder.Size.Y.Offset * scale * 0.0075)
-            holder.Rotation, holder.GroupTransparency, scaleObject.Scale = -55, 1, scale * 0.015
-            tween(holder, 3.2, {Rotation = entry.Rotation, GroupTransparency = 0})
-            tween(scaleObject, 3.2, {Scale = scale})
-            local index = 0
-            for _, object in ipairs(holder:GetChildren()) do
-                if object:IsA('GuiObject') and object.Visible and object.Size.Y.Offset ~= 1 and object.Name ~= 'WindowInset' then
-                    index += 1
-                    local childScale = Instance.new('UIScale')
-                    childScale.Scale, childScale.Parent = 0.05, object
-                    local child = {Object = object, Position = object.Position, Rotation = object.Rotation, Scale = childScale}
-                    state.Elements[#state.Elements + 1] = child
-                    object.Position, object.Rotation = UDim2.fromOffset(holder.Size.X.Offset * 0.5, holder.Size.Y.Offset * 0.5), -24
-                    local delay = math.min(0.8, (index - 1) * 0.1)
-                    tween(object, 2.3, {Position = child.Position, Rotation = child.Rotation}, delay)
-                    tween(childScale, 2.3, {Scale = 1}, delay)
-                end
-            end
+            holder.Visible = false
+            proxy.Position = UDim2.fromOffset(origin.X - holder.Size.X.Offset * scale * 0.0075, origin.Y - holder.Size.Y.Offset * scale * 0.0075)
+            proxy.Rotation = -55
+            tween(proxy, 3.2, {Rotation = entry.Rotation, GroupTransparency = 0})
+            tween(proxyScale, 3.2, {Scale = scale})
         end
         tween(state.Overlay, self.ReducedMotion and 0.15 or 1.6, {BackgroundTransparency = 1})
         tween(state.Label, self.ReducedMotion and 0.15 or 0.8, {TextTransparency = 1})
         tween(state.Scene, self.ReducedMotion and 0.15 or 3.5, {GroupTransparency = 1}, self.ReducedMotion and 0 or 0.5)
         tween(state.SceneScale, self.ReducedMotion and 0.15 or 3.5, {Scale = state.SceneScale.Scale * 0.015}, self.ReducedMotion and 0 or 0.5)
-        task.wait(self.ReducedMotion and 0.2 or 4.2)
+        task.wait(self.ReducedMotion and 0.2 or 3.2)
+        if self.StartupIntro ~= state then return end
+        local entry = state.WindowEntry
+        if entry and entry.Holder.Parent then
+            entry.Holder.GroupTransparency = 1
+            entry.Holder.Visible = entry.Visible
+            state.WindowEntry = nil
+            tween(entry.Holder, 0.25, {GroupTransparency = 0})
+            tween(entry.Object, 0.25, {GroupTransparency = 1})
+            task.wait(0.3)
+        end
         if self.StartupIntro == state then self:CancelStartupIntro() end
     end)
+end
+
+function Library:BindWindowMovement(window, header, resizeButton, fit)
+    local outer = window.Holder
+    local action, connection
+    local update
+    local function stop(commit)
+        if commit and action then update() end
+        action = nil
+        self.WindowInteracting = false
+        if connection then connection:Disconnect(); connection = nil end
+    end
+    function window:StopMovement() stop(false) end
+    update = function()
+        if not action then return end
+        if self.Unloaded or not self.MainVisible or not outer.Parent then stop(false); return end
+        if not action.Dirty then return end
+        action.Dirty = false
+        local delta = action.Latest - action.Pointer
+        if action.Resize then
+            local scale = math.max(window.ScaleObject.Scale, 0.01)
+            outer.Size = UDim2.fromOffset(action.Size.X.Offset + delta.X / scale, action.Size.Y.Offset + delta.Y / scale)
+            fit()
+        else
+            local screen = ScreenGui.AbsoluteSize
+            local scale = math.max(window.ScaleObject.Scale, 0.01)
+            local x = action.Position.X.Scale * screen.X + action.Position.X.Offset + delta.X
+            local y = action.Position.Y.Scale * screen.Y + action.Position.Y.Offset + delta.Y
+            local position = UDim2.fromOffset(math.clamp(x, 8, math.max(8, screen.X - outer.Size.X.Offset * scale - 8)), math.clamp(y, 8, math.max(8, screen.Y - outer.Size.Y.Offset * scale - 8)))
+            if outer.Position ~= position then outer.Position = position end
+        end
+    end
+    local function begin(input, resizing)
+        if not self:IsClickInput(input) or self:MouseIsOverOpenedFrame() or InputService:GetFocusedTextBox() then return end
+        stop(false)
+        action = {Input = input, Pointer = input.Position, Latest = input.Position, Position = outer.Position, Size = outer.Size, Resize = resizing}
+        self.WindowInteracting = true
+        self:ConsumeInput(input)
+        connection = RenderStepped:Connect(update)
+    end
+    header.InputBegan:Connect(function(input) begin(input, false) end)
+    resizeButton.InputBegan:Connect(function(input) begin(input, true) end)
+    self:GiveSignal(InputService.InputChanged:Connect(function(input)
+        if not action or input ~= action.Input and (action.Input.UserInputType == Enum.UserInputType.Touch or input.UserInputType ~= Enum.UserInputType.MouseMovement) then return end
+        action.Latest, action.Dirty = input.Position, true
+    end))
+    self:GiveSignal(InputService.InputEnded:Connect(function(input)
+        if action and input == action.Input then stop(true) end
+    end))
+    self:GiveSignal(InputService.WindowFocusReleased:Connect(function() stop(true) end))
 end
 
 function Library:CreateWindow(...)
@@ -8625,7 +8687,7 @@ function Library:CreateWindow(...)
         if previous then previous:Resize() end
     end
 
-    local drag, resize, lastWidth, lastScale, lastSidebar, lastHeight, lastStacked
+    local lastWidth, lastScale, lastSidebar, lastHeight, lastStacked
     local function fit()
         if Library.StartupIntro and Library.StartupIntro.Emitting then return end
         local screen = ScreenGui.AbsoluteSize
@@ -8669,32 +8731,9 @@ function Library:CreateWindow(...)
         end
     end
     window.RefreshTabLayout = fit
-    header.InputBegan:Connect(function(input)
-        if not Library:IsClickInput(input) or Library:MouseIsOverOpenedFrame() or InputService:GetFocusedTextBox() then return end
-        drag = {Input = input, Pointer = input.Position, Position = outer.Position}
-        Library:ConsumeInput(input)
-    end)
     local resizeButton = frame('TextButton', {Name = 'ClassicResize', Parent = outer, Text = '', Font = Library.Font, TextSize = 16, TextColor3 = Library.FontColor, TextTransparency = 0.5, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(20, 20), Position = UDim2.new(1, -20, 1, -20), AutoButtonColor = false, ZIndex = 20}, {TextColor3 = 'FontColor'})
     for index=1,2 do frame('Frame',{Parent=resizeButton,Position=UDim2.fromOffset(6+index*3,12),Size=UDim2.fromOffset(8-index*2,1),Rotation=-45,BorderSizePixel=0,BackgroundColor3=Library.OutlineColor,ZIndex=21},{BackgroundColor3='OutlineColor'}) end
-    resizeButton.InputBegan:Connect(function(input)
-        if not Library:IsClickInput(input) or Library:MouseIsOverOpenedFrame() then return end
-        resize = {Input = input, Pointer = input.Position, Size = outer.Size}
-        Library:ConsumeInput(input)
-    end)
-    Library:GiveSignal(InputService.InputChanged:Connect(function(input)
-        local action = resize or drag
-        if not action or not Library.MainVisible then return end
-        if input ~= action.Input and input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
-        local delta = input.Position - action.Pointer
-        local scale = math.max(window.ScaleObject.Scale, 0.01)
-        if resize then outer.Size = UDim2.fromOffset(action.Size.X.Offset + delta.X / scale, action.Size.Y.Offset + delta.Y / scale)
-        else outer.Position = UDim2.fromOffset(action.Position.X.Offset + delta.X, action.Position.Y.Offset + delta.Y) end
-        fit()
-    end))
-    Library:GiveSignal(InputService.InputEnded:Connect(function(input)
-        if drag and input == drag.Input then drag = nil end
-        if resize and input == resize.Input then resize = nil end
-    end))
+    self:BindWindowMovement(window, header, resizeButton, fit)
     Library:GiveSignal(ScreenGui:GetPropertyChangedSignal('AbsoluteSize'):Connect(fit))
     window.ScaleObject:GetPropertyChangedSignal('Scale'):Connect(fit)
     local modal = frame('TextButton', {Parent = ScreenGui, BackgroundTransparency = 1, Text = '', Size = UDim2.fromOffset(0, 0), Modal = false, Visible = true})
@@ -8707,7 +8746,7 @@ function Library:CreateWindow(...)
         if self.StartupIntro and self.StartupIntro.Finishing and not fromStartup then self:CancelStartupIntro() end
         if not toggled then self:StopSliderDrag(true) end
         self.MainVisible, modal.Modal = toggled, toggled
-        drag, resize = nil, nil
+        window:StopMovement()
         self:ClosePopups()
         window.FooterSetActive(nil)
         self:RefreshCustomCursor()
