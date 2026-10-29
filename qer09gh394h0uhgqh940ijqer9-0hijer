@@ -7888,7 +7888,7 @@ do
     end
 end
 
-Library.StartupIntroRevision = 4
+Library.StartupIntroRevision = 5
 function Library:SetStartupProgress(text, progress)
     local state = self.StartupIntro
     if not state or state.Emitting then return end
@@ -8024,7 +8024,7 @@ function Library:BeginStartupIntro(window)
         draw(now - state.At)
         local entry = state.WindowEntry
         if entry and entry.Object.Parent then
-            local progress = self.ReducedMotion and 1 or math.clamp((now - entry.At) / 3.2, 0, 1)
+            local progress = self.ReducedMotion and 1 or math.clamp((now - entry.At) / 0.9, 0, 1)
             local t = 1 - (1 - progress) ^ 3
             local u = 1 - t
             local x = u * u * entry.Origin.X + 2 * u * t * entry.Control.X + t * t * entry.Destination.X
@@ -8059,7 +8059,7 @@ function Library:FinishStartupIntro()
         until ready or os.clock() >= untilAt
         self:SetStartupProgress(ready and 'ready' or 'ready; remaining assets continue in background',1)
         self.StartupProgressProvider = nil
-        while not self.Unloaded and self.StartupIntro == state and os.clock() - state.At < (self.ReducedMotion and 0.15 or 2.2) do task.wait() end
+        while not self.Unloaded and self.StartupIntro == state and os.clock() - state.At < (self.ReducedMotion and 0.15 or 0.35) do task.wait() end
         if self.Unloaded or self.StartupIntro ~= state then return end
         self.StartupIntroPlayed = true
         state.Emitting = true
@@ -8103,14 +8103,14 @@ function Library:FinishStartupIntro()
             holder.Visible = false
             proxy.Position = UDim2.fromOffset(origin.X - holder.Size.X.Offset * scale * 0.0075, origin.Y - holder.Size.Y.Offset * scale * 0.0075)
             proxy.Rotation = -55
-            tween(proxy, 3.2, {Rotation = entry.Rotation, GroupTransparency = 0})
-            tween(proxyScale, 3.2, {Scale = scale})
+            tween(proxy, 0.9, {Rotation = entry.Rotation, GroupTransparency = 0})
+            tween(proxyScale, 0.9, {Scale = scale})
         end
-        tween(state.Overlay, self.ReducedMotion and 0.15 or 1.6, {BackgroundTransparency = 1})
-        tween(state.Label, self.ReducedMotion and 0.15 or 0.8, {TextTransparency = 1})
-        tween(state.Scene, self.ReducedMotion and 0.15 or 3.5, {GroupTransparency = 1}, self.ReducedMotion and 0 or 0.5)
-        tween(state.SceneScale, self.ReducedMotion and 0.15 or 3.5, {Scale = state.SceneScale.Scale * 0.015}, self.ReducedMotion and 0 or 0.5)
-        task.wait(self.ReducedMotion and 0.2 or 3.2)
+        tween(state.Overlay, self.ReducedMotion and 0.15 or 0.45, {BackgroundTransparency = 1})
+        tween(state.Label, self.ReducedMotion and 0.15 or 0.3, {TextTransparency = 1})
+        tween(state.Scene, self.ReducedMotion and 0.15 or 0.8, {GroupTransparency = 1}, self.ReducedMotion and 0 or 0.1)
+        tween(state.SceneScale, self.ReducedMotion and 0.15 or 0.8, {Scale = state.SceneScale.Scale * 0.015}, self.ReducedMotion and 0 or 0.1)
+        task.wait(self.ReducedMotion and 0.2 or 0.9)
         if self.StartupIntro ~= state then return end
         local entry = state.WindowEntry
         if entry and entry.Holder.Parent then
