@@ -52,7 +52,7 @@ local Library: { [string]: any } = {
     Toggles = Toggles,
     Options = Options,
 }
-Library.PhowgRevision = 49
+Library.PhowgRevision = 50
 Library.RuntimeRevision = 1
 Library.TooltipsEnabled = true
 Library.UIFontSize = 12
@@ -2279,6 +2279,8 @@ do
     local Funcs = {}
 
     function Funcs:AddColorPicker(Idx, Info)
+        Info = table.clone(Info)
+        Info.Default = Color3.new(1, 1, 1)
         local ToggleLabel = self.TextLabel
         -- local Container = self.Container;
 
@@ -4951,6 +4953,9 @@ do
     end
 
     function Funcs:AddDropdown(Idx, Info)
+        Info = table.clone(Info)
+        Info.Default = nil
+        Info.AllowNull = true
         Info.Tooltip = Library:ResolveControlTooltip(Idx, Info, self)
         if Info.SpecialType == 'Player' then
             Info.Values = GetPlayersString()
@@ -4972,7 +4977,7 @@ do
 
         local Dropdown: { [string]: any } = {
             Values = Info.Values,
-            Value = Info.Multi and {},
+            Value = Info.Multi and {} or nil,
             Multi = Info.Multi,
             Type = 'Dropdown',
             SpecialType = Info.SpecialType, -- can be either 'Player' or 'Team'
@@ -5616,6 +5621,9 @@ do
     end
 
     function Funcs:AddSearchDropdown(Idx, Info)
+        Info = table.clone(Info)
+        Info.Default = nil
+        Info.AllowNull = true
         if Info.SpecialType == 'Player' then
             Info.Values = GetPlayersString()
             Info.AllowNull = true
@@ -5642,7 +5650,7 @@ do
 
         local Dropdown: { [string]: any } = {
             Values = Info.Values,
-            Value = Info.Multi and {},
+            Value = Info.Multi and {} or nil,
             Multi = Info.Multi,
             Type = 'Dropdown',
             SpecialType = Info.SpecialType,
@@ -13137,6 +13145,9 @@ function Library:CreateWindow(...)
                 label(holder, tostring(name):lower(), UDim2.fromOffset(9, 5), UDim2.new(1, -18, 0, 20), 13)
             sectionLabel.AnchorPoint, sectionLabel.TextXAlignment = Vector2.zero, Enum.TextXAlignment.Left
             sectionLabel.BackgroundTransparency = 1
+            if tostring(tab.Name):lower() == 'main' then
+                sectionLabel.TextXAlignment = Enum.TextXAlignment.Center
+            end
             local chroma = button(holder, 'RGB', UDim2.fromOffset(36, 18), function()
                 Library:SetGroupChroma(section, not section.ChromaOn)
                 Library:AttemptSave()
@@ -13173,6 +13184,9 @@ function Library:CreateWindow(...)
                     ),
                     20
                 )
+                if tostring(tab.Name):lower() == 'main' then
+                    sectionLabel.Size = UDim2.new(1, -18 - (self.HeaderActionsWidth or 0), 0, 20)
+                end
                 local height = 0
                 for _, child in ipairs(container:GetChildren()) do
                     if child:IsA('GuiObject') and child.Visible then
