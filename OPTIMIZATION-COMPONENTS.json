@@ -1,0 +1,34 @@
+{
+  "date": "2026-11-01",
+  "policy": "github",
+  "main": {
+    "file": "Phowg Hosted DH.lua",
+    "sha256": "de51a0c1b4b6d5bb2699ce0180ee118382888b0f71199545381e83aa7b15167e",
+    "latestChange": "Download GitHub-pinned components and versioned runtime assets into script folder at startup; remove local-source fallback; preserve private config/state files."
+  },
+  "cache": "C:\\Users\\expra\\AppData\\Local\\Potassium\\workspace\\PhowgHosted\\DaHood\\cache",
+  "components": [
+    {
+      "file": "LinoriaLibrary.lua",
+      "revision": 55,
+      "sha256": "524ff39f27ebbcbddd2da63e18c6d48997378fd6d430a7020fa6b068fa835a4f"
+    },
+    {
+      "file": "SaveManager.luau",
+      "revision": 9,
+      "sha256": "bb772e0a653b4968575ed18d57bfdc77f4b054fcfe74da77c083891618d9bc30"
+    },
+    {
+      "file": "ThemeManager.luau",
+      "revision": 3,
+      "sha256": "5fb5dd89505b5f001d3b81df4b3cf924b491a37a16462fd3e6e6c59b048d6837"
+    },
+    {
+      "file": "esp library.lua",
+      "revision": 23,
+      "sha256": "da5ee6e096b016947a667272fde585222c83760cd92a4e2a4af60846410d3da6"
+    }
+  ],
+  "runtimeCommit": "0cf90deb84be167a007761c8d767aa0f5ef5a954",
+  "runtimeFolder": "C:\\Users\\expra\\AppData\\Local\\Potassium\\scripts\\Linoria"
+}
