@@ -3,15 +3,15 @@
   "policy": "github",
   "main": {
     "file": "Phowg Hosted DH.lua",
-    "sha256": "de51a0c1b4b6d5bb2699ce0180ee118382888b0f71199545381e83aa7b15167e",
-    "latestChange": "Download GitHub-pinned components and versioned runtime assets into script folder at startup; remove local-source fallback; preserve private config/state files."
+    "sha256": "2cd20e1a8298bacf34beeb6c1db6052cc4819930584006a39b076d1299f42014",
+    "latestChange": "Refactor 810 methods to phowg:snake_case and 152 standalone helpers to snake_case; simplify loop lifetime/error handling; replace repeated mask scans and fixed half-second hold with mask-appearance cleanup; preserve set_server_cframe operations and timing."
   },
   "cache": "C:\\Users\\expra\\AppData\\Local\\Potassium\\workspace\\PhowgHosted\\DaHood\\cache",
   "components": [
     {
       "file": "LinoriaLibrary.lua",
-      "revision": 55,
-      "sha256": "524ff39f27ebbcbddd2da63e18c6d48997378fd6d430a7020fa6b068fa835a4f"
+      "revision": 56,
+      "sha256": "917b0edbf01766005d322b138b8406bbb5e21f385b5c6cc5a7dbe1a7124b20e9"
     },
     {
       "file": "SaveManager.luau",
@@ -29,6 +29,6 @@
       "sha256": "da5ee6e096b016947a667272fde585222c83760cd92a4e2a4af60846410d3da6"
     }
   ],
-  "runtimeCommit": "0cf90deb84be167a007761c8d767aa0f5ef5a954",
+  "runtimeCommit": "db2a9ece006ae3c8acc692016340027c7a9708bf",
   "runtimeFolder": "C:\\Users\\expra\\AppData\\Local\\Potassium\\scripts\\Linoria"
 }
