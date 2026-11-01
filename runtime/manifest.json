@@ -4,8 +4,8 @@
     {
       "Target": "components/LinoriaLibrary.lua",
       "Path": "components/LinoriaLibrary.lua",
-      "Bytes": 580585,
-      "Sha": "433547602b08066a7f6b9c971085d3cc628769e6"
+      "Bytes": 580593,
+      "Sha": "b20e8ab4b7dad12cc79133e07e0b9e44538da1a3"
     },
     {
       "Target": "components/SaveManager.luau",

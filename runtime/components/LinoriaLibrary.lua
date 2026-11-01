@@ -52,7 +52,7 @@ local Library: { [string]: any } = {
     Toggles = Toggles,
     Options = Options,
 }
-Library.PhowgRevision = 55
+Library.PhowgRevision = 56
 Library.RuntimeRevision = 1
 Library.TooltipsEnabled = true
 Library.UIFontSize = 12
@@ -8243,7 +8243,7 @@ function Library:GetPlayerInspectorProtection(player)
     local entry = self.PlayerProtectionCache[player]
     local pd = self.PhongData
     local pf = getgenv and getgenv().PhowgFunc
-    if not pd or not pd.Shield or not pf or not pf.LoadProtectionGroups then
+    if not pd or not pd.Shield or not pf or not pf.load_protection_groups then
         return 'Protection unavailable'
     end
     if not entry then
@@ -8254,7 +8254,7 @@ function Library:GetPlayerInspectorProtection(player)
     if not record.GroupsLoaded and not entry.Loading and tick() >= entry.RetryAt then
         entry.Loading = true
         task.spawn(function()
-            local ok, loaded = pcall(pf.LoadProtectionGroups, player, record)
+            local ok, loaded = pcall(pf.load_protection_groups, pf, player, record)
             entry.Loading, entry.RetryAt = false, tick() + 10
             entry.Failed = not ok or not loaded
         end)
